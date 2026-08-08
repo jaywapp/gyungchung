@@ -18,4 +18,4 @@ Supabase Authentication Providers에서 Google과 Kakao를 활성화하고, 배�
 
 ## 배포
 
-Vercel Git Integration 또는 포함된 GitHub Actions를 통해 `main` 브랜치가 프로덕션에 배포됩니다. 중복 배포를 피하려면 둘 중 하나만 사용하세요.
+Vercel Git Integration을 통해 `main` 브랜치의 변경 사항이 프로덕션에 자동 배포됩니다.
