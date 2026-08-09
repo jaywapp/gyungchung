@@ -40,7 +40,8 @@ export default function FeedbackHub({ user, profile, feedback, supabase, reload,
     if (!user || !supabase) return onLogin();
     if (profile?.status !== "active") return toast("회원 승인이 완료된 뒤 의견을 등록할 수 있습니다.");
     setSaving(true);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const { error } = await supabase.from("feedback").insert({
       author_id: user.id,
       category: form.get("category"),
@@ -50,7 +51,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, reload,
     });
     setSaving(false);
     if (error) return toast(error.message);
-    event.currentTarget.reset();
+    formElement.reset();
     toast("의견을 안전하게 접수했습니다.");
     reload();
   };
