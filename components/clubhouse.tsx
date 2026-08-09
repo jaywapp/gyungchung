@@ -5,15 +5,15 @@ import dynamic from "next/dynamic";
 import { CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Shield, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Attendance, Event, Fee, Feedback, Notice, ParticipationForm, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
+import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, ParticipationForm, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
 
 const FeedbackHub = dynamic(() => import("@/components/feedback-hub"));
 const ParticipationHub = dynamic(() => import("@/components/participation-hub"));
 const AdminConsole = dynamic(() => import("@/components/admin-console"));
 
-type Tab = "home" | "members" | "fees" | "notices" | "events" | "feedback" | "participation" | "admin";
+type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "admin";
 const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "매니저", admin: "어드민" };
-const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["feedback", "의견"], ["participation", "참여"]];
+const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["rankings", "랭킹"], ["feedback", "의견"], ["participation", "참여"]];
 
 const nextSaturday = (() => { const date = new Date(); date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7 || 7)); date.setHours(18, 0, 0, 0); return date.toISOString(); })();
 const sampleProfiles: Profile[] = [
@@ -22,7 +22,7 @@ const sampleProfiles: Profile[] = [
   { id: "sample-3", name: "이풋살", email: null, phone: null, role: "member", position: "MF", jersey_number: 7, joined_at: "2020-08-23", status: "active" },
   { id: "sample-4", name: "최패스", email: null, phone: null, role: "member", position: "DF", jersey_number: 4, joined_at: "2021-04-10", status: "active" },
 ];
-const sampleEvents: Event[] = [{ id: "sample-event", title: "주말 정기 풋살", starts_at: nextSaturday, venue: "브라보 풋살장", address: "서울시 송파구", note: "흰색·검정색 유니폼을 모두 챙겨주세요.", capacity: 18 }];
+const sampleEvents: Event[] = [{ id: "sample-event", title: "주말 정기 풋살", starts_at: nextSaturday, venue: "브라보 풋살장", address: "서울시 송파구", note: "흰색·검정색 유니폼을 모두 챙겨주세요.", capacity: 18, is_competitive: false, team_mode: null, event_guest_players: [], event_teams: [] }];
 const sampleNotices: Notice[] = [{ id: "sample-notice", title: "이번 주 풋살 참석 여부를 알려주세요", body: "목요일 밤 10시까지 참석 버튼을 눌러주세요. 인원에 맞춰 팀을 나눕니다.", is_pinned: true, created_at: new Date().toISOString() }];
 
 export default function Clubhouse() {
@@ -34,6 +34,11 @@ export default function Clubhouse() {
   const [me, setMe] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>(sampleProfiles);
   const [events, setEvents] = useState<Event[]>(sampleEvents);
+  const [guestPlayers, setGuestPlayers] = useState<GuestPlayer[]>([]);
+  const [rankings, setRankings] = useState<MemberRanking[]>([]);
+  const [momVotes, setMomVotes] = useState<EventMomVote[]>([]);
+  const [momResults, setMomResults] = useState<EventMomResult[]>([]);
+  const [momLeaderboard, setMomLeaderboard] = useState<MomLeaderboardEntry[]>([]);
   const [notices, setNotices] = useState<Notice[]>(sampleNotices);
   const [fees, setFees] = useState<Fee[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -48,18 +53,19 @@ export default function Clubhouse() {
     if (!supabase) return;
     const [profileRes, eventRes, noticeRes, formRes] = await Promise.all([
       supabase.from("profiles").select("*").order("name"),
-      supabase.from("events").select("*").order("starts_at"),
+      supabase.from("events").select("*, event_guest_players(*), event_teams(*, event_team_members(*))").order("starts_at"),
       supabase.from("notices").select("*").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }),
     ]);
-    if (eventRes.data?.length) setEvents(eventRes.data as Event[]);
+    const loadedEvents = (eventRes.data as Event[] | null) ?? [];
+    if (loadedEvents.length) setEvents(loadedEvents);
     if (noticeRes.data?.length) setNotices(noticeRes.data as Notice[]);
     if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
     if (!currentUser) {
       if (profileRes.data?.length) setProfiles(profileRes.data as Profile[]);
-      setMe(null); setFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); return;
+      setMe(null); setFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]); return;
     }
-    const [ownRes, applicationRes, feeRes, attendanceRes, feedbackRes, submissionRes, permissionRes] = await Promise.all([
+    const [ownRes, applicationRes, feeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
       supabase.from("membership_applications").select("*"),
       supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }),
@@ -67,6 +73,11 @@ export default function Clubhouse() {
       supabase.from("feedback").select("*").order("created_at", { ascending: false }),
       supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at"),
       supabase.from("role_permissions").select("role, permission"),
+      supabase.from("guest_players").select("*"),
+      supabase.rpc("get_member_rankings"),
+      supabase.from("event_mom_votes").select("*"),
+      supabase.rpc("get_event_mom_results"),
+      supabase.rpc("get_mom_leaderboard"),
     ]);
     const applications = applicationRes.data ?? [];
     const enrichedProfiles = ((profileRes.data as Profile[] | null) ?? []).map((profile) => ({
@@ -79,7 +90,10 @@ export default function Clubhouse() {
       ...ownProfile,
       membership_application: applications.find((application) => application.member_id === ownProfile.id) ?? null,
     } : null);
-    setFees((feeRes.data as unknown as Fee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []);
+    const guestAppearances = new Map<string, number>();
+    loadedEvents.flatMap((event) => event.event_guest_players ?? []).forEach((guest) => guestAppearances.set(guest.guest_player_id, (guestAppearances.get(guest.guest_player_id) ?? 0) + 1));
+    const loadedGuests = ((guestRes.data ?? []) as Omit<GuestPlayer, "appearance_count">[]).map((guest) => ({ ...guest, appearance_count: guestAppearances.get(guest.id) ?? 0 })).sort((a, b) => b.appearance_count - a.appearance_count || a.name.localeCompare(b.name, "ko"));
+    setFees((feeRes.data as unknown as Fee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setGuestPlayers(loadedGuests); setRankings((rankingRes.data as MemberRanking[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []); setMomLeaderboard((momLeaderboardRes.data as MomLeaderboardEntry[]) ?? []);
   }, [supabase]);
 
   useEffect(() => {
@@ -115,7 +129,7 @@ export default function Clubhouse() {
     if (me?.status !== "active") return showToast("회원 승인 후 참석 여부를 등록할 수 있습니다.");
     const { error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: user.id, status }, { onConflict: "event_id,member_id" });
     if (error) return showToast(error.message);
-    setAttendance((rows) => [...rows.filter((row) => row.event_id !== eventId || row.member_id !== user.id), { event_id: eventId, member_id: user.id, status }]); showToast("참석 여부를 저장했습니다.");
+    setAttendance((rows) => { const existing = rows.find((row) => row.event_id === eventId && row.member_id === user.id); return [...rows.filter((row) => row.event_id !== eventId || row.member_id !== user.id), { event_id: eventId, member_id: user.id, status, checked_in_at: existing?.checked_in_at ?? null, checked_in_by: existing?.checked_in_by ?? null }]; }); showToast("참석 여부를 저장했습니다.");
   };
 
   return <main className="page">
@@ -130,10 +144,11 @@ export default function Clubhouse() {
     {tab === "members" && <Members profiles={activeProfiles} />}
     {tab === "fees" && <Fees fees={fees} profiles={profiles} user={user} onLogin={() => setLoginOpen(true)} />}
     {tab === "notices" && <Notices notices={notices} />}
-    {tab === "events" && <Events events={events} attendance={attendance} user={user} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} />}
+    {tab === "events" && <Events events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} reload={() => void loadData(user)} toast={showToast} />}
+    {tab === "rankings" && <Rankings rankings={rankings} momLeaderboard={momLeaderboard} user={user} profile={me} onLogin={() => setLoginOpen(true)} />}
     {tab === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} supabase={supabase} reload={() => void loadData(user)} onLogin={() => setLoginOpen(true)} toast={showToast} />}
     {tab === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} reload={() => void loadData(user)} onLogin={() => setLoginOpen(true)} toast={showToast} />}
-    {tab === "admin" && isOfficer && supabase && <AdminConsole profiles={profiles} fees={fees} notices={notices} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} permissions={permissions} supabase={supabase} reload={() => void loadData(user)} toast={showToast} />}
+    {tab === "admin" && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} notices={notices} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} permissions={permissions} supabase={supabase} reload={() => void loadData(user)} toast={showToast} />}
     {tab === "admin" && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="어드민 또는 매니저 권한이 있는 계정으로 로그인해 주세요." /></div>}
 
     <footer><span>경충FC · SINCE 2018</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
@@ -143,7 +158,7 @@ export default function Clubhouse() {
   </main>;
 }
 
-function LoginModal({ busy, onClose, onSignIn }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void }) { return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인"><button className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인 또는<br />가입 신청</h2><p>Google이나 카카오로 본인을 확인합니다. 처음 방문했다면 이어서 가입 신청서를 작성해야 합니다.</p><button className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>가입 신청서 제출 후 회장단이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>; }
+function LoginModal({ busy, onClose, onSignIn }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void }) { return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인"><button className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인 또는<br />가입 신청</h2><p>Google이나 카카오로 본인을 확인합니다. 처음 방문했다면 이어서 가입 신청서를 작성해야 합니다.</p><button className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>가입 신청서 제출 후 매니저 또는 어드민이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>; }
 
 function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted }: { profile: Profile; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
   const [saving, setSaving] = useState(false);
@@ -164,7 +179,7 @@ function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted 
     await onSubmitted();
   };
   return <div className="modal-backdrop membership-gate"><form className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="경충FC 가입 신청">
-    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2><p className="form-description">필수 정보를 작성해 주세요. 회장단이 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>
+    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2><p className="form-description">필수 정보를 작성해 주세요. 매니저 또는 어드민이 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>
     <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={profile.name} /></label>
     <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} /></label></div>
     <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" /></label>
@@ -178,7 +193,7 @@ function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted 
 function Home({ upcoming, notice, fee, goingCount, memberCount, user, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; fee?: Fee; goingCount: number; memberCount: number; user: User | null; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
   const date = upcoming ? new Date(upcoming.starts_at) : null;
   return <><section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> EST. 2018 · SEOUL</span><h1>우리의 주말,<br /><em>우리의 풋살.</em></h1><div className="lead-row"><strong>2026<br />SEASON</strong><p>경쟁보다 함께 뛰는 즐거움. 경충FC는 주말마다 모여 공을 차고, 땀 흘리고, 오래 함께할 사람을 만듭니다.</p></div><div className="hero-actions"><button className="cta" onClick={() => onNavigate("events")}>이번 주 참석하기 <ChevronRight /></button><button className="text-link" onClick={() => onNavigate("participation")}>팀 의사결정 참여</button></div></div>
-    <div className="fixture-side"><span className="giant-number">{date?.getDate().toString().padStart(2, "0") ?? "FC"}</span><span className="eyebrow light">NEXT WEEKEND</span>{upcoming && <div className="ticket"><div className="ticket-head"><span>WEEKLY FUTSAL</span><strong>{formatDate(upcoming.starts_at)}</strong></div><div className="ticket-main"><div className="ticket-mark"><span className="mini-crest">GC</span><b>경충FC</b></div><div className="vs">PLAY</div><div className="time"><b>{formatTime(upcoming.starts_at)}</b><span>{goingCount || "-"}명 참석</span></div></div><div className="venue"><MapPin size={17} /><span><b>{upcoming.venue}</b>{upcoming.address}</span></div></div>}<div className="side-stats"><span><b>{memberCount}</b> ACTIVE MEMBERS</span><span><b>WEEKLY</b> SAT / SUN</span></div></div></section>
+    <div className="fixture-side"><span className="giant-number">{date?.getDate().toString().padStart(2, "0") ?? "FC"}</span><span className="eyebrow light">NEXT WEEKEND</span>{upcoming && <div className="ticket"><div className="ticket-head"><span>WEEKLY FUTSAL</span><strong>{formatDate(upcoming.starts_at)}</strong></div><div className="ticket-main"><div className="ticket-mark"><span className="mini-crest">GC</span><b>경충FC</b></div><div className="vs">PLAY</div><div className="time"><b>{formatTime(upcoming.starts_at)}</b><span>회원 {goingCount || "-"}명 · 용병 {upcoming.event_guest_players?.length ?? 0}명</span></div></div><div className="venue"><MapPin size={17} /><span><b>{upcoming.venue}</b>{upcoming.address}</span></div>{Boolean(upcoming.event_guest_players?.length) && <div className="guest-line"><b>참여 용병</b><span>{upcoming.event_guest_players?.map((guest) => `${guest.guest_name}${guest.guest_position ? `(${guest.guest_position})` : ""}`).join(" · ")}</span></div>}</div>}<div className="side-stats"><span><b>{memberCount}</b> ACTIVE MEMBERS</span><span><b>WEEKLY</b> SAT / SUN</span></div></div></section>
     <section className="locker"><div className="section-heading"><div><span className="eyebrow">MEMBER LOCKER ROOM</span><h2>이번 주 클럽하우스</h2></div><span>{new Date().getFullYear()} · {String(new Date().getMonth() + 1).padStart(2, "0")}</span></div><div className="panel-grid">
       <article className="panel"><div className="panel-title"><CalendarDays /><span><small>WEEKEND RSVP</small><b>참석 여부</b></span></div><p>{user ? "이번 주 함께 뛰나요?" : "로그인하고 참석 여부를 알려주세요."}</p><div className="rsvp"><button className={myAttendance === "going" ? "selected" : ""} onClick={() => onAttendance("going")}>참석</button><button className={myAttendance === "not_going" ? "selected no" : ""} onClick={() => onAttendance("not_going")}>불참</button></div></article>
       <article className="panel green-top"><div className="panel-title"><Megaphone /><span><small>LATEST NOTICE</small><b>팀 공지</b></span></div><h3>{notice?.title ?? "등록된 공지가 없습니다"}</h3><p>{notice?.body}</p><button className="panel-link" onClick={() => onNavigate("notices")}>전체 공지 <ChevronRight /></button></article>
@@ -191,7 +206,33 @@ function Members({ profiles }: { profiles: Profile[] }) { return <section classN
 function Fees({ fees, profiles, user, onLogin }: { fees: Fee[]; profiles: Profile[]; user: User | null; onLogin: () => void }) { if (!user) return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="회원에게만 공개하는 정보입니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>; return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="월별 납부 내역을 투명하게 확인합니다." /><div className="table-wrap"><table><thead><tr><th>회원</th><th>기준 월</th><th>금액</th><th>상태</th></tr></thead><tbody>{fees.map((fee) => <tr key={fee.id}><td>{fee.profiles?.name ?? profiles.find((profile) => profile.id === fee.member_id)?.name ?? "회원"}</td><td>{fee.month.slice(0, 7)}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td></tr>)}</tbody></table>{fees.length === 0 && <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비 내역을 등록하면 여기에 표시됩니다." />}</div></section>; }
 function FeeStatus({ status }: { status: Fee["status"] }) { return <span className={`status ${status}`}>{status === "paid" ? "납부 완료" : status === "exempt" ? "면제" : "미납"}</span>; }
 function Notices({ notices }: { notices: Notice[] }) { return <section className="content"><PageIntro kicker="NOTICE BOARD" title="공지사항" description="놓치면 안 되는 클럽 소식을 전합니다." /><div className="notice-list">{notices.map((notice, index) => <article key={notice.id}><span className="notice-index">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">PINNED</small>}<h3>{notice.title}</h3><p>{notice.body}</p><time>{new Date(notice.created_at).toLocaleDateString("ko-KR")}</time></div></article>)}</div></section>; }
-function Events({ events, attendance, user, onAttendance, onLogin }: { events: Event[]; attendance: Attendance[]; user: User | null; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void }) { return <section className="content"><PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="상대 팀과의 경기가 아닌, 우리끼리 모여 뛰는 주말 풋살 일정입니다." /><div className="event-list">{events.map((event, index) => { const count = attendance.filter((item) => item.event_id === event.id && item.status === "going").length; return <article key={event.id} className="event-card"><div className="event-date"><small>{new Date(event.starts_at).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small><b>{String(new Date(event.starts_at).getDate()).padStart(2, "0")}</b><span>{new Date(event.starts_at).toLocaleDateString("ko-KR", { weekday: "short" })}</span></div><div className="event-info"><small>WEEKLY FUTSAL · #{String(index + 1).padStart(2, "0")}</small><h3>{event.title}</h3><p><MapPin size={16} /> {event.venue} · {formatTime(event.starts_at)}</p><span>{event.note}</span></div><div className="event-action"><b>{count}명 참석</b><button className="cta small" onClick={() => user ? onAttendance("going", event.id) : onLogin()}>참석하기</button></div></article>; })}</div></section>; }
+function Events({ events, profiles, attendance, momVotes, momResults, user, profile, supabase, onAttendance, onLogin, reload, toast }: { events: Event[]; profiles: Profile[]; attendance: Attendance[]; momVotes: EventMomVote[]; momResults: EventMomResult[]; user: User | null; profile: Profile | null; supabase: ReturnType<typeof createClient>; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; reload: () => void; toast: (message: string) => void }) {
+  const [votingEvent, setVotingEvent] = useState<Event | null>(null);
+  const submitMomVote = async (candidateProfileId: string) => {
+    if (!user || !votingEvent || !supabase) return;
+    const { error } = await supabase.from("event_mom_votes").upsert({ event_id: votingEvent.id, voter_id: user.id, candidate_profile_id: candidateProfileId }, { onConflict: "event_id,voter_id" });
+    if (error) return toast(error.message);
+    setVotingEvent(null); toast("MOM 투표를 저장했습니다."); reload();
+  };
+  return <section className="content"><PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="상대 팀과의 경기가 아닌, 우리끼리 모여 뛰는 주말 풋살 일정입니다." /><div className="event-list">{events.map((event, index) => {
+    const count = attendance.filter((item) => item.event_id === event.id && item.status === "going").length;
+    const guests = event.event_guest_players ?? [];
+    const teams = [...(event.event_teams ?? [])].sort((a, b) => a.team_number - b.team_number);
+    const eventResults = momResults.filter((result) => result.event_id === event.id);
+    const canVote = Boolean(user && profile?.status === "active" && new Date(event.starts_at) < new Date() && attendance.some((row) => row.event_id === event.id && row.member_id === user.id && row.checked_in_at));
+    const ownVote = momVotes.find((vote) => vote.event_id === event.id);
+    const scoredTeams = teams.filter((team) => team.score !== null);
+    const maxScore = scoredTeams.length ? Math.max(...scoredTeams.map((team) => team.score ?? 0)) : null;
+    const winnerCount = maxScore === null ? 0 : scoredTeams.filter((team) => team.score === maxScore).length;
+    return <article key={event.id} className="event-card"><div className="event-date"><small>{new Date(event.starts_at).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small><b>{String(new Date(event.starts_at).getDate()).padStart(2, "0")}</b><span>{new Date(event.starts_at).toLocaleDateString("ko-KR", { weekday: "short" })}</span></div><div className="event-info"><small>WEEKLY FUTSAL · #{String(index + 1).padStart(2, "0")}{event.is_competitive ? " · 커피 내기" : ""}</small><h3>{event.title}</h3><p><MapPin size={16} /> {event.venue} · {formatTime(event.starts_at)}</p><span>{event.note}</span>{guests.length > 0 && <div className="guest-roster"><b>참여 용병</b>{guests.map((guest) => <span key={guest.guest_player_id}>{guest.guest_name}{guest.guest_position ? ` · ${guest.guest_position}` : ""}</span>)}</div>}{teams.length > 0 && <div className="event-teams">{teams.map((team) => { const result = team.score === null || maxScore === null ? null : team.score === maxScore ? winnerCount > 1 ? "무승부" : "승리" : "패배"; return <div className="event-team" key={team.id}><div><b>{team.team_name}</b>{event.is_competitive && <span>{team.score ?? "-"}점{result ? ` · ${result}` : ""}</span>}</div><p>{team.event_team_members.map((member) => `${member.participant_name}${member.goals ? ` ${member.goals}골` : ""}${member.rating !== null ? ` ${member.rating}점` : ""}`).join(" · ")}</p></div>; })}</div>}{eventResults.length > 0 && <div className="mom-results"><b>MOM TOP 3</b>{eventResults.map((result) => <span key={result.candidate_profile_id}>{result.mom_rank}위 {result.candidate_name} · {result.vote_count}표</span>)}</div>}</div><div className="event-action"><b>회원 {count}명 · 용병 {guests.length}명</b><button className="cta small" onClick={() => user ? onAttendance("going", event.id) : onLogin()}>참석하기</button>{canVote && <button className="text-link" onClick={() => setVotingEvent(event)}>{ownVote ? "MOM 재투표" : "MOM 투표"}</button>}</div></article>;
+  })}</div>{votingEvent && <div className="modal-backdrop" onClick={() => setVotingEvent(null)}><div className="editor mom-vote-modal" role="dialog" aria-modal="true" aria-label="MOM 투표" onClick={(event) => event.stopPropagation()}><button className="modal-close" aria-label="닫기" onClick={() => setVotingEvent(null)}><X /></button><span className="eyebrow">MAN OF THE MATCH</span><h2>MOM 투표</h2><p className="form-description">실제 출석한 회원 중 한 명을 선택해 주세요. 본인에게는 투표할 수 없습니다.</p><div className="mom-candidates">{profiles.filter((candidate) => candidate.id !== user?.id && candidate.status === "active" && attendance.some((row) => row.event_id === votingEvent.id && row.member_id === candidate.id && row.checked_in_at)).map((candidate) => <button key={candidate.id} className={momVotes.find((vote) => vote.event_id === votingEvent.id)?.candidate_profile_id === candidate.id ? "selected" : ""} onClick={() => void submitMomVote(candidate.id)}><span>{candidate.position ?? "PLAYER"}</span><b>{candidate.name}</b></button>)}</div></div></div>}</section>;
+}
+
+function Rankings({ rankings, momLeaderboard, user, profile, onLogin }: { rankings: MemberRanking[]; momLeaderboard: MomLeaderboardEntry[]; user: User | null; profile: Profile | null; onLogin: () => void }) {
+  if (!user) return <section className="content"><PageIntro kicker="CLUB RANKING" title="활동 랭킹" description="실제 출석과 회비 납부 기록으로 보는 경충FC 활동 대시보드입니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>;
+  if (profile?.status !== "active") return <section className="content"><PageIntro kicker="CLUB RANKING" title="활동 랭킹" description="실제 출석과 회비 납부 기록으로 보는 경충FC 활동 대시보드입니다." /><Empty icon={<Shield />} title="회원 승인 후 확인할 수 있습니다" description="가입 승인이 완료되면 활동 랭킹이 공개됩니다." /></section>;
+  return <section className="content"><PageIntro kicker="CLUB RANKING" title="활동 랭킹" description="실제 출석 1회는 3점, 회비 납부 1개월은 1점으로 집계합니다. 금액과 개인 연락처는 공개하지 않습니다." /><div className="ranking-layout"><div><div className="section-heading compact"><div><span className="eyebrow">ACTIVITY</span><h2>활동 순위</h2></div></div><div className="table-wrap ranking-table"><table><thead><tr><th>순위</th><th>회원</th><th>실제 출석</th><th>회비 납부</th><th>종합 점수</th></tr></thead><tbody>{rankings.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><td>{ranking.member_name}</td><td>{ranking.attendance_count}회</td><td>{ranking.paid_fee_count}개월</td><td><b>{ranking.total_score}점</b></td></tr>)}</tbody></table>{rankings.length === 0 && <Empty icon={<CalendarDays />} title="아직 집계된 기록이 없습니다" description="실제 출석이나 회비 납부 기록이 등록되면 순위가 표시됩니다." />}</div></div><div><div className="section-heading compact"><div><span className="eyebrow">MOM HALL OF FAME</span><h2>MOM 명예의 전당</h2></div></div><div className="table-wrap ranking-table"><table><thead><tr><th>순위</th><th>회원</th><th>1위</th><th>2위</th><th>3위</th><th>득표</th></tr></thead><tbody>{momLeaderboard.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><td>{ranking.member_name}</td><td>{ranking.first_place_count}회</td><td>{ranking.second_place_count}회</td><td>{ranking.third_place_count}회</td><td>{ranking.total_votes}표</td></tr>)}</tbody></table></div></div></div></section>;
+}
 function Empty({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) { return <div className="empty">{icon}<h3>{title}</h3><p>{description}</p></div>; }
 function formatDate(value: string) { return new Date(value).toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" }); }
 function formatTime(value: string) { return new Date(value).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }); }

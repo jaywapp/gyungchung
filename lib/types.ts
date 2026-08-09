@@ -40,6 +40,52 @@ export interface Event {
   address: string | null;
   note: string | null;
   capacity: number | null;
+  is_competitive: boolean;
+  team_mode: "random" | "balanced" | null;
+  event_guest_players?: EventGuestPlayer[];
+  event_teams?: EventTeam[];
+}
+
+export interface EventGuestPlayer {
+  event_id: string;
+  guest_player_id: string;
+  guest_name: string;
+  guest_position: "GK" | "DF" | "MF" | "FW" | "ANY" | null;
+  created_at: string;
+}
+
+export interface GuestPlayer {
+  id: string;
+  name: string;
+  phone: string | null;
+  preferred_position: "GK" | "DF" | "MF" | "FW" | "ANY" | null;
+  note: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  appearance_count: number;
+}
+
+export interface EventTeamMember {
+  id: string;
+  event_id: string;
+  event_team_id: string;
+  profile_id: string | null;
+  guest_player_id: string | null;
+  participant_name: string;
+  participant_position: "GK" | "DF" | "MF" | "FW" | "ANY" | null;
+  goals: number;
+  rating: number | null;
+}
+
+export interface EventTeam {
+  id: string;
+  event_id: string;
+  team_number: number;
+  team_name: string;
+  score: number | null;
+  generation_mode: "random" | "balanced";
+  event_team_members: EventTeamMember[];
 }
 
 export interface Fee {
@@ -56,6 +102,40 @@ export interface Attendance {
   event_id: string;
   member_id: string;
   status: "going" | "not_going" | "undecided";
+  checked_in_at: string | null;
+  checked_in_by: string | null;
+}
+
+export interface MemberRanking {
+  member_id: string;
+  member_name: string;
+  attendance_count: number;
+  paid_fee_count: number;
+  total_score: number;
+}
+
+export interface EventMomResult {
+  event_id: string;
+  candidate_profile_id: string;
+  candidate_name: string;
+  vote_count: number;
+  mom_rank: number;
+}
+
+export interface EventMomVote {
+  event_id: string;
+  voter_id: string;
+  candidate_profile_id: string;
+  voted_at: string;
+}
+
+export interface MomLeaderboardEntry {
+  member_id: string;
+  member_name: string;
+  first_place_count: number;
+  second_place_count: number;
+  third_place_count: number;
+  total_votes: number;
 }
 
 export interface Feedback {

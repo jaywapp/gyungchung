@@ -60,7 +60,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, reload,
       <div className="page-intro">
         <span className="eyebrow">MEMBER VOICE</span>
         <h1>사용자 의견</h1>
-        <p>팀 운영, 시스템, 구장과 안전에 관한 제안이나 제보를 회장단에 전달하세요. 익명 표시를 선택해도 시스템은 중복·악용 방지를 위해 작성자 정보를 보호 저장합니다.</p>
+        <p>팀 운영, 시스템, 구장과 안전에 관한 제안이나 제보를 운영진에 전달하세요. 익명 표시를 선택해도 시스템은 중복·악용 방지를 위해 작성자 정보를 보호 저장합니다.</p>
       </div>
       <div className="voice-layout">
         <form className="voice-form" onSubmit={submit}>
@@ -78,7 +78,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, reload,
             <article className="feedback-card" key={item.id}>
               <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small></div>
               <h3>{item.title}</h3><p>{item.body}</p>
-              {item.officer_response && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>회장단 답변</b>{item.officer_response}</span></div>}
+              {item.officer_response && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>운영진 답변</b>{item.officer_response}</span></div>}
             </article>
           ))}
         </div>
