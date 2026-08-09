@@ -88,7 +88,13 @@ export default function Clubhouse() {
   const signIn = async (provider: "google" | "kakao") => {
     if (!supabase) return showToast("로그인 연결을 준비 중입니다.");
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/auth/callback` } });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: provider === "kakao" ? "profile_nickname profile_image" : undefined,
+      },
+    });
     if (error) { showToast("로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요."); setBusy(false); }
   };
   const signOut = async () => { await supabase?.auth.signOut(); setTab("home"); showToast("로그아웃했습니다."); };
