@@ -1,4 +1,4 @@
-export type OfficerRole = "member" | "president" | "vice_president" | "treasurer";
+export type AccountRole = "member" | "manager" | "admin";
 
 export interface MembershipApplication {
   member_id: string;
@@ -16,7 +16,7 @@ export interface Profile {
   name: string;
   email: string | null;
   phone: string | null;
-  role: OfficerRole;
+  role: AccountRole;
   position: string | null;
   jersey_number: number | null;
   joined_at: string;
@@ -115,6 +115,6 @@ export interface ParticipationSubmission {
 }
 
 export interface RolePermission {
-  role: OfficerRole;
+  role: AccountRole;
   permission: string;
 }
