@@ -12,12 +12,12 @@ const ParticipationHub = dynamic(() => import("@/components/participation-hub"))
 const AdminConsole = dynamic(() => import("@/components/admin-console"));
 
 type Tab = "home" | "members" | "fees" | "notices" | "events" | "feedback" | "participation" | "admin";
-const roleLabels: Record<Profile["role"], string> = { member: "회원", president: "회장", vice_president: "부회장", treasurer: "총무" };
+const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "매니저", admin: "어드민" };
 const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["feedback", "의견"], ["participation", "참여"]];
 
 const nextSaturday = (() => { const date = new Date(); date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7 || 7)); date.setHours(18, 0, 0, 0); return date.toISOString(); })();
 const sampleProfiles: Profile[] = [
-  { id: "sample-1", name: "김경충", email: null, phone: null, role: "president", position: "GK", jersey_number: 1, joined_at: "2018-03-01", status: "active" },
+  { id: "sample-1", name: "김경충", email: null, phone: null, role: "admin", position: "GK", jersey_number: 1, joined_at: "2018-03-01", status: "active" },
   { id: "sample-2", name: "박주말", email: null, phone: null, role: "member", position: "FW", jersey_number: 9, joined_at: "2019-05-12", status: "active" },
   { id: "sample-3", name: "이풋살", email: null, phone: null, role: "member", position: "MF", jersey_number: 7, joined_at: "2020-08-23", status: "active" },
   { id: "sample-4", name: "최패스", email: null, phone: null, role: "member", position: "DF", jersey_number: 4, joined_at: "2021-04-10", status: "active" },
@@ -134,7 +134,7 @@ export default function Clubhouse() {
     {tab === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} supabase={supabase} reload={() => void loadData(user)} onLogin={() => setLoginOpen(true)} toast={showToast} />}
     {tab === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} reload={() => void loadData(user)} onLogin={() => setLoginOpen(true)} toast={showToast} />}
     {tab === "admin" && isOfficer && supabase && <AdminConsole profiles={profiles} fees={fees} notices={notices} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} permissions={permissions} supabase={supabase} reload={() => void loadData(user)} toast={showToast} />}
-    {tab === "admin" && !isOfficer && <div className="content"><Empty icon={<Shield />} title="회장단 전용 공간입니다" description="회장·부회장·총무 권한이 있는 계정으로 로그인해 주세요." /></div>}
+    {tab === "admin" && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="어드민 또는 매니저 권한이 있는 계정으로 로그인해 주세요." /></div>}
 
     <footer><span>경충FC · SINCE 2018</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} />}
