@@ -21,5 +21,9 @@ export async function GET(request: Request) {
     },
   );
   const { error } = await supabase.auth.exchangeCodeForSession(code);
-  return NextResponse.redirect(new URL(error ? "/?auth=error" : next, url.origin));
+  if (error) return NextResponse.redirect(new URL("/?auth=error", url.origin));
+
+  const { data } = await supabase.auth.getUser();
+  const destination = data.user?.email ? next : "/?auth=email-required";
+  return NextResponse.redirect(new URL(destination, url.origin));
 }
