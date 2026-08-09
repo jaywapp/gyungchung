@@ -106,7 +106,8 @@ export default function Clubhouse() {
 
   const permissions = useMemo(() => new Set(rolePermissions.filter((row) => row.role === me?.role).map((row) => row.permission)), [me?.role, rolePermissions]);
   const isOfficer = permissions.size > 0;
-  const needsApplication = Boolean(user && me?.status === "pending" && !me.membership_application);
+  const needsEmail = Boolean(user && !user.email);
+  const needsApplication = Boolean(user?.email && me?.status === "pending" && !me.membership_application);
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date()) ?? events[0];
   const myFee = fees.find((fee) => fee.member_id === user?.id);
@@ -114,13 +115,18 @@ export default function Clubhouse() {
 
   const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3000); };
   const navigate = (next: Tab) => { setTab(next); setMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const signIn = async (provider: "google" | "kakao") => {
+  const signIn = async (provider: "google" | "kakao", mode: PasswordAuthMode) => {
     if (!supabase) return showToast("로그인 연결을 준비 중입니다.");
     setBusy(true);
     const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", `/?auth=${mode}`);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: oauthProvider,
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        redirectTo: callbackUrl.toString(),
+        ...(provider === "kakao" ? { scopes: "account_email profile_nickname profile_image" } : {}),
+      },
     });
     if (error) { showToast("로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요."); setBusy(false); }
   };
@@ -207,12 +213,13 @@ export default function Clubhouse() {
 
     <footer><span>경충FC · SINCE 2018</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} onPasswordReset={sendPasswordReset} />}
+    {needsEmail && supabase && <EmailRequiredModal supabase={supabase} onSignOut={signOut} />}
     {needsApplication && supabase && me && <MembershipApplicationModal profile={me} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await loadData(user); showToast("가입 신청을 접수했습니다."); }} />}
     {toast && <div className="toast"><Check size={17} />{toast}</div>}
   </main>;
 }
 
-function LoginModal({ busy, onClose, onSignIn, onPasswordAuth, onPasswordReset }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (mode: PasswordAuthMode, email: string, password: string) => Promise<string | null>; onPasswordReset: (email: string) => Promise<string | null> }) {
+function LoginModal({ busy, onClose, onSignIn, onPasswordAuth, onPasswordReset }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao", mode: PasswordAuthMode) => void; onPasswordAuth: (mode: PasswordAuthMode, email: string, password: string) => Promise<string | null>; onPasswordReset: (email: string) => Promise<string | null> }) {
   const [mode, setMode] = useState<PasswordAuthMode>("login");
   const [email, setEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -234,7 +241,32 @@ function LoginModal({ busy, onClose, onSignIn, onPasswordAuth, onPasswordReset }
     if (error) setErrorMessage(error);
   };
   const changeMode = (nextMode: PasswordAuthMode) => { setMode(nextMode); setErrorMessage(null); };
-  return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인 또는 회원가입"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>{mode === "login" ? <>로그인</> : <>회원가입</>}</h2><p>이메일 아이디와 비밀번호를 사용하거나 Google·카카오 계정으로 계속할 수 있습니다.</p><div className="auth-mode-tabs" role="tablist" aria-label="계정 인증 방식"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => changeMode("login")}>로그인</button><button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => changeMode("signup")}>회원가입</button></div><form className="password-auth-form" onSubmit={submit}><label>이메일 아이디<input name="email" type="email" required autoComplete="email" placeholder="member@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>비밀번호<input name="password" type="password" required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상 입력" /></label>{mode === "signup" && <label>비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" /></label>}{errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}<button className="cta" disabled={busy}>{busy ? "처리 중…" : mode === "login" ? "이메일로 로그인" : "이메일로 회원가입"}</button>{mode === "login" && <button type="button" className="password-reset-link" disabled={busy} onClick={resetPassword}>비밀번호 설정·재설정</button>}</form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>{mode === "signup" ? "이메일 인증 후 가입 신청서를 작성해야 합니다. " : "기존 Google·카카오 계정과 같은 이메일에도 비밀번호를 설정할 수 있습니다. "}가입 신청서 제출 후 매니저 또는 어드민이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인 또는 회원가입"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>{mode === "login" ? <>로그인</> : <>회원가입</>}</h2><p>{mode === "login" ? "가입한 이메일 또는 연결된 소셜 계정으로 로그인하세요." : "이메일로 가입하거나 Google·카카오의 이름과 이메일을 불러와 가입을 시작하세요."}</p><div className="auth-mode-tabs" role="tablist" aria-label="계정 인증 방식"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => changeMode("login")}>로그인</button><button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => changeMode("signup")}>회원가입</button></div><form className="password-auth-form" onSubmit={submit}><label>이메일 아이디<input name="email" type="email" required autoComplete="email" placeholder="member@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>비밀번호<input name="password" type="password" required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상 입력" /></label>{mode === "signup" && <label>비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" /></label>}{errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}<button className="cta" disabled={busy}>{busy ? "처리 중…" : mode === "login" ? "이메일로 로그인" : "이메일로 회원가입"}</button>{mode === "login" && <button type="button" className="password-reset-link" disabled={busy} onClick={resetPassword}>비밀번호 설정·재설정</button>}</form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao", mode)}><span>●</span> {mode === "login" ? "카카오로 로그인" : "카카오 정보로 회원가입"}</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google", mode)}><span>G</span> {mode === "login" ? "Google로 로그인" : "Google 정보로 회원가입"}</button><small>{mode === "signup" ? "소셜 계정도 이메일이 반드시 필요하며, 처음 이용하면 가입 신청서로 이어집니다. " : "가입한 이메일과 동일한 인증 이메일의 소셜 계정은 기존 회원 계정으로 연결됩니다. "}가입 신청서 제출 후 매니저 또는 어드민이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>;
+}
+
+function EmailRequiredModal({ supabase, onSignOut }: { supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true); setErrorMessage(null);
+    const email = String(new FormData(event.currentTarget).get("email") ?? "").trim().toLowerCase();
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", "/?auth=email-confirmed");
+    const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: callbackUrl.toString() });
+    setSaving(false);
+    if (error?.code === "email_exists" || error?.message.toLowerCase().includes("already")) return setErrorMessage("이미 가입된 이메일입니다. 해당 이메일로 로그인한 뒤 소셜 계정을 연결해 주세요.");
+    if (error) return setErrorMessage("이메일 인증을 시작하지 못했습니다. 주소를 확인해 주세요.");
+    setSentTo(email);
+  };
+  return <div className="modal-backdrop membership-gate"><form className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="가입 이메일 등록">
+    <span className="eyebrow">EMAIL REQUIRED</span><h2>이메일<br />등록</h2><p className="form-description">경충FC 회원 계정에는 인증된 이메일이 반드시 필요합니다. 소셜 계정에서 이메일을 받지 못해 직접 확인합니다.</p>
+    {sentTo ? <div className="read-box"><b>인증 메일을 보냈습니다</b><p>{sentTo}의 메일에서 인증 링크를 누르면 가입 신청을 계속할 수 있습니다.</p></div> : <label>이메일<input name="email" type="email" required autoComplete="email" placeholder="member@example.com" /></label>}
+    {errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}
+    {!sentTo && <button className="cta" disabled={saving}>{saving ? "전송 중…" : "이메일 인증하기"}</button>}
+    <button className="text-link application-signout" type="button" onClick={() => void onSignOut()}>다른 계정으로 로그인</button>
+  </form></div>;
 }
 
 function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted }: { profile: Profile; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
