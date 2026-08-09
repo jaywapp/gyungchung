@@ -90,7 +90,10 @@ function AdminEditor({ config, profiles, guestPlayers, attendance, permissions, 
   const allowedKinds = (["election", "poll", "survey"] as const).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setSaving(true);
-    const fd = new FormData(event.currentTarget); let error: { message: string } | null = null;
+    const fd = new FormData(event.currentTarget);
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const submitAction = submitter?.name === "action" ? submitter.value : null;
+    let error: { message: string } | null = null;
     const addQuestion = async (formId: string, position: number) => {
       const prompt = String(fd.get("prompt") ?? "").trim();
       if (!prompt) return null;
@@ -136,7 +139,7 @@ function AdminEditor({ config, profiles, guestPlayers, attendance, permissions, 
       }
     }
     if (config.type === "teams") {
-      const action = String(fd.get("action") ?? "generate");
+      const action = submitAction ?? "generate";
       if (action === "generate") {
         const teamCount = Number(fd.get("team_count"));
         const mode = String(fd.get("team_mode"));
