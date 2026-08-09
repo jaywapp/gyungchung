@@ -12,6 +12,7 @@ const ParticipationHub = dynamic(() => import("@/components/participation-hub"))
 const AdminConsole = dynamic(() => import("@/components/admin-console"));
 
 type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "admin";
+type PasswordAuthMode = "login" | "signup";
 const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "매니저", admin: "어드민" };
 const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["rankings", "랭킹"], ["feedback", "의견"], ["participation", "참여"]];
 
@@ -123,6 +124,37 @@ export default function Clubhouse() {
     });
     if (error) { showToast("로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요."); setBusy(false); }
   };
+  const passwordAuth = async (mode: PasswordAuthMode, email: string, password: string) => {
+    if (!supabase) return "로그인 연결을 준비 중입니다.";
+    setBusy(true);
+    try {
+      const result = mode === "login"
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        });
+      if (result.error) {
+        if (result.error.code === "invalid_credentials") return "이메일 아이디 또는 비밀번호를 확인해 주세요.";
+        if (result.error.code === "email_not_confirmed") return "이메일 인증을 완료한 뒤 로그인해 주세요.";
+        if (result.error.code === "weak_password") return "더 안전한 비밀번호를 사용해 주세요.";
+        if (result.error.code?.includes("rate_limit")) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
+        return mode === "login" ? "로그인하지 못했습니다. 입력 정보를 확인해 주세요." : "회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      }
+      setLoginOpen(false);
+      if (mode === "signup" && !result.data.session) {
+        showToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");
+      } else {
+        showToast(mode === "signup" ? "회원가입했습니다. 가입 신청서를 작성해 주세요." : "로그인했습니다.");
+      }
+      return null;
+    } catch {
+      return "인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    } finally {
+      setBusy(false);
+    }
+  };
   const signOut = async () => { await supabase?.auth.signOut(); setTab("home"); showToast("로그아웃했습니다."); };
   const setMyAttendance = async (status: Attendance["status"], eventId = upcoming?.id) => {
     if (!user || !eventId || !supabase) return setLoginOpen(true);
@@ -152,13 +184,28 @@ export default function Clubhouse() {
     {tab === "admin" && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="어드민 또는 매니저 권한이 있는 계정으로 로그인해 주세요." /></div>}
 
     <footer><span>경충FC · SINCE 2018</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
-    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} />}
+    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} />}
     {needsApplication && supabase && me && <MembershipApplicationModal profile={me} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await loadData(user); showToast("가입 신청을 접수했습니다."); }} />}
     {toast && <div className="toast"><Check size={17} />{toast}</div>}
   </main>;
 }
 
-function LoginModal({ busy, onClose, onSignIn }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void }) { return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인"><button className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인 또는<br />가입 신청</h2><p>Google이나 카카오로 본인을 확인합니다. 처음 방문했다면 이어서 가입 신청서를 작성해야 합니다.</p><button className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>가입 신청서 제출 후 매니저 또는 어드민이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>; }
+function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (mode: PasswordAuthMode, email: string, password: string) => Promise<string | null> }) {
+  const [mode, setMode] = useState<PasswordAuthMode>("login");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrorMessage(null);
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email") ?? "").trim().toLowerCase();
+    const password = String(form.get("password") ?? "");
+    if (mode === "signup" && password !== String(form.get("password_confirm") ?? "")) return setErrorMessage("비밀번호 확인이 일치하지 않습니다.");
+    const error = await onPasswordAuth(mode, email, password);
+    if (error) setErrorMessage(error);
+  };
+  const changeMode = (nextMode: PasswordAuthMode) => { setMode(nextMode); setErrorMessage(null); };
+  return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인 또는 회원가입"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>{mode === "login" ? <>로그인</> : <>회원가입</>}</h2><p>이메일 아이디와 비밀번호를 사용하거나 Google·카카오 계정으로 계속할 수 있습니다.</p><div className="auth-mode-tabs" role="tablist" aria-label="계정 인증 방식"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => changeMode("login")}>로그인</button><button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => changeMode("signup")}>회원가입</button></div><form className="password-auth-form" onSubmit={submit}><label>이메일 아이디<input name="email" type="email" required autoComplete="email" placeholder="member@example.com" /></label><label>비밀번호<input name="password" type="password" required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상 입력" /></label>{mode === "signup" && <label>비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" /></label>}{errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}<button className="cta" disabled={busy}>{busy ? "처리 중…" : mode === "login" ? "이메일로 로그인" : "이메일로 회원가입"}</button></form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>{mode === "signup" ? "이메일 인증 후 가입 신청서를 작성해야 합니다. " : ""}가입 신청서 제출 후 매니저 또는 어드민이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>;
+}
 
 function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted }: { profile: Profile; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
   const [saving, setSaving] = useState(false);
