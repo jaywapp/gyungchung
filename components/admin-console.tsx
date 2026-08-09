@@ -54,12 +54,12 @@ function AdminRow({ title, meta, onEdit, onDelete }: { title: string; meta: stri
 function PermissionMatrix({ rows, supabase, reload, toast }: { rows: RolePermission[]; supabase: SupabaseClient; reload: () => void; toast: (message: string) => void }) {
   const roles: AccountRole[] = ["admin", "manager"];
   const toggle = async (role: AccountRole, permission: string, enabled: boolean) => {
-    if (role === "admin" || permission === "roles.manage") return;
+    if (role === "admin" || permission === "roles.manage" || (role === "manager" && permission === "members.manage")) return;
     const result = enabled ? await supabase.from("role_permissions").insert({ role, permission }) : await supabase.from("role_permissions").delete().eq("role", role).eq("permission", permission);
     if (result.error) return toast(result.error.message);
     reload();
   };
-  return <div className="permission-matrix"><div className="permission-intro"><ShieldCheck /><p>어드민 권한은 고정되어 있으며, 매니저가 담당할 운영 업무만 조정할 수 있습니다.</p></div><div className="table-wrap"><table><thead><tr><th>권한</th>{roles.map((role) => <th key={role}>{roleLabels[role]}</th>)}</tr></thead><tbody>{Object.entries(permissionLabels).map(([permission, label]) => <tr key={permission}><td>{label}</td>{roles.map((role) => { const checked = rows.some((row) => row.role === role && row.permission === permission); const disabled = role === "admin" || permission === "roles.manage"; return <td key={role}><input aria-label={`${roleLabels[role]} ${label}`} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => void toggle(role, permission, event.target.checked)} /></td>; })}</tr>)}</tbody></table></div></div>;
+  return <div className="permission-matrix"><div className="permission-intro"><ShieldCheck /><p>어드민 권한과 매니저의 회원 관리·가입 승인 권한은 고정되며, 그 외 매니저 운영 업무를 조정할 수 있습니다.</p></div><div className="table-wrap"><table><thead><tr><th>권한</th>{roles.map((role) => <th key={role}>{roleLabels[role]}</th>)}</tr></thead><tbody>{Object.entries(permissionLabels).map(([permission, label]) => <tr key={permission}><td>{label}</td>{roles.map((role) => { const checked = rows.some((row) => row.role === role && row.permission === permission); const disabled = role === "admin" || permission === "roles.manage" || (role === "manager" && permission === "members.manage"); return <td key={role}><input aria-label={`${roleLabels[role]} ${label}`} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => void toggle(role, permission, event.target.checked)} /></td>; })}</tr>)}</tbody></table></div></div>;
 }
 
 function AdminEditor({ config, profiles, permissions, supabase, onClose, onSaved }: { config: EditorConfig; profiles: Profile[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
