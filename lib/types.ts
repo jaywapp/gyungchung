@@ -1,5 +1,16 @@
 export type OfficerRole = "member" | "president" | "vice_president" | "treasurer";
 
+export interface MembershipApplication {
+  member_id: string;
+  name: string;
+  phone: string;
+  birth_date: string;
+  residence: string;
+  preferred_position: "GK" | "DF" | "MF" | "FW" | "ANY";
+  submitted_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -10,6 +21,7 @@ export interface Profile {
   jersey_number: number | null;
   joined_at: string;
   status: "active" | "inactive" | "pending";
+  membership_application?: MembershipApplication | null;
 }
 
 export interface Notice {

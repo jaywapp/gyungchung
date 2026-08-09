@@ -52,20 +52,33 @@ export default function Clubhouse() {
       supabase.from("notices").select("*").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }),
     ]);
-    if (profileRes.data?.length) setProfiles(profileRes.data as Profile[]);
     if (eventRes.data?.length) setEvents(eventRes.data as Event[]);
     if (noticeRes.data?.length) setNotices(noticeRes.data as Notice[]);
     if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
-    if (!currentUser) { setMe(null); setFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); return; }
-    const [ownRes, feeRes, attendanceRes, feedbackRes, submissionRes, permissionRes] = await Promise.all([
+    if (!currentUser) {
+      if (profileRes.data?.length) setProfiles(profileRes.data as Profile[]);
+      setMe(null); setFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); return;
+    }
+    const [ownRes, applicationRes, feeRes, attendanceRes, feedbackRes, submissionRes, permissionRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
+      supabase.from("membership_applications").select("*"),
       supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }),
       supabase.from("attendance").select("*"),
       supabase.from("feedback").select("*").order("created_at", { ascending: false }),
       supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at"),
       supabase.from("role_permissions").select("role, permission"),
     ]);
-    setMe((ownRes.data as Profile | null) ?? null);
+    const applications = applicationRes.data ?? [];
+    const enrichedProfiles = ((profileRes.data as Profile[] | null) ?? []).map((profile) => ({
+      ...profile,
+      membership_application: applications.find((application) => application.member_id === profile.id) ?? null,
+    }));
+    const ownProfile = ownRes.data as Profile | null;
+    setProfiles(enrichedProfiles);
+    setMe(ownProfile ? {
+      ...ownProfile,
+      membership_application: applications.find((application) => application.member_id === ownProfile.id) ?? null,
+    } : null);
     setFees((feeRes.data as unknown as Fee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []);
   }, [supabase]);
 
@@ -78,6 +91,7 @@ export default function Clubhouse() {
 
   const permissions = useMemo(() => new Set(rolePermissions.filter((row) => row.role === me?.role).map((row) => row.permission)), [me?.role, rolePermissions]);
   const isOfficer = permissions.size > 0;
+  const needsApplication = Boolean(user && me?.status === "pending" && !me.membership_application);
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date()) ?? events[0];
   const myFee = fees.find((fee) => fee.member_id === user?.id);
@@ -111,7 +125,7 @@ export default function Clubhouse() {
       <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{user ? <button className="login-button" onClick={signOut}><LogOut size={16} /> {me?.name ?? "로그아웃"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label="메뉴 열기">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
 
-    {me?.status === "pending" && <div className="approval-banner">가입이 완료되었습니다. 회장단의 회원 승인을 기다리고 있습니다.</div>}
+    {me?.status === "pending" && me.membership_application && <div className="approval-banner">가입 신청이 접수되었습니다. 회장단의 승인을 기다리고 있습니다.</div>}
     {tab === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === user?.id)?.status} />}
     {tab === "members" && <Members profiles={activeProfiles} />}
     {tab === "fees" && <Fees fees={fees} profiles={profiles} user={user} onLogin={() => setLoginOpen(true)} />}
@@ -124,11 +138,42 @@ export default function Clubhouse() {
 
     <footer><span>경충FC · SINCE 2018</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} />}
+    {needsApplication && supabase && me && <MembershipApplicationModal profile={me} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await loadData(user); showToast("가입 신청을 접수했습니다."); }} />}
     {toast && <div className="toast"><Check size={17} />{toast}</div>}
   </main>;
 }
 
-function LoginModal({ busy, onClose, onSignIn }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void }) { return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인"><button className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>클럽하우스<br />로그인</h2><p>회원 전용 회비 현황, 참석, 의견과 투표 기능을 이용하세요.</p><button className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>첫 가입자는 회장으로 시작하며, 이후 가입자는 회장단 승인 후 회원 기능을 사용할 수 있습니다.</small></div></div>; }
+function LoginModal({ busy, onClose, onSignIn }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void }) { return <div className="modal-backdrop" onClick={onClose}><div className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인"><button className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인 또는<br />가입 신청</h2><p>Google이나 카카오로 본인을 확인합니다. 처음 방문했다면 이어서 가입 신청서를 작성해야 합니다.</p><button className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 계속하기</button><button className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 계속하기</button><small>가입 신청서 제출 후 회장단이 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>; }
+
+function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted }: { profile: Profile; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true); setErrorMessage(null);
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase.rpc("submit_membership_application", {
+      applicant_name: String(form.get("name") ?? "").trim(),
+      applicant_phone: String(form.get("phone") ?? "").trim(),
+      applicant_birth_date: String(form.get("birth_date") ?? ""),
+      applicant_residence: String(form.get("residence") ?? "").trim(),
+      applicant_preferred_position: String(form.get("preferred_position") ?? ""),
+    });
+    setSaving(false);
+    if (error) return setErrorMessage("입력 정보를 확인한 뒤 다시 시도해 주세요.");
+    await onSubmitted();
+  };
+  return <div className="modal-backdrop membership-gate"><form className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="경충FC 가입 신청">
+    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2><p className="form-description">필수 정보를 작성해 주세요. 회장단이 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>
+    <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={profile.name} /></label>
+    <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} /></label></div>
+    <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" /></label>
+    <label>선호 포지션<select name="preferred_position" required defaultValue=""><option value="" disabled>포지션을 선택해 주세요</option><option value="GK">골키퍼 (GK)</option><option value="DF">수비 (DF)</option><option value="MF">미드필더 (MF)</option><option value="FW">공격 (FW)</option><option value="ANY">상관없음</option></select></label>
+    {errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}
+    <button className="cta" disabled={saving}>{saving ? "신청 중…" : "가입 신청서 제출"}</button>
+    <button className="text-link application-signout" type="button" onClick={() => void onSignOut()}>다른 계정으로 로그인</button>
+  </form></div>;
+}
 
 function Home({ upcoming, notice, fee, goingCount, memberCount, user, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; fee?: Fee; goingCount: number; memberCount: number; user: User | null; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
   const date = upcoming ? new Date(upcoming.starts_at) : null;
