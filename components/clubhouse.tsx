@@ -88,12 +88,10 @@ export default function Clubhouse() {
   const signIn = async (provider: "google" | "kakao") => {
     if (!supabase) return showToast("로그인 연결을 준비 중입니다.");
     setBusy(true);
+    const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
     const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        scopes: provider === "kakao" ? "profile_nickname profile_image" : undefined,
-      },
+      provider: oauthProvider,
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
     if (error) { showToast("로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요."); setBusy(false); }
   };
