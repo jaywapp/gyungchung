@@ -138,6 +138,7 @@ export default function Clubhouse() {
       if (result.error) {
         if (result.error.code === "invalid_credentials") return "이메일 아이디 또는 비밀번호를 확인해 주세요.";
         if (result.error.code === "email_not_confirmed") return "이메일 인증을 완료한 뒤 로그인해 주세요.";
+        if (result.error.code === "email_address_invalid") return "사용할 수 있는 이메일 주소를 입력해 주세요.";
         if (result.error.code === "weak_password") return "더 안전한 비밀번호를 사용해 주세요.";
         if (result.error.code?.includes("rate_limit")) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
         return mode === "login" ? "로그인하지 못했습니다. 입력 정보를 확인해 주세요." : "회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
