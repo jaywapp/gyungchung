@@ -62,11 +62,11 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
           const isDone = completed.has(form.id);
           return <article className="participation-card" key={form.id}>
             <div className="participation-icon"><Icon /></div>
-            <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h3>{form.title}</h3><p>{form.description}</p>{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
+            <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
             <button className={isDone ? "done-button" : "cta small"} disabled={isDone || form.status !== "open"} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); }}>{isDone ? <><Check size={16} /> 참여 완료</> : form.status === "open" ? "참여하기" : "마감됨"}</button>
           </article>;
         })}
-        {forms.length === 0 && <div className="empty"><Vote /><h3>현재 공개된 참여 항목이 없습니다</h3><p>새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다.</p></div>}
+        {forms.length === 0 && <div className="empty"><Vote /><h2>현재 공개된 참여 항목이 없습니다</h2><p>새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다.</p></div>}
       </div>
       {active && <div className="modal-backdrop" onClick={() => setActiveId(null)}><form className="editor participation-editor" onSubmit={submit} onClick={(event) => event.stopPropagation()}><button type="button" className="modal-close" aria-label="닫기" onClick={() => setActiveId(null)}>×</button><span className="eyebrow">{kindMeta[active.kind].label}</span><h2>{active.title}</h2><p>{active.description}</p>{active.participation_questions.map((question, index) => <QuestionField key={question.id} question={question} index={index} value={answers[question.id]} onChange={(value, checked) => setAnswer(question, value, checked)} />)}<button className="cta" disabled={saving}>{saving ? "제출 중…" : "응답 제출"}</button></form></div>}
     </section>
