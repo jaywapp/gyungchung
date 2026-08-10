@@ -38,3 +38,8 @@
 .event-card.past{border-left-color:var(--muted);opacity:.86}.event-action .cta:disabled{background:#d8dce0;color:#52606e;box-shadow:none;cursor:not-allowed;transform:none}
 .auth-loading{min-width:72px;color:var(--muted);font-size:12px;font-weight:900;text-align:center}
 @media(max-width:900px){.topbar{height:82px;grid-template-columns:1fr auto}.brand-copy small{display:none}.crest{width:48px;height:52px;font-size:18px}.nav{display:none;position:absolute;top:82px;left:0;right:0;background:var(--paper);padding:12px 5vw 20px;border-bottom:1px solid var(--line);flex-direction:column;align-items:stretch;gap:0}.nav.open{display:flex}.nav button{padding:13px;text-align:left;min-height:44px}.nav button:after{bottom:7px}.menu-button{display:block}.youtube-link{display:none}.login-button{font-size:0;padding:0;width:44px;justify-content:center}.login-button svg{width:20px;height:20px}}
+
+/* Third-round QA refinements */
+.nav a{color:var(--navy);font-weight:900;padding:39px 2px 34px;position:relative;text-decoration:none}.nav a:after{content:"";height:4px;position:absolute;left:0;right:100%;bottom:25px;background:var(--green);transition:.2s}.nav a:hover:after,.nav a.active:after{right:0}
+.cta.small,.login-button{height:44px;min-height:44px}.event-card.past .event-date small,.event-card.past .event-info>small{color:#187435}.event-date small{white-space:nowrap}.empty h2{color:var(--navy);font-size:21px;margin-bottom:0}.participation-copy h2{font-size:24px;margin:7px 0}
+@media(max-width:900px){.nav a{padding:13px;text-align:left;min-height:44px}.nav a:after{bottom:7px}}
