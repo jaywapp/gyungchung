@@ -92,15 +92,44 @@ Deno.serve(async (request: Request) => {
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) return json(request, { error: "로그인이 필요합니다." }, 401);
 
+    const admin = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
     const payload = await request.json();
+    if (payload?.action === "sync") {
+      const { data: linkedFeedback, error: linkedFeedbackError } = await userClient
+        .from("feedback")
+        .select("id,github_issue_number,github_issue_state,github_issue_closed_at")
+        .not("github_issue_number", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (linkedFeedbackError) throw linkedFeedbackError;
+
+      let changed = 0;
+      await Promise.all((linkedFeedback ?? []).map(async (item) => {
+        const issueResponse = await github(`/repos/${GITHUB_REPOSITORY}/issues/${item.github_issue_number}`);
+        if (!issueResponse.ok) return;
+        const issue = await issueResponse.json() as { state?: unknown; closed_at?: unknown };
+        if (issue.state !== "open" && issue.state !== "closed") return;
+        const closedAt = issue.state === "closed" && typeof issue.closed_at === "string" ? issue.closed_at : null;
+        if (item.github_issue_state === issue.state && item.github_issue_closed_at === closedAt) return;
+        const { error: updateError } = await admin
+          .from("feedback")
+          .update({ github_issue_state: issue.state, github_issue_closed_at: closedAt })
+          .eq("id", item.id)
+          .eq("github_issue_number", item.github_issue_number);
+        if (updateError) throw updateError;
+        changed += 1;
+      }));
+
+      return json(request, { synced: linkedFeedback?.length ?? 0, changed });
+    }
+
     const feedbackId = typeof payload?.feedbackId === "string" ? payload.feedbackId.trim() : "";
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(feedbackId)) {
       return json(request, { error: "올바른 제보를 선택해 주세요." }, 400);
     }
 
-    const admin = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
     const { data: feedback, error: feedbackError } = await admin
       .from("feedback")
       .select("id,author_id,category,title,body,publish_to_github,github_issue_number,github_issue_url,created_at")
@@ -166,7 +195,7 @@ Deno.serve(async (request: Request) => {
     }
     const { error: updateError } = await admin
       .from("feedback")
-      .update({ github_issue_number: issue.number, github_issue_url: issue.html_url })
+      .update({ github_issue_number: issue.number, github_issue_url: issue.html_url, github_issue_state: "open", github_issue_closed_at: null })
       .eq("id", feedback.id)
       .eq("author_id", user.id)
       .is("github_issue_url", null);

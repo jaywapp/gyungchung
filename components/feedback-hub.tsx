@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Github, Lightbulb, MessageSquareText, Pencil, Send, Trash2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { Feedback, Profile } from "@/lib/types";
@@ -38,6 +38,27 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
   toast: ToastHandler;
 }) {
   const [saving, setSaving] = useState(false);
+  const [syncedIssuesKey, setSyncedIssuesKey] = useState("");
+  const syncedIssuesRef = useRef("");
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  const linkedIssuesKey = feedback
+    .filter((item) => item.github_issue_number)
+    .map((item) => `${item.github_issue_number}:${item.github_issue_state ?? "unknown"}`)
+    .join(",");
+  const issueSyncKey = user && linkedIssuesKey ? `${user.id}|${linkedIssuesKey}` : "";
+  const linkedIssuesReady = !issueSyncKey || syncedIssuesKey === issueSyncKey;
+  const visibleFeedback = feedback.filter((item) => item.github_issue_state !== "closed" && (!item.github_issue_number || linkedIssuesReady));
+
+  useEffect(() => {
+    if (!supabase || !issueSyncKey || syncedIssuesRef.current === issueSyncKey) return;
+    syncedIssuesRef.current = issueSyncKey;
+    void supabase.functions.invoke("github-feedback", { body: { action: "sync" } }).then(({ data, error }) => {
+      if (syncedIssuesRef.current !== issueSyncKey) return;
+      if (!error && Number(data?.changed) > 0) reloadRef.current();
+      else setSyncedIssuesKey(issueSyncKey);
+    });
+  }, [issueSyncKey, supabase]);
 
   const publishToGithub = async (feedbackId: string) => {
     if (!supabase) return false;
@@ -107,8 +128,8 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
           <button className="cta" disabled={saving || !user}><Send size={17} /> {saving ? "접수 중…" : "의견 접수"}</button>
         </form>
         <div className="voice-history">
-          <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div><span>{feedback.length}건</span></div>
-          {feedback.length === 0 ? <div className="empty"><MessageSquareText /><h2>아직 접수한 의견이 없습니다</h2><p>작은 아이디어도 팀을 더 좋게 만듭니다.</p></div> : feedback.map((item) => (
+          <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div><span>{visibleFeedback.length}건</span></div>
+          {visibleFeedback.length === 0 ? <div className="empty"><MessageSquareText /><h2>아직 접수한 의견이 없습니다</h2><p>작은 아이디어도 팀을 더 좋게 만듭니다.</p></div> : visibleFeedback.map((item) => (
             <article className="feedback-card" key={item.id}>
               <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id)}><Trash2 size={16} /></button></span>}</div>
               <h3>{item.title}</h3><p>{item.body}</p>
