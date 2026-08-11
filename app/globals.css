@@ -50,3 +50,22 @@
 /* UI trust states */
 .toast.error{background:#8e241d;box-shadow:6px 6px 0 #ffb4a8}.schedule-loading{min-height:375px;display:flex;flex-direction:column;gap:22px;padding:34px}.schedule-loading span,.panel-loading span{display:block;background:linear-gradient(90deg,#e9edf0 25%,#f7f8f9 50%,#e9edf0 75%);background-size:200% 100%;animation:loading-shimmer 1.2s infinite}.schedule-loading span:first-child{height:24px;width:55%}.schedule-loading span:nth-child(2){height:150px}.schedule-loading span:last-child{height:48px;width:70%}.panel-loading{display:grid;gap:15px;margin-top:28px}.panel-loading span{height:22px}.panel-loading span:last-child{width:68%}.schedule-error{color:var(--navy)}.schedule-error>svg{color:#b52d23}.schedule-foot small{font-weight:800;color:var(--muted)}
 @keyframes loading-shimmer{to{background-position:-200% 0}}
+
+/* Design review accessibility and responsive refinements */
+:root{--green-text:#187435}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:3px solid #ffd84d;outline-offset:3px;box-shadow:0 0 0 5px var(--navy)}
+.topbar{position:sticky;top:0}
+.hero h1 em,.inline-management-note,.member-card>small,.notice-index,.event-date small,.event-info>small,.participation-copy small,.question-field legend small,.schedule-copy>small,.schedule-empty>small,.map-link small,.event-team>div span,.mom-candidates span{color:var(--green-text)}
+.admin-badge.system,.ranking-table tbody tr:first-child .rank-badge,.rsvp button.selected{color:var(--navy)}
+.eyebrow,.panel-title small,.schedule-copy>small,.schedule-empty>small,.event-date small,.event-info>small,.participation-copy small,.notice-list time,.status{font-size:12px;letter-spacing:1.2px}
+.schedule-card button{min-width:44px;min-height:44px}
+.toast:empty{display:none}
+.login-gate{min-height:350px;background:white;border-top:5px solid var(--green);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:35px;box-shadow:7px 7px 0 rgba(7,26,45,.08)}
+.login-gate .empty{padding:15px 20px}.login-gate .cta{margin-top:18px}
+.voice-form fieldset{border:0;padding:0;margin:0;min-width:0}.voice-form fieldset:disabled{opacity:.68}.voice-form input:not([type="checkbox"]),.voice-form select{min-height:44px}.voice-form .check{min-height:44px;padding:8px 0;cursor:pointer}.voice-form .check input{width:22px;height:22px;flex:0 0 22px;accent-color:var(--green-text)}
+.form-lock-notice{background:#fff0bd;color:#624b00;padding:12px;font-weight:900;line-height:1.5}.character-count{align-self:flex-end;color:var(--muted);font-size:12px;font-weight:800}.github-consent{margin-top:8px!important}.github-notice{margin-bottom:0}
+input::placeholder,textarea::placeholder{color:#788491;font-weight:400;opacity:1}
+.event-meta-time{white-space:nowrap}
+.participation-deadline{display:block;margin:10px 0;color:var(--navy);font-size:12px;font-weight:900}
+@media(max-width:760px){.event-card{align-items:start}.event-date{grid-row:auto}.event-action{grid-column:1/-1;padding-left:0;align-items:stretch}.event-action .cta{width:100%}.event-info p{align-items:flex-start;flex-wrap:wrap}.login-gate{min-height:300px;padding:25px 18px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}

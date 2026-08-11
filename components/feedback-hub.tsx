@@ -38,6 +38,9 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
   toast: ToastHandler;
 }) {
   const [saving, setSaving] = useState(false);
+  const [titleLength, setTitleLength] = useState(0);
+  const [bodyLength, setBodyLength] = useState(0);
+  const formLocked = !user || profile?.status !== "active";
 
   const publishToGithub = async (feedbackId: string) => {
     if (!supabase) return false;
@@ -80,6 +83,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
     try {
       const published = shouldPublish && saved ? await publishToGithub(saved.id) : false;
       formElement.reset();
+      setTitleLength(0); setBodyLength(0);
       toast(shouldPublish ? published ? "의견을 접수하고 GitHub 이슈로 연결했습니다." : "내부 접수는 완료했지만 GitHub 연결에 실패했습니다." : "의견을 안전하게 접수했습니다.");
       reload();
     } finally {
@@ -98,13 +102,16 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
         <form className="voice-form" onSubmit={submit}>
           <div className="panel-title"><Lightbulb /><span><small>NEW FEEDBACK</small><b>의견 보내기</b></span></div>
           {!user && <button type="button" className="login-callout" onClick={onLogin}>로그인하고 의견 남기기</button>}
-          <label>분류<select name="category" defaultValue="operation"><option value="operation">팀 운영</option><option value="system">시스템</option><option value="facility">구장·시설</option><option value="finance">회비·재정</option><option value="safety">안전</option><option value="other">기타</option></select></label>
-          <label>제목<input name="title" required minLength={2} maxLength={120} placeholder="어떤 의견인가요?" /></label>
-          <label>내용<textarea name="body" required minLength={5} maxLength={5000} rows={7} placeholder="상황과 개선 아이디어를 구체적으로 알려주세요." /></label>
-          <label className="check"><input type="checkbox" name="is_anonymous" /> 목록에서 익명으로 표시</label>
-          <label className="check github-consent"><input type="checkbox" name="publish_to_github" aria-describedby="github-publish-notice" /> 공개 GitHub 이슈로도 등록</label>
-          <p className="github-notice" id="github-publish-notice"><Github size={16} /> 선택하면 제목과 내용이 공개 저장소에 게시됩니다. 이름·이메일 등 작성자 정보는 전송하지 마세요.</p>
-          <button className="cta" disabled={saving || !user}><Send size={17} /> {saving ? "접수 중…" : "의견 접수"}</button>
+          {user && profile?.status !== "active" && <p className="form-lock-notice">회원 승인이 완료되면 의견을 작성할 수 있습니다.</p>}
+          <fieldset disabled={formLocked || saving}>
+            <label>분류<select name="category" defaultValue="operation"><option value="operation">팀 운영</option><option value="system">시스템</option><option value="facility">구장·시설</option><option value="finance">회비·재정</option><option value="safety">안전</option><option value="other">기타</option></select></label>
+            <label>제목<input name="title" required minLength={2} maxLength={120} placeholder="어떤 의견인가요?" onChange={(event) => setTitleLength(event.target.value.length)} /><span className="character-count" aria-live="polite">{titleLength.toLocaleString()} / 120</span></label>
+            <label>내용<textarea name="body" required minLength={5} maxLength={5000} rows={7} placeholder="상황과 개선 아이디어를 구체적으로 알려주세요." onChange={(event) => setBodyLength(event.target.value.length)} /><span className="character-count" aria-live="polite">{bodyLength.toLocaleString()} / 5,000</span></label>
+            <label className="check"><input type="checkbox" name="is_anonymous" /> 목록에서 익명으로 표시</label>
+            <p className="github-notice" id="github-publish-notice"><Github size={16} /> 선택하면 제목과 내용이 공개 저장소에 게시됩니다. 이름·이메일 등 작성자 정보는 전송하지 마세요.</p>
+            <label className="check github-consent"><input type="checkbox" name="publish_to_github" aria-describedby="github-publish-notice" /> 공개 GitHub 이슈로도 등록</label>
+            <button className="cta"><Send size={17} /> {saving ? "접수 중…" : "의견 접수"}</button>
+          </fieldset>
         </form>
         <div className="voice-history">
           <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div><span>{feedback.length}건</span></div>
