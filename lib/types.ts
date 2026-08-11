@@ -168,6 +168,8 @@ export interface Feedback {
   publish_to_github: boolean;
   github_issue_number: number | null;
   github_issue_url: string | null;
+  github_issue_state: "open" | "closed" | null;
+  github_issue_closed_at: string | null;
   created_at: string;
 }
 
