@@ -6,7 +6,7 @@ import Link from "next/link";
 import { CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Shield, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, ParticipationForm, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
+import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
 
 const FeedbackHub = dynamic(() => import("@/components/feedback-hub"));
 const ParticipationHub = dynamic(() => import("@/components/participation-hub"));
@@ -14,7 +14,8 @@ const AdminConsole = dynamic(() => import("@/components/admin-console"));
 
 type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "admin";
 type PasswordAuthMode = "login" | "signup";
-const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "매니저", admin: "어드민" };
+const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "관리자", admin: "시스템 관리자" };
+const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
 const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["rankings", "랭킹"], ["feedback", "의견"], ["participation", "참여"]];
 const tabPaths: Record<Tab, string> = { home: "/", members: "/members", fees: "/fees", notices: "/notices", events: "/events", rankings: "/rankings", feedback: "/feedback", participation: "/participation", admin: "/admin" };
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
@@ -39,11 +40,13 @@ export default function Clubhouse() {
   const [momLeaderboard, setMomLeaderboard] = useState<MomLeaderboardEntry[]>([]);
   const [notices, setNotices] = useState<Notice[]>(sampleNotices);
   const [fees, setFees] = useState<Fee[]>([]);
+  const [guestFees, setGuestFees] = useState<GuestFee[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [forms, setForms] = useState<ParticipationForm[]>([]);
   const [submissions, setSubmissions] = useState<ParticipationSubmission[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
+  const [officerPermissions, setOfficerPermissions] = useState<OfficerPermission[]>([]);
   const [busy, setBusy] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -62,17 +65,19 @@ export default function Clubhouse() {
     if (noticeRes.data?.length) setNotices(noticeRes.data as Notice[]);
     if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
     if (!currentUser) {
-      setProfiles([]); setMe(null); setFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]); return;
+      setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]); return;
     }
-    const [profileRes, allProfileRes, applicationRes, feeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
+    const [profileRes, allProfileRes, applicationRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, officerPermissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
       supabase.rpc("get_member_directory"),
       supabase.from("profiles").select("*").order("name"),
       supabase.from("membership_applications").select("*"),
       supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }),
+      supabase.from("event_guest_fees").select("*, guest_players(name), events(title, starts_at)").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*"),
       supabase.from("feedback").select("*").order("created_at", { ascending: false }),
       supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at"),
       supabase.from("role_permissions").select("role, permission"),
+      supabase.from("officer_permissions").select("officer_title, permission"),
       supabase.from("guest_players").select("*"),
       supabase.rpc("get_member_rankings"),
       supabase.from("event_mom_votes").select("*"),
@@ -81,10 +86,11 @@ export default function Clubhouse() {
     ]);
     const applications = applicationRes.data ?? [];
     const privateProfiles = (allProfileRes.data as Profile[] | null) ?? [];
-    const enrichedProfiles = ((profileRes.data as Profile[] | null) ?? []).map((profile) => {
-      const privateProfile = privateProfiles.find((candidate) => candidate.id === profile.id);
-      return { ...profile, ...privateProfile, membership_application: applications.find((application) => application.member_id === profile.id) ?? null };
-    });
+    const visibleProfiles = new Map(((profileRes.data as Profile[] | null) ?? []).map((profile) => [profile.id, profile]));
+    privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
+    const enrichedProfiles = Array.from(visibleProfiles.values())
+      .map((profile) => ({ ...profile, membership_application: applications.find((application) => application.member_id === profile.id) ?? null }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
     const ownProfile = privateProfiles.find((profile) => profile.id === currentUser.id) ?? null;
     setProfiles(enrichedProfiles);
     setMe(ownProfile ? {
@@ -94,7 +100,7 @@ export default function Clubhouse() {
     const guestAppearances = new Map<string, number>();
     loadedEvents.flatMap((event) => event.event_guest_players ?? []).forEach((guest) => guestAppearances.set(guest.guest_player_id, (guestAppearances.get(guest.guest_player_id) ?? 0) + 1));
     const loadedGuests = ((guestRes.data ?? []) as Omit<GuestPlayer, "appearance_count">[]).map((guest) => ({ ...guest, appearance_count: guestAppearances.get(guest.id) ?? 0 })).sort((a, b) => b.appearance_count - a.appearance_count || a.name.localeCompare(b.name, "ko"));
-    setFees((feeRes.data as unknown as Fee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setGuestPlayers(loadedGuests); setRankings((rankingRes.data as MemberRanking[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []); setMomLeaderboard((momLeaderboardRes.data as MomLeaderboardEntry[]) ?? []);
+    setFees((feeRes.data as unknown as Fee[]) ?? []); setGuestFees((guestFeeRes.data as unknown as GuestFee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setOfficerPermissions((officerPermissionRes.data as OfficerPermission[]) ?? []); setGuestPlayers(loadedGuests); setRankings((rankingRes.data as MemberRanking[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []); setMomLeaderboard((momLeaderboardRes.data as MomLeaderboardEntry[]) ?? []);
   }, [supabase]);
 
   useEffect(() => {
@@ -131,7 +137,11 @@ export default function Clubhouse() {
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", closeOnEscape); };
   }, [menuOpen]);
 
-  const permissions = useMemo(() => new Set(rolePermissions.filter((row) => row.role === me?.role).map((row) => row.permission)), [me?.role, rolePermissions]);
+  const permissions = useMemo(() => {
+    if (me?.role === "admin") return new Set(rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission));
+    if (me?.role === "manager" && me.officer_title) return new Set(officerPermissions.filter((row) => row.officer_title === me.officer_title).map((row) => row.permission));
+    return new Set<string>();
+  }, [me?.officer_title, me?.role, officerPermissions, rolePermissions]);
   const isOfficer = permissions.size > 0;
   const needsEmail = Boolean(user && !user.email);
   const needsApplication = Boolean(user?.email && me?.status === "pending" && !me.membership_application);
@@ -236,7 +246,7 @@ export default function Clubhouse() {
     {tab === "rankings" && <Rankings rankings={rankings} momLeaderboard={momLeaderboard} user={user} profile={me} onLogin={() => setLoginOpen(true)} />}
     {tab === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} supabase={supabase} reload={() => void loadData(user)} onLogin={() => setLoginOpen(true)} toast={showToast} />}
     {tab === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} reload={() => void loadData(user)} onLogin={() => setLoginOpen(true)} toast={showToast} />}
-    {tab === "admin" && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} notices={notices} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} permissions={permissions} supabase={supabase} reload={() => void loadData(user)} toast={showToast} />}
+    {tab === "admin" && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} permissions={permissions} supabase={supabase} reload={() => void loadData(user)} toast={showToast} />}
     {tab === "admin" && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="어드민 또는 매니저 권한이 있는 계정으로 로그인해 주세요." /></div>}
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
@@ -339,8 +349,8 @@ function Home({ upcoming, notice, fee, goingCount, memberCount, user, onNavigate
 }
 
 function PageIntro({ kicker, title, description }: { kicker: string; title: string; description: string }) { return <div className="page-intro"><span className="eyebrow">{kicker}</span><h1>{title}</h1><p>{description}</p></div>; }
-function Members({ profiles, user, onLogin }: { profiles: Profile[]; user: User | null; onLogin: () => void }) { if (!user) return <section className="content"><PageIntro kicker="SQUAD" title="함께 뛰는 사람들" description="회원 명단은 승인된 회원에게만 공개합니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>; return <section className="content"><PageIntro kicker="SQUAD" title="함께 뛰는 사람들" description="포지션보다 이름을 먼저 기억하는 경충FC의 회원입니다." /><div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span><div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>JOINED {new Date(profile.joined_at).getFullYear()}</p>{profile.role !== "member" && <span className="admin-badge">{roleLabels[profile.role]}</span>}</article>)}</div></section>; }
-function Fees({ fees, profiles, user, onLogin }: { fees: Fee[]; profiles: Profile[]; user: User | null; onLogin: () => void }) { if (!user) return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="회원에게만 공개하는 정보입니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>; return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="월별 납부 내역을 투명하게 확인합니다." /><div className="table-wrap"><table><caption className="sr-only">회원별 월 회비 납부 현황</caption><thead><tr><th scope="col">회원</th><th scope="col">기준 월</th><th scope="col">금액</th><th scope="col">상태</th></tr></thead><tbody>{fees.map((fee) => <tr key={fee.id}><th scope="row">{fee.profiles?.name ?? profiles.find((profile) => profile.id === fee.member_id)?.name ?? "회원"}</th><td>{fee.month.slice(0, 7)}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td></tr>)}</tbody></table>{fees.length === 0 && <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비 내역을 등록하면 여기에 표시됩니다." />}</div></section>; }
+function Members({ profiles, user, onLogin }: { profiles: Profile[]; user: User | null; onLogin: () => void }) { if (!user) return <section className="content"><PageIntro kicker="SQUAD" title="함께 뛰는 사람들" description="회원 명단은 승인된 회원에게만 공개합니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>; return <section className="content"><PageIntro kicker="SQUAD" title="함께 뛰는 사람들" description="포지션보다 이름을 먼저 기억하는 경충FC의 회원입니다." /><div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span><div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>JOINED {new Date(profile.joined_at).getFullYear()}</p>{profile.role !== "member" && <span className="admin-badge">{profile.role === "manager" && profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels[profile.role]}</span>}</article>)}</div></section>; }
+function Fees({ fees, profiles, user, onLogin }: { fees: Fee[]; profiles: Profile[]; user: User | null; onLogin: () => void }) { if (!user) return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="회원에게만 공개하는 정보입니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>; return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="관리자 월 15,000원, 일반회원 월 30,000원 또는 참여 시 10,000원 기준으로 관리합니다." /><div className="table-wrap"><table><caption className="sr-only">회원별 회비 납부 현황</caption><thead><tr><th scope="col">회원</th><th scope="col">구분</th><th scope="col">기준</th><th scope="col">금액</th><th scope="col">상태</th></tr></thead><tbody>{fees.map((fee) => <tr key={fee.id}><th scope="row">{fee.profiles?.name ?? profiles.find((profile) => profile.id === fee.member_id)?.name ?? "회원"}</th><td>{fee.fee_type === "participation" ? "참여비" : "월회비"}</td><td>{fee.month.slice(0, 7)}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td></tr>)}</tbody></table>{fees.length === 0 && <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비 내역을 등록하면 여기에 표시됩니다." />}</div></section>; }
 function FeeStatus({ status }: { status: Fee["status"] }) { return <span className={`status ${status}`}>{status === "paid" ? "납부 완료" : status === "exempt" ? "면제" : "미납"}</span>; }
 function Notices({ notices }: { notices: Notice[] }) { return <section className="content"><PageIntro kicker="NOTICE BOARD" title="공지사항" description="놓치면 안 되는 클럽 소식을 전합니다." /><div className="notice-list">{notices.map((notice, index) => <article key={notice.id}><span className="notice-index">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">PINNED</small>}<h2>{notice.title}</h2><p>{notice.body}</p><time>{new Date(notice.created_at).toLocaleDateString("ko-KR")}</time></div></article>)}</div></section>; }
 function Events({ events, profiles, attendance, momVotes, momResults, user, profile, supabase, onAttendance, onLogin, reload, toast }: { events: Event[]; profiles: Profile[]; attendance: Attendance[]; momVotes: EventMomVote[]; momResults: EventMomResult[]; user: User | null; profile: Profile | null; supabase: ReturnType<typeof createClient>; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; reload: () => void; toast: (message: string) => void }) {
