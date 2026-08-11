@@ -108,7 +108,9 @@ Deno.serve(async (request: Request) => {
       .eq("author_id", user.id)
       .single();
     if (feedbackError || !feedback) return json(request, { error: "제보를 찾을 수 없습니다." }, 404);
-    if (!feedback.publish_to_github) return json(request, { error: "GitHub 공개 등록에 동의하지 않은 제보입니다." }, 403);
+    if (feedback.category !== "system" || !feedback.publish_to_github) {
+      return json(request, { error: "시스템 제보만 GitHub에 공개 등록할 수 있습니다." }, 403);
+    }
     if (feedback.github_issue_number && feedback.github_issue_url) {
       return json(request, { issueNumber: feedback.github_issue_number, issueUrl: feedback.github_issue_url });
     }
@@ -151,7 +153,7 @@ Deno.serve(async (request: Request) => {
           "---",
           "",
           `<!-- gyungchung-feedback:${feedback.id} -->`,
-          "> 경충FC 클럽하우스에서 작성자가 공개 등록에 동의해 생성된 이슈입니다. 작성자 정보는 포함하지 않습니다.",
+          "> 경충FC 클럽하우스에서 시스템 제보로 접수되어 자동 생성된 이슈입니다. 작성자 정보는 포함하지 않습니다.",
         ].join("\n"),
         labels: [GITHUB_LABEL],
       }),
