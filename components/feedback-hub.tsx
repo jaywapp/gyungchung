@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ExternalLink, Github, Lightbulb, MessageSquareText, Send } from "lucide-react";
+import { CheckCircle2, ExternalLink, Github, Lightbulb, MessageSquareText, Pencil, Send, Trash2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { Feedback, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
@@ -24,14 +25,17 @@ const statusLabels: Record<Feedback["status"], string> = {
   closed: "종결",
 };
 
-export default function FeedbackHub({ user, profile, feedback, supabase, reload, onLogin, toast }: {
+export default function FeedbackHub({ user, profile, feedback, supabase, canManage, onEdit, onDelete, reload, onLogin, toast }: {
   user: User | null;
   profile: Profile | null;
   feedback: Feedback[];
   supabase: SupabaseClient | null;
+  canManage: boolean;
+  onEdit: (feedback: Feedback) => void;
+  onDelete: (id: string) => void;
   reload: () => void;
   onLogin: () => void;
-  toast: (message: string) => void;
+  toast: ToastHandler;
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -71,7 +75,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, reload,
     }).select("*").single();
     if (error) {
       setSaving(false);
-      return toast(error.message);
+      return toast(toErrorMessage(error), "error");
     }
     try {
       const published = shouldPublish && saved ? await publishToGithub(saved.id) : false;
@@ -106,7 +110,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, reload,
           <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div><span>{feedback.length}건</span></div>
           {feedback.length === 0 ? <div className="empty"><MessageSquareText /><h2>아직 접수한 의견이 없습니다</h2><p>작은 아이디어도 팀을 더 좋게 만듭니다.</p></div> : feedback.map((item) => (
             <article className="feedback-card" key={item.id}>
-              <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small></div>
+              <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id)}><Trash2 size={16} /></button></span>}</div>
               <h3>{item.title}</h3><p>{item.body}</p>
               {item.github_issue_url && <a className="github-issue-link" href={item.github_issue_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub Issue #{item.github_issue_number} <ExternalLink size={14} /></a>}
               {item.publish_to_github && !item.github_issue_url && item.author_id === user?.id && <button className="github-retry" disabled={saving} onClick={() => void retryGithubPublish(item.id)}><Github size={16} /> GitHub 연결 다시 시도</button>}
