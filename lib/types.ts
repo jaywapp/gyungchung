@@ -1,4 +1,4 @@
-export type AccountRole = "member" | "manager" | "admin";
+export type AccountRole = "member" | "manager";
 export type OfficerTitle = "president" | "vice_president" | "treasurer";
 export type MemberFeePlan = "monthly" | "per_event";
 
@@ -20,6 +20,7 @@ export interface Profile {
   phone: string | null;
   role: AccountRole;
   officer_title: OfficerTitle | null;
+  is_system_admin: boolean;
   fee_plan: MemberFeePlan | null;
   position: string | null;
   jersey_number: number | null;
@@ -215,7 +216,7 @@ export interface ParticipationSubmission {
 }
 
 export interface RolePermission {
-  role: AccountRole;
+  role: AccountRole | "admin";
   permission: string;
 }
 
