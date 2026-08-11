@@ -147,6 +147,9 @@ export interface Feedback {
   is_anonymous: boolean;
   status: "received" | "reviewing" | "resolved" | "closed";
   officer_response: string | null;
+  publish_to_github: boolean;
+  github_issue_number: number | null;
+  github_issue_url: string | null;
   created_at: string;
 }
 

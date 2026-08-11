@@ -2,6 +2,10 @@
 
 경충FC 회원을 위한 웹 클럽하우스입니다. 회원 목록, 회비 현황, 공지사항, 주말 풋살 일정과 참석 여부, 용병 명단, 팀 편성, 커피 내기 경기 기록, MOM 투표, 활동 랭킹, 사용자 의견, 투표·설문·회장단 선거를 한곳에서 제공합니다.
 
+사용자 의견은 기본적으로 팀 내부에만 저장됩니다. 작성자가 공개 등록에 동의한 제보는 Supabase Edge Function이 작성자 정보를 제외한 제목과 내용만 `jaywapp/gyungchung`의 GitHub Issue로 중계하고, 생성된 이슈 번호와 URL을 원본 제보에 연결합니다.
+
+GitHub 중계를 사용하려면 Issues 쓰기 권한만 가진 최소 권한 토큰을 Supabase Function secret `GITHUB_ISSUES_TOKEN`으로 등록해야 합니다.
+
 계정 권한은 `admin`, `manager`, `member`로 구분됩니다. `admin`은 서비스 소유자 계정으로 전체 권한을 가지며, `manager`는 운영진으로서 부여된 운영 업무를 관리하고, `member`는 일반 회원 기능을 사용합니다.
 
 ## 로컬 실행
