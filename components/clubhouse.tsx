@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
 import type { EditorConfig } from "@/components/admin-console";
+import { toErrorMessage, type ToastHandler, type ToastKind } from "@/lib/ui-feedback";
 
 const FeedbackHub = dynamic(() => import("@/components/feedback-hub"));
 const ParticipationHub = dynamic(() => import("@/components/participation-hub"));
@@ -22,10 +23,6 @@ const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fee
 const tabPaths: Record<Tab, string> = { home: "/", members: "/members", fees: "/fees", notices: "/notices", events: "/events", rankings: "/rankings", feedback: "/feedback", participation: "/participation", admin: "/admin" };
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
 
-const nextSaturday = (() => { const date = new Date(); date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7 || 7)); date.setHours(18, 0, 0, 0); return date.toISOString(); })();
-const sampleEvents: Event[] = [{ id: "sample-event", title: "주말 정기 풋살", starts_at: nextSaturday, venue: "브라보 풋살장", address: "서울시 송파구", note: "흰색·검정색 유니폼을 모두 챙겨주세요.", capacity: 18, is_competitive: false, team_mode: null, event_guest_players: [], event_teams: [] }];
-const sampleNotices: Notice[] = [{ id: "sample-notice", title: "이번 주 풋살 참석 여부를 알려주세요", body: "목요일 밤 10시까지 참석 버튼을 눌러주세요. 인원에 맞춰 팀을 나눕니다.", is_pinned: true, created_at: new Date().toISOString() }];
-
 export default function Clubhouse() {
   const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<Tab>("home");
@@ -34,13 +31,17 @@ export default function Clubhouse() {
   const [user, setUser] = useState<User | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [events, setEvents] = useState<Event[]>(sampleEvents);
+  const [events, setEvents] = useState<Event[]>([]);
   const [guestPlayers, setGuestPlayers] = useState<GuestPlayer[]>([]);
   const [rankings, setRankings] = useState<MemberRanking[]>([]);
   const [momVotes, setMomVotes] = useState<EventMomVote[]>([]);
   const [momResults, setMomResults] = useState<EventMomResult[]>([]);
   const [momLeaderboard, setMomLeaderboard] = useState<MomLeaderboardEntry[]>([]);
-  const [notices, setNotices] = useState<Notice[]>(sampleNotices);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [eventLoading, setEventLoading] = useState(true);
+  const [noticeLoading, setNoticeLoading] = useState(true);
+  const [eventLoadError, setEventLoadError] = useState(false);
+  const [noticeLoadError, setNoticeLoadError] = useState(false);
   const [fees, setFees] = useState<Fee[]>([]);
   const [guestFees, setGuestFees] = useState<GuestFee[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -52,20 +53,23 @@ export default function Clubhouse() {
   const [quickEditor, setQuickEditor] = useState<EditorConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const authLoadKeyRef = useRef<string | undefined>(undefined);
 
   const loadData = useCallback(async (currentUser?: User | null) => {
     if (!supabase) return;
+    setEventLoading(true); setNoticeLoading(true); setEventLoadError(false); setNoticeLoadError(false);
     const [eventRes, noticeRes, formRes] = await Promise.all([
       supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at"),
       supabase.from("notices").select("id, title, body, is_pinned, created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }),
     ]);
     const loadedEvents = (eventRes.data as Event[] | null) ?? [];
-    if (loadedEvents.length) setEvents(loadedEvents);
-    if (noticeRes.data?.length) setNotices(noticeRes.data as Notice[]);
+    setEvents(eventRes.error ? [] : loadedEvents);
+    setNotices(noticeRes.error ? [] : (noticeRes.data as Notice[] | null) ?? []);
+    setEventLoadError(Boolean(eventRes.error)); setNoticeLoadError(Boolean(noticeRes.error));
+    setEventLoading(false); setNoticeLoading(false);
     if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
     if (!currentUser) {
       setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]); return;
@@ -154,13 +158,13 @@ export default function Clubhouse() {
   const myFee = fees.find((fee) => fee.member_id === user?.id);
   const goingCount = upcoming ? attendance.filter((item) => item.event_id === upcoming.id && item.status === "going").length : 0;
 
-  const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3000); };
+  const showToast = (message: string, kind: ToastKind = "success") => { setToast({ message, kind }); window.setTimeout(() => setToast(null), 3000); };
   const activateTab = (next: Tab) => { setTab(next); setMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const navigate = (next: Tab) => { setTab(next); setMenuOpen(false); window.history.pushState({}, "", tabPaths[next]); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const removeManagedItem = async (table: string, id: string) => {
     if (!supabase || !window.confirm("정말 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
     const { error } = await supabase.from(table).delete().eq("id", id);
-    if (error) return showToast(error.message);
+    if (error) return showToast(toErrorMessage(error), "error");
     showToast("삭제했습니다.");
     await loadData(user);
   };
@@ -236,7 +240,7 @@ export default function Clubhouse() {
     if (!user || !eventId || !supabase) return setLoginOpen(true);
     if (me?.status !== "active") return showToast("회원 승인 후 참석 여부를 등록할 수 있습니다.");
     const { error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: user.id, status }, { onConflict: "event_id,member_id" });
-    if (error) return showToast(error.message);
+    if (error) return showToast(toErrorMessage(error), "error");
     setAttendance((rows) => { const existing = rows.find((row) => row.event_id === eventId && row.member_id === user.id); return [...rows.filter((row) => row.event_id !== eventId || row.member_id !== user.id), { event_id: eventId, member_id: user.id, status, checked_in_at: existing?.checked_in_at ?? null, checked_in_by: existing?.checked_in_by ?? null }]; }); showToast("참석 여부를 저장했습니다.");
   };
 
@@ -244,11 +248,11 @@ export default function Clubhouse() {
     <header className="topbar">
       <Link className="brand" href="/" onClick={() => activateTab("home")} aria-label="경충FC 홈"><span className="crest"><span>GC</span></span><span className="brand-copy"><strong>경충FC</strong><small>WEEKEND FUTSAL CLUB</small></span></Link>
       <nav id="primary-navigation" className={menuOpen ? "nav open" : "nav"} aria-label="주 메뉴">{navItems.map(([key, label]) => <Link key={key} href={tabPaths[key]} className={tab === key ? "active" : ""} aria-current={tab === key ? "page" : undefined} onClick={() => activateTab(key)}>{label}</Link>)}{isOfficer && <Link href={tabPaths.admin} className={tab === "admin" ? "active" : ""} aria-current={tab === "admin" ? "page" : undefined} onClick={() => activateTab("admin")}>관리</Link>}</nav>
-      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-loading" aria-label="로그인 상태 확인 중">확인 중</span> : user ? <button className="login-button" onClick={signOut}><LogOut size={16} /> {me?.name ?? "로그아웃"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button ref={menuButtonRef} className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
+      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" aria-label="로그인 상태 확인 중" /> : user ? <button className="login-button" onClick={signOut}><LogOut size={16} /> {me?.name ?? "로그아웃"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button ref={menuButtonRef} className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
 
     {me?.status === "pending" && me.membership_application && <div className="approval-banner">가입 신청이 접수되었습니다. 회원 관리 권한이 있는 관리자의 승인을 기다리고 있습니다.</div>}
-    {tab === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === user?.id)?.status} />}
+    {tab === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} eventLoading={eventLoading} noticeLoading={noticeLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void loadData(user)} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === user?.id)?.status} />}
     {tab === "members" && <Members profiles={activeProfiles} user={user} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onLogin={() => setLoginOpen(true)} />}
     {tab === "fees" && <Fees fees={fees} profiles={profiles} user={user} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id) => void removeManagedItem("fees", id)} onLogin={() => setLoginOpen(true)} />}
     {tab === "notices" && <Notices notices={notices} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id) => void removeManagedItem("notices", id)} />}
@@ -263,8 +267,8 @@ export default function Clubhouse() {
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} onPasswordReset={sendPasswordReset} />}
     {needsEmail && supabase && <EmailRequiredModal supabase={supabase} onSignOut={signOut} />}
     {needsApplication && supabase && me && <MembershipApplicationModal profile={me} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await loadData(user); showToast("가입 신청을 접수했습니다."); }} />}
-    {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { setQuickEditor(null); showToast("저장했습니다."); void loadData(user); }} />}
-    {toast && <div className="toast"><Check size={17} />{toast}</div>}
+    {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { setQuickEditor(null); showToast("저장했습니다."); void loadData(user); }} onError={(message) => showToast(message, "error")} />}
+    {toast && <div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>{toast.kind === "error" ? <AlertCircle size={17} /> : <Check size={17} />}{toast.message}</div>}
   </main>;
 }
 
@@ -348,13 +352,13 @@ function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted 
   </form></div>;
 }
 
-function Home({ upcoming, notice, fee, goingCount, memberCount, user, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; fee?: Fee; goingCount: number; memberCount: number; user: User | null; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
+function Home({ upcoming, notice, fee, goingCount, memberCount, user, eventLoading, noticeLoading, eventLoadError, noticeLoadError, onRetry, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; fee?: Fee; goingCount: number; memberCount: number; user: User | null; eventLoading: boolean; noticeLoading: boolean; eventLoadError: boolean; noticeLoadError: boolean; onRetry: () => void; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
   const date = upcoming ? new Date(upcoming.starts_at) : null;
   return <><section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> EST. 2014 · SEOUL</span><h1>우리의 주말,<br /><em>우리의 풋살.</em></h1><div className="lead-row"><strong>2026<br />SEASON</strong><p>경쟁보다 함께 뛰는 즐거움. 경충FC는 주말마다 모여 공을 차고, 땀 흘리고, 오래 함께할 사람을 만듭니다.</p></div><div className="hero-actions"><button className="cta" onClick={() => onNavigate("events")}>다음 일정 참석하기 <ChevronRight /></button><button className="text-link" onClick={() => onNavigate("participation")}>팀 의사결정 참여</button></div></div>
-    <div className="fixture-side"><span className="giant-number">{date?.getDate().toString().padStart(2, "0") ?? "FC"}</span><span className="eyebrow light">NEXT SCHEDULE</span>{upcoming ? <article className="schedule-card"><header className="schedule-head"><span>다가오는 팀 일정</span><strong>{formatDate(upcoming.starts_at)}</strong></header><div className="schedule-main"><time className="schedule-date" dateTime={upcoming.starts_at}><small>{date?.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{date?.getDate().toString().padStart(2, "0")}</b><span>{date?.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="schedule-copy"><small>WEEKEND FUTSAL</small><h2>{upcoming.title}</h2><dl><div><dt>시간</dt><dd>{formatTime(upcoming.starts_at)}</dd></div><div><dt>장소</dt><dd>{upcoming.venue}</dd></div></dl><a className="map-link" href={naverMapUrl(upcoming)} target="_blank" rel="noreferrer"><MapPin size={15} /><span>{upcoming.address || upcoming.venue}</span><small>네이버 지도</small></a></div></div><div className="schedule-foot"><div><span>참석 예정 <b>{goingCount || "-"}명</b></span><span>참여 용병 <b>{upcoming.event_guest_players?.length ?? 0}명</b></span></div><button type="button" onClick={() => onNavigate("events")}>일정 보기 <ChevronRight size={16} /></button></div></article> : <article className="schedule-card schedule-empty"><CalendarDays /><small>UPCOMING SCHEDULE</small><h2>새 일정을 준비 중입니다.</h2><p>다음 주말 풋살 일정이 확정되면 이곳에서 바로 알려드릴게요.</p><button type="button" onClick={() => onNavigate("events")}>전체 일정 보기 <ChevronRight size={16} /></button></article>}<div className="side-stats"><span><b>{memberCount}</b> ACTIVE {memberCount === 1 ? "MEMBER" : "MEMBERS"}</span><span><b>WEEKLY</b> SAT / SUN</span></div></div></section>
+    <div className="fixture-side"><span className="giant-number" aria-hidden="true">{date?.getDate().toString().padStart(2, "0") ?? "FC"}</span><span className="eyebrow light">NEXT SCHEDULE</span>{eventLoading ? <article className="schedule-card schedule-loading" aria-label="일정을 불러오는 중"><span /><span /><span /></article> : eventLoadError ? <article className="schedule-card schedule-empty schedule-error"><AlertCircle /><small>SCHEDULE ERROR</small><h2>일정을 불러오지 못했습니다.</h2><p>연결 상태를 확인한 뒤 다시 시도해 주세요.</p><button type="button" onClick={onRetry}>다시 시도</button></article> : upcoming ? <article className="schedule-card"><header className="schedule-head"><span>다가오는 팀 일정</span><strong>{formatRelativeDate(upcoming.starts_at)}</strong></header><div className="schedule-main"><time className="schedule-date" dateTime={upcoming.starts_at}><small>{date?.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{date?.getDate().toString().padStart(2, "0")}</b><span>{date?.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="schedule-copy"><small>WEEKEND FUTSAL</small><h2>{upcoming.title}</h2><dl><div><dt>시간</dt><dd>{formatTime(upcoming.starts_at)}</dd></div><div><dt>장소</dt><dd>{upcoming.venue}</dd></div></dl><a className="map-link" href={naverMapUrl(upcoming)} target="_blank" rel="noreferrer"><MapPin size={15} /><span>{upcoming.address || upcoming.venue}</span><small>네이버 지도</small></a></div></div><div className="schedule-foot"><div>{user && <span>참석 예정 <b>{goingCount}명</b>{goingCount === 0 && <small> · 첫 번째로 참석해 주세요</small>}</span>}<span>참여 용병 <b>{upcoming.event_guest_players?.length ?? 0}명</b></span></div><button type="button" onClick={() => onNavigate("events")}>일정 보기 <ChevronRight size={16} /></button></div></article> : <article className="schedule-card schedule-empty"><CalendarDays /><small>UPCOMING SCHEDULE</small><h2>새 일정을 준비 중입니다.</h2><p>다음 주말 풋살 일정이 확정되면 이곳에서 바로 알려드릴게요.</p><button type="button" onClick={() => onNavigate("events")}>전체 일정 보기 <ChevronRight size={16} /></button></article>}<div className="side-stats">{user && <span><b>{memberCount}</b> ACTIVE {memberCount === 1 ? "MEMBER" : "MEMBERS"}</span>}<span><b>WEEKLY</b> SAT / SUN</span></div></div></section>
     <section className="locker"><div className="section-heading"><div><span className="eyebrow">MEMBER LOCKER ROOM</span><h2>팀 클럽하우스</h2></div><span>{new Date().getFullYear()} · {String(new Date().getMonth() + 1).padStart(2, "0")}</span></div><div className="panel-grid">
       <article className="panel rsvp-panel"><div className="panel-title"><CalendarDays /><span><small>NEXT SCHEDULE RSVP</small><b>참석 여부</b></span></div>{upcoming ? <div className="rsvp-schedule"><time dateTime={upcoming.starts_at}>{formatDate(upcoming.starts_at)} · {formatTime(upcoming.starts_at)}</time><a href={naverMapUrl(upcoming)} target="_blank" rel="noreferrer"><MapPin size={16} /><span><b>{upcoming.venue}</b><small>{upcoming.address || "네이버 지도에서 위치 확인"}</small></span><ChevronRight size={16} /></a></div> : <p>아직 등록된 다음 일정이 없습니다.</p>}{upcoming && <div className="rsvp"><button className={myAttendance === "going" ? "selected" : ""} onClick={() => onAttendance("going")}>{user ? "참석" : "로그인 후 참석"}</button><button className={myAttendance === "not_going" ? "selected no" : ""} onClick={() => onAttendance("not_going")}>불참</button></div>}</article>
-      <article className="panel green-top"><div className="panel-title"><Megaphone /><span><small>LATEST NOTICE</small><b>팀 공지</b></span></div><h3>{notice?.title ?? "등록된 공지가 없습니다"}</h3><p>{notice?.body}</p><button className="panel-link" onClick={() => onNavigate("notices")}>전체 공지 <ChevronRight /></button></article>
+      <article className="panel green-top"><div className="panel-title"><Megaphone /><span><small>LATEST NOTICE</small><b>팀 공지</b></span></div>{noticeLoading ? <div className="panel-loading" aria-label="공지를 불러오는 중"><span /><span /></div> : noticeLoadError ? <><h3>공지를 불러오지 못했습니다.</h3><button className="panel-link" onClick={onRetry}>다시 시도 <ChevronRight /></button></> : <><h3>{notice?.title ?? "등록된 공지가 없습니다"}</h3><p>{notice?.body}</p><button className="panel-link" onClick={() => onNavigate("notices")}>전체 공지 <ChevronRight /></button></>}</article>
       <article className="panel"><div className="panel-title"><CircleDollarSign /><span><small>MEMBERSHIP FEE</small><b>회비 현황</b></span></div><div className="fee-amount">{fee ? `${fee.amount.toLocaleString()}원` : user ? "등록 내역 없음" : "로그인 필요"}</div>{fee && <FeeStatus status={fee.status} />}<button className="panel-link" onClick={() => onNavigate("fees")}>상세 보기 <ChevronRight /></button></article>
     </div></section><a className="video-banner" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer"><span className="play"><Youtube /></span><span><small>GYUNGCHUNG FILM</small><b>구장에서 기록한 경충FC의 플레이를 만나보세요.</b></span><ChevronRight /></a></>;
 }
@@ -364,12 +368,12 @@ function Members({ profiles, user, canManage, onEdit, onLogin }: { profiles: Pro
 function Fees({ fees, profiles, user, canManage, onCreate, onEdit, onDelete, onLogin }: { fees: Fee[]; profiles: Profile[]; user: User | null; canManage: boolean; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string) => void; onLogin: () => void }) { if (!user) return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="회원에게만 공개하는 정보입니다." /><button className="cta" onClick={onLogin}>로그인하고 확인하기 <ChevronRight /></button></section>; return <section className="content"><PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description="시스템 관리 권한과 무관하게 관리자 월 15,000원, 일반회원 월 30,000원 또는 참여 시 10,000원을 적용합니다." />{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 회비 등록</button></div>}<div className="table-wrap"><table><caption className="sr-only">회원별 회비 납부 현황</caption><thead><tr><th scope="col">회원</th><th scope="col">구분</th><th scope="col">기준</th><th scope="col">금액</th><th scope="col">상태</th>{canManage && <th scope="col">관리</th>}</tr></thead><tbody>{fees.map((fee) => <tr key={fee.id}><th scope="row">{fee.profiles?.name ?? profiles.find((profile) => profile.id === fee.member_id)?.name ?? "회원"}</th><td>{fee.fee_type === "participation" ? "참여비" : "월회비"}</td><td>{fee.month.slice(0, 7)}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td>{canManage && <td><div className="resource-actions"><button aria-label="회비 수정" onClick={() => onEdit(fee)}><Pencil size={16} /></button><button aria-label="회비 삭제" onClick={() => onDelete(fee.id)}><Trash2 size={16} /></button></div></td>}</tr>)}</tbody></table>{fees.length === 0 && <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비 내역을 등록하면 여기에 표시됩니다." />}</div></section>; }
 function FeeStatus({ status }: { status: Fee["status"] }) { return <span className={`status ${status}`}>{status === "paid" ? "납부 완료" : status === "exempt" ? "면제" : "미납"}</span>; }
 function Notices({ notices, canManage, onCreate, onEdit, onDelete }: { notices: Notice[]; canManage: boolean; onCreate: () => void; onEdit: (notice: Notice) => void; onDelete: (id: string) => void }) { return <section className="content"><PageIntro kicker="NOTICE BOARD" title="공지사항" description="놓치면 안 되는 클럽 소식을 전합니다." />{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 공지 등록</button></div>}<div className="notice-list">{notices.map((notice, index) => <article key={notice.id}><span className="notice-index">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">PINNED</small>}<h2>{notice.title}</h2><p>{notice.body}</p><time>{new Date(notice.created_at).toLocaleDateString("ko-KR")}</time></div>{canManage && <div className="resource-actions"><button aria-label={`${notice.title} 수정`} onClick={() => onEdit(notice)}><Pencil size={16} /></button><button aria-label={`${notice.title} 삭제`} onClick={() => onDelete(notice.id)}><Trash2 size={16} /></button></div>}</article>)}</div></section>; }
-function Events({ events, profiles, attendance, momVotes, momResults, user, profile, supabase, canManage, onCreate, onEdit, onDelete, onAttendance, onLogin, reload, toast }: { events: Event[]; profiles: Profile[]; attendance: Attendance[]; momVotes: EventMomVote[]; momResults: EventMomResult[]; user: User | null; profile: Profile | null; supabase: ReturnType<typeof createClient>; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onDelete: (id: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; reload: () => void; toast: (message: string) => void }) {
+function Events({ events, profiles, attendance, momVotes, momResults, user, profile, supabase, canManage, onCreate, onEdit, onDelete, onAttendance, onLogin, reload, toast }: { events: Event[]; profiles: Profile[]; attendance: Attendance[]; momVotes: EventMomVote[]; momResults: EventMomResult[]; user: User | null; profile: Profile | null; supabase: ReturnType<typeof createClient>; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onDelete: (id: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; reload: () => void; toast: ToastHandler }) {
   const [votingEvent, setVotingEvent] = useState<Event | null>(null);
   const submitMomVote = async (candidateProfileId: string) => {
     if (!user || !votingEvent || !supabase) return;
     const { error } = await supabase.from("event_mom_votes").upsert({ event_id: votingEvent.id, voter_id: user.id, candidate_profile_id: candidateProfileId }, { onConflict: "event_id,voter_id" });
-    if (error) return toast(error.message);
+    if (error) return toast(toErrorMessage(error), "error");
     setVotingEvent(null); toast("MOM 투표를 저장했습니다."); reload();
   };
   return <section className="content"><PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="상대 팀과의 경기가 아닌, 우리끼리 모여 뛰는 주말 풋살 일정입니다." />{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<div className="event-list">{events.map((event, index) => {
@@ -395,5 +399,14 @@ function Rankings({ rankings, momLeaderboard, user, profile, onLogin }: { rankin
 }
 function Empty({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) { return <div className="empty">{icon}<h2>{title}</h2><p>{description}</p></div>; }
 function formatDate(value: string) { return new Date(value).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" }); }
+function formatRelativeDate(value: string) {
+  const target = new Date(value);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const days = Math.round((startOfTarget.getTime() - startOfToday.getTime()) / 86_400_000);
+  const relative = days === 0 ? "오늘" : days === 1 ? "내일" : days > 1 && days < 7 ? `이번 주 ${target.toLocaleDateString("ko-KR", { weekday: "long" })}` : formatDate(value);
+  return `${relative} · ${target.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })} ${formatTime(value)}${days >= 0 ? ` (D-${days})` : ""}`;
+}
 function formatTime(value: string) { return new Date(value).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }); }
 function naverMapUrl(event: Pick<Event, "venue" | "address">) { return `https://map.naver.com/p/search/${encodeURIComponent([event.venue, event.address].filter(Boolean).join(" "))}`; }

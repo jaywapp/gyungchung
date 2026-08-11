@@ -36,7 +36,7 @@
 .member-card h2,.notice-list h2,.event-info h2{font-size:25px;margin:7px 0}.member-card h2{font-size:26px}.notice-list h2{margin:8px 0}
 .menu-button,.youtube-link,footer a,.panel-link,.text-link,.schedule-foot button,.map-link,.inline-map-link{min-width:44px;min-height:44px}
 .event-card.past{border-left-color:var(--muted);opacity:.86}.event-action .cta:disabled{background:#d8dce0;color:#52606e;box-shadow:none;cursor:not-allowed;transform:none}
-.auth-loading{min-width:72px;color:var(--muted);font-size:12px;font-weight:900;text-align:center}
+.auth-skeleton{width:84px;height:38px;border-radius:2px;background:linear-gradient(90deg,#e9edf0 25%,#f7f8f9 50%,#e9edf0 75%);background-size:200% 100%;animation:loading-shimmer 1.2s infinite}
 @media(max-width:900px){.topbar{height:82px;grid-template-columns:1fr auto}.brand-copy small{display:none}.crest{width:48px;height:52px;font-size:18px}.nav{display:none;position:absolute;top:82px;left:0;right:0;background:var(--paper);padding:12px 5vw 20px;border-bottom:1px solid var(--line);flex-direction:column;align-items:stretch;gap:0}.nav.open{display:flex}.nav button{padding:13px;text-align:left;min-height:44px}.nav button:after{bottom:7px}.menu-button{display:block}.youtube-link{display:none}.login-button{font-size:0;padding:0;width:44px;justify-content:center}.login-button svg{width:20px;height:20px}}
 
 /* Third-round QA refinements */
@@ -46,3 +46,7 @@
 
 /* GitHub-linked feedback */
 .github-consent{margin-bottom:8px!important}.github-notice{display:flex;align-items:flex-start;gap:8px;background:#eef7ee;color:#35513a;padding:12px;font-size:11px;line-height:1.55}.github-notice svg{flex:0 0 auto;margin-top:1px}.github-issue-link,.github-retry{display:inline-flex;align-items:center;gap:6px;min-height:44px;margin-top:10px;padding:9px 12px;border:1px solid var(--navy);background:white;color:var(--navy);font-size:12px;font-weight:900;text-decoration:none}.github-retry{cursor:pointer}.github-retry:disabled{cursor:wait;opacity:.65}.admin-row a{width:44px;height:44px;border:1px solid var(--line);background:var(--paper);color:var(--navy);display:flex;align-items:center;justify-content:center;gap:1px;text-decoration:none}.admin-row a svg:last-child{align-self:flex-start;margin-top:8px}
+
+/* UI trust states */
+.toast.error{background:#8e241d;box-shadow:6px 6px 0 #ffb4a8}.schedule-loading{min-height:375px;display:flex;flex-direction:column;gap:22px;padding:34px}.schedule-loading span,.panel-loading span{display:block;background:linear-gradient(90deg,#e9edf0 25%,#f7f8f9 50%,#e9edf0 75%);background-size:200% 100%;animation:loading-shimmer 1.2s infinite}.schedule-loading span:first-child{height:24px;width:55%}.schedule-loading span:nth-child(2){height:150px}.schedule-loading span:last-child{height:48px;width:70%}.panel-loading{display:grid;gap:15px;margin-top:28px}.panel-loading span{height:22px}.panel-loading span:last-child{width:68%}.schedule-error{color:var(--navy)}.schedule-error>svg{color:#b52d23}.schedule-foot small{font-weight:800;color:var(--muted)}
+@keyframes loading-shimmer{to{background-position:-200% 0}}

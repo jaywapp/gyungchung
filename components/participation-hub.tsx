@@ -5,6 +5,7 @@ import { BarChart3, Check, ClipboardList, LockKeyhole, Pencil, Plus, Trash2, Vot
 import type { User } from "@supabase/supabase-js";
 import type { ParticipationForm, ParticipationKind, ParticipationQuestion, ParticipationSubmission, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 type AnswerValue = string | string[] | number;
@@ -27,7 +28,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   onDelete: (id: string) => void;
   reload: () => void;
   onLogin: () => void;
-  toast: (message: string) => void;
+  toast: ToastHandler;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
@@ -53,7 +54,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
       .map((question) => ({ question_id: question.id, answer: answers[question.id] }));
     const { error } = await supabase.rpc("submit_participation", { target_form_id: active.id, submitted_answers: submittedAnswers });
     setSaving(false);
-    if (error) return toast(error.message.includes("duplicate") ? "이미 참여한 항목입니다." : error.message);
+    if (error) return toast(toErrorMessage(error), "error");
     toast("소중한 응답을 제출했습니다.");
     setActiveId(null); setAnswers({}); reload();
   };

@@ -5,6 +5,7 @@ import { CheckCircle2, ExternalLink, Github, Lightbulb, MessageSquareText, Penci
 import type { User } from "@supabase/supabase-js";
 import type { Feedback, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
@@ -34,7 +35,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
   onDelete: (id: string) => void;
   reload: () => void;
   onLogin: () => void;
-  toast: (message: string) => void;
+  toast: ToastHandler;
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -74,7 +75,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
     }).select("*").single();
     if (error) {
       setSaving(false);
-      return toast(error.message);
+      return toast(toErrorMessage(error), "error");
     }
     try {
       const published = shouldPublish && saved ? await publishToGithub(saved.id) : false;
