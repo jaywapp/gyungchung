@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestPlayer, Notice, ParticipationForm, Profile, RolePermission } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -45,14 +45,14 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
       {section === "events" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("events", row.id)} />)}
       {section === "attendance" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · 실제 출석 ${attendance.filter((item) => item.event_id === row.id && item.checked_in_at).length}명`} onEdit={() => setEditor({ type: "attendance", row: row as unknown as Record<string, unknown> })} />)}
       {section === "teams" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "포지션 균형" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
-      {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${row.category} · ${row.status}`} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("feedback", row.id)} />)}
+      {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${row.category} · ${row.status}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("feedback", row.id)} />)}
       {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.kind} · ${row.status}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("participation_forms", row.id)} />)}
     </div>}
     {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); toast("저장했습니다."); reload(); }} />}
   </section>;
 }
 
-function AdminRow({ title, meta, onEdit, onDelete }: { title: string; meta: string; onEdit: () => void; onDelete?: () => void }) { return <div className="admin-row"><span><b>{title}</b><small>{meta}</small></span><div><button onClick={onEdit} aria-label="수정"><Pencil size={17} /></button>{onDelete && <button onClick={onDelete} aria-label="삭제"><Trash2 size={17} /></button>}</div></div>; }
+function AdminRow({ title, meta, href, onEdit, onDelete }: { title: string; meta: string; href?: string | null; onEdit: () => void; onDelete?: () => void }) { return <div className="admin-row"><span><b>{title}</b><small>{meta}</small></span><div>{href && <a href={href} target="_blank" rel="noreferrer" aria-label="GitHub 이슈 열기"><Github size={17} /><ExternalLink size={11} /></a>}<button onClick={onEdit} aria-label="수정"><Pencil size={17} /></button>{onDelete && <button onClick={onDelete} aria-label="삭제"><Trash2 size={17} /></button>}</div></div>; }
 
 function PermissionMatrix({ rows, supabase, reload, toast }: { rows: RolePermission[]; supabase: SupabaseClient; reload: () => void; toast: (message: string) => void }) {
   const roles: AccountRole[] = ["admin", "manager"];
