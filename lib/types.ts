@@ -1,4 +1,6 @@
-export type AccountRole = "member" | "manager" | "admin";
+export type AccountRole = "member" | "manager";
+export type OfficerTitle = "president" | "vice_president" | "treasurer";
+export type MemberFeePlan = "monthly" | "per_event";
 
 export interface MembershipApplication {
   member_id: string;
@@ -17,6 +19,9 @@ export interface Profile {
   email: string | null;
   phone: string | null;
   role: AccountRole;
+  officer_title: OfficerTitle | null;
+  is_system_admin: boolean;
+  fee_plan: MemberFeePlan | null;
   position: string | null;
   jersey_number: number | null;
   joined_at: string;
@@ -64,6 +69,7 @@ export interface GuestPlayer {
   created_at: string;
   updated_at: string;
   appearance_count: number;
+  fee_amount: number;
 }
 
 export interface EventTeamMember {
@@ -93,9 +99,21 @@ export interface Fee {
   member_id: string;
   month: string;
   amount: number;
+  fee_type: "monthly" | "participation";
+  event_id: string | null;
   status: "paid" | "unpaid" | "exempt";
   paid_at: string | null;
   profiles?: Pick<Profile, "name"> | null;
+}
+
+export interface GuestFee {
+  event_id: string;
+  guest_player_id: string;
+  amount: number;
+  status: "paid" | "unpaid" | "exempt";
+  paid_at: string | null;
+  guest_players?: Pick<GuestPlayer, "name"> | null;
+  events?: Pick<Event, "title" | "starts_at"> | null;
 }
 
 export interface Attendance {
@@ -198,6 +216,11 @@ export interface ParticipationSubmission {
 }
 
 export interface RolePermission {
-  role: AccountRole;
+  role: AccountRole | "admin";
+  permission: string;
+}
+
+export interface OfficerPermission {
+  officer_title: OfficerTitle;
   permission: string;
 }
