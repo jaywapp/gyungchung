@@ -11,6 +11,9 @@ export interface MembershipApplication {
   preferred_position: "GK" | "DF" | "MF" | "FW" | "ANY";
   submitted_at: string;
   updated_at: string;
+  review_status: "pending" | "rejected";
+  rejection_reason: string | null;
+  reviewed_at: string | null;
 }
 
 export interface Profile {

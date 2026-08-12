@@ -152,7 +152,8 @@ export default function Clubhouse() {
   const isOfficer = permissions.size > 0;
   const manageableParticipationKinds = (["election", "poll", "survey"] as ParticipationKind[]).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
   const needsEmail = Boolean(user && !user.email);
-  const needsApplication = Boolean(user?.email && me?.status === "pending" && !me.membership_application);
+  const applicationRejected = me?.membership_application?.review_status === "rejected";
+  const needsApplication = Boolean(user?.email && me?.status === "pending" && (!me.membership_application || applicationRejected));
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date());
   const myFee = fees.find((fee) => fee.member_id === user?.id);
@@ -258,7 +259,7 @@ export default function Clubhouse() {
       <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" aria-label="로그인 상태 확인 중" /> : user ? <button className="login-button" onClick={signOut}><LogOut size={16} /> {me?.name ?? "로그아웃"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button ref={menuButtonRef} className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
 
-    {me?.status === "pending" && me.membership_application && <div className="approval-banner">가입 신청이 접수되었습니다. 회원 관리 권한이 있는 관리자의 승인을 기다리고 있습니다.</div>}
+    {me?.status === "pending" && me.membership_application && !applicationRejected && <div className="approval-banner">가입 신청이 접수되었습니다. 회원 관리 권한이 있는 관리자의 승인을 기다리고 있습니다.</div>}
     {tab === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} eventLoading={eventLoading} noticeLoading={noticeLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void loadData(user)} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === user?.id)?.status} />}
     {tab === "members" && <Members profiles={activeProfiles} user={user} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => void kickMember(profile)} onLogin={() => setLoginOpen(true)} />}
     {tab === "fees" && <Fees fees={fees} profiles={profiles} user={user} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id) => void removeManagedItem("fees", id)} onLogin={() => setLoginOpen(true)} />}
@@ -273,7 +274,7 @@ export default function Clubhouse() {
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} onPasswordReset={sendPasswordReset} />}
     {needsEmail && supabase && <EmailRequiredModal supabase={supabase} onSignOut={signOut} />}
-    {needsApplication && supabase && me && <MembershipApplicationModal profile={me} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await loadData(user); showToast("가입 신청을 접수했습니다."); }} />}
+    {needsApplication && supabase && me && <MembershipApplicationModal profile={me} rejectionReason={applicationRejected ? me.membership_application?.rejection_reason ?? null : null} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await loadData(user); showToast(applicationRejected ? "가입 신청을 다시 접수했습니다." : "가입 신청을 접수했습니다."); }} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { setQuickEditor(null); showToast("저장했습니다."); void loadData(user); }} onError={(message) => showToast(message, "error")} />}
     {toast && <div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>{toast.kind === "error" ? <AlertCircle size={17} /> : <Check size={17} />}{toast.message}</div>}
   </main>;
@@ -329,9 +330,10 @@ function EmailRequiredModal({ supabase, onSignOut }: { supabase: NonNullable<Ret
   </form></div>;
 }
 
-function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted }: { profile: Profile; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
+function MembershipApplicationModal({ profile, rejectionReason, supabase, onSignOut, onSubmitted }: { profile: Profile; rejectionReason: string | null; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const previousApplication = profile.membership_application;
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true); setErrorMessage(null);
@@ -348,13 +350,13 @@ function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted 
     await onSubmitted();
   };
   return <div className="modal-backdrop membership-gate"><form className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="경충FC 가입 신청">
-    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2><p className="form-description">필수 정보를 작성해 주세요. 회원 관리 권한이 있는 관리자가 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>
-    <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={profile.name} /></label>
-    <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} /></label></div>
-    <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" /></label>
-    <label>선호 포지션<select name="preferred_position" required defaultValue=""><option value="" disabled>포지션을 선택해 주세요</option><option value="GK">골키퍼 (GK)</option><option value="DF">수비 (DF)</option><option value="MF">미드필더 (MF)</option><option value="FW">공격 (FW)</option><option value="ANY">상관없음</option></select></label>
+    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2>{rejectionReason ? <div className="read-box"><b>가입 신청이 반려되었습니다</b><p>{rejectionReason}</p></div> : <p className="form-description">필수 정보를 작성해 주세요. 회원 관리 권한이 있는 관리자가 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>}
+    <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={previousApplication?.name ?? profile.name} /></label>
+    <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={previousApplication?.phone ?? ""} /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} defaultValue={previousApplication?.birth_date ?? ""} /></label></div>
+    <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" defaultValue={previousApplication?.residence ?? ""} /></label>
+    <label>선호 포지션<select name="preferred_position" required defaultValue={previousApplication?.preferred_position ?? ""}><option value="" disabled>포지션을 선택해 주세요</option><option value="GK">골키퍼 (GK)</option><option value="DF">수비 (DF)</option><option value="MF">미드필더 (MF)</option><option value="FW">공격 (FW)</option><option value="ANY">상관없음</option></select></label>
     {errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}
-    <button className="cta" disabled={saving}>{saving ? "신청 중…" : "가입 신청서 제출"}</button>
+    <button className="cta" disabled={saving}>{saving ? "신청 중…" : rejectionReason ? "가입 신청서 다시 제출" : "가입 신청서 제출"}</button>
     <button className="text-link application-signout" type="button" onClick={() => void onSignOut()}>다른 계정으로 로그인</button>
   </form></div>;
 }
