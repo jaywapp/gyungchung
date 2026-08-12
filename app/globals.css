@@ -33,6 +33,8 @@
 @media(max-width:760px){.schedule-card{box-shadow:9px 9px 0 var(--green)}.schedule-head{align-items:flex-start;gap:5px;flex-direction:column}.schedule-main{grid-template-columns:105px 1fr}.schedule-date b{font-size:54px}.schedule-copy{padding:25px 20px 20px}.schedule-copy h2{font-size:24px}.schedule-copy dl{grid-template-columns:1fr}.schedule-foot{align-items:flex-start;flex-direction:column}.schedule-foot>div{flex-wrap:wrap}}
 
 /* QA accessibility and responsive hardening */
+.member-management-actions{position:absolute;left:18px;top:18px;z-index:1;display:flex;gap:6px}.member-management-actions button{width:44px;height:44px;border:1px solid var(--line);background:var(--paper);color:var(--navy);display:grid;place-items:center;cursor:pointer}
+.venue-history{margin:0 0 18px}.venue-history>b{display:block;font-size:12px;margin-bottom:8px}.venue-history>div{display:flex;flex-wrap:wrap;gap:7px}.venue-history button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid var(--line);background:white;padding:9px 11px;cursor:pointer}.venue-history button span{font-weight:900}.venue-history button small{color:var(--muted)}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .member-card h2,.notice-list h2,.event-info h2{font-size:25px;margin:7px 0}.member-card h2{font-size:26px}.notice-list h2{margin:8px 0}
 .menu-button,.youtube-link,footer a,.panel-link,.text-link,.schedule-foot button,.map-link,.inline-map-link{min-width:44px;min-height:44px}

@@ -91,6 +91,20 @@ function shuffled<T>(items: T[]) {
   return result;
 }
 
+function toLocalDateTimeInput(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function nextSundayMorning() {
+  const date = new Date();
+  const daysUntilSunday = (7 - date.getDay()) % 7;
+  date.setDate(date.getDate() + daysUntilSunday);
+  date.setHours(8, 0, 0, 0);
+  if (date.getTime() <= Date.now()) date.setDate(date.getDate() + 7);
+  return date;
+}
+
 export function AdminEditor({ config, profiles, guestPlayers, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: () => void; onError: (message: string) => void }) {
   const row = config.row ?? {};
   const eventRow = row as unknown as Event;
@@ -102,6 +116,9 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
   const [selectedFeeMemberId, setSelectedFeeMemberId] = useState(String(row.member_id ?? initialFeeMember?.id ?? ""));
+  const [venue, setVenue] = useState(String(row.venue ?? ""));
+  const [address, setAddress] = useState(String(row.address ?? ""));
+  const venueOptions = useMemo(() => Array.from(new Map(events.filter((event) => event.venue.trim()).map((event) => [`${event.venue}\u0000${event.address ?? ""}`, { venue: event.venue, address: event.address ?? "" }])).values()), [events]);
   const selectedFeeMember = profiles.find((profile) => profile.id === selectedFeeMemberId);
   const selectedFeeType = row.id ? String(row.fee_type ?? "monthly") : selectedFeeMember?.role === "member" && selectedFeeMember.fee_plan === "per_event" ? "participation" : "monthly";
   const standardFeeAmount = selectedFeeMember?.role === "manager" ? 15000 : selectedFeeMember?.role === "member" && selectedFeeMember.fee_plan === "per_event" ? 10000 : selectedFeeMember?.role === "member" ? 30000 : 0;
@@ -145,17 +162,39 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
     }
     if (config.type === "notices") ({ error } = await supabase.from("notices").upsert({ ...(row.id ? { id: row.id } : {}), title: fd.get("title"), body: fd.get("body"), is_pinned: fd.get("is_pinned") === "on" }));
     if (config.type === "events") {
-      const eventPayload = { title: fd.get("title"), starts_at: new Date(String(fd.get("starts_at"))).toISOString(), venue: fd.get("venue"), address: fd.get("address") || null, note: fd.get("note") || null, capacity: Number(fd.get("capacity")) || null, is_competitive: fd.get("is_competitive") === "on" };
-      const eventResult = row.id ? await supabase.from("events").update(eventPayload).eq("id", row.id).select("id").single() : await supabase.from("events").insert(eventPayload).select("id").single();
-      error = eventResult.error;
-      if (!error && eventResult.data) {
-        const eventId = eventResult.data.id;
+      const startsAt = new Date(String(fd.get("starts_at")));
+      const eventPayload = { title: fd.get("title"), starts_at: startsAt.toISOString(), venue: fd.get("venue"), address: fd.get("address") || null, note: fd.get("note") || null, capacity: Number(fd.get("capacity")) || null, is_competitive: fd.get("is_competitive") === "on" };
+      let eventIds: string[] = [];
+      if (row.id) {
+        const eventResult = await supabase.from("events").update(eventPayload).eq("id", row.id).select("id").single();
+        error = eventResult.error;
+        if (eventResult.data) eventIds = [eventResult.data.id];
+      } else if (fd.get("recurring") === "on") {
+        const currentYear = new Date().getFullYear();
+        if (startsAt.getFullYear() !== currentYear) error = { message: `정기 일정 시작일은 ${currentYear}년 안에서 선택해 주세요.` };
+        const existingStarts = new Set(events.map((item) => new Date(item.starts_at).getTime()));
+        const recurringPayloads: Array<typeof eventPayload> = [];
+        for (const date = new Date(startsAt); !error && date.getFullYear() === currentYear; date.setDate(date.getDate() + 7)) {
+          if (!existingStarts.has(date.getTime())) recurringPayloads.push({ ...eventPayload, starts_at: date.toISOString() });
+        }
+        if (!error && recurringPayloads.length === 0) error = { message: "올해 생성할 새 정기 일정이 없습니다." };
+        if (!error) {
+          const eventResult = await supabase.from("events").insert(recurringPayloads).select("id");
+          error = eventResult.error;
+          eventIds = eventResult.data?.map((item) => item.id) ?? [];
+        }
+      } else {
+        const eventResult = await supabase.from("events").insert(eventPayload).select("id").single();
+        error = eventResult.error;
+        if (eventResult.data) eventIds = [eventResult.data.id];
+      }
+      if (!error && eventIds.length > 0) {
         const selectedGuestIds = fd.getAll("guest_ids").map(String);
         const currentGuestIds = scheduledGuests.map((guest) => guest.guest_player_id);
         const removedGuestIds = currentGuestIds.filter((id) => !selectedGuestIds.includes(id));
         const addedGuestIds = selectedGuestIds.filter((id) => !currentGuestIds.includes(id));
-        if (removedGuestIds.length > 0) ({ error } = await supabase.from("event_guest_players").delete().eq("event_id", eventId).in("guest_player_id", removedGuestIds));
-        if (!error && addedGuestIds.length > 0) ({ error } = await supabase.from("event_guest_players").insert(addedGuestIds.map((guestPlayerId) => ({ event_id: eventId, guest_player_id: guestPlayerId }))));
+        if (row.id && removedGuestIds.length > 0) ({ error } = await supabase.from("event_guest_players").delete().eq("event_id", eventIds[0]).in("guest_player_id", removedGuestIds));
+        if (!error && addedGuestIds.length > 0) ({ error } = await supabase.from("event_guest_players").insert(eventIds.flatMap((eventId) => addedGuestIds.map((guestPlayerId) => ({ event_id: eventId, guest_player_id: guestPlayerId })))));
       }
     }
     if (config.type === "attendance") {
@@ -210,7 +249,7 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "notices" && <><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>내용<textarea name="body" required rows={6} defaultValue={String(row.body ?? "")} /></label><label className="check"><input name="is_pinned" type="checkbox" defaultChecked={Boolean(row.is_pinned)} /> 상단 고정</label></>}
-    {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><div className="field-row"><label>구장<input name="venue" required defaultValue={String(row.venue ?? "")} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" defaultValue={String(row.address ?? "")} /></label><label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
+    {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>이전에 사용한 장소</b><div>{venueOptions.map((option) => <button type="button" key={`${option.venue}\u0000${option.address}`} onClick={() => { setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{option.address && <small>{option.address}</small>}</button>)}</div></div>}<div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => setVenue(event.target.value)} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => setAddress(event.target.value)} /></label><label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
     {config.type === "attendance" && <><div className="read-box"><b>{String(row.title)}</b><p>{new Date(String(row.starts_at)).toLocaleString("ko-KR")} · {String(row.venue)}</p></div><fieldset className="check-grid"><legend>실제 출석 회원</legend>{profiles.filter((profile) => profile.status === "active").map((profile) => { const record = attendance.find((item) => item.event_id === row.id && item.member_id === profile.id); return <label className="check" key={profile.id}><input name="checked_member_ids" value={profile.id} type="checkbox" defaultChecked={Boolean(record?.checked_in_at)} /> {profile.name} · {profile.position ?? "PLAYER"}{record?.status === "going" ? " · 참석 예정" : ""}</label>; })}</fieldset></>}
     {config.type === "teams" && <><div className="read-box"><b>{String(row.title)}</b><p>참석 예정 또는 실제 출석 회원과 지정 용병을 대상으로 팀을 구성합니다.</p></div><div className="field-row"><label>편성 방식<select name="team_mode" defaultValue={String(row.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, rowTeams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div><button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : rowTeams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>{rowTeams.map((team) => <section className="team-admin-card" key={team.id}><div className="field-row"><h3>{team.team_name}</h3>{Boolean(row.is_competitive) && <label>팀 스코어<input name={`team_score_${team.id}`} type="number" min="0" defaultValue={String(team.score ?? 0)} /></label>}</div>{team.event_team_members.map((member) => <div className="team-member-stat" key={member.id}><b>{member.participant_name}</b><span>{member.participant_position ?? "ANY"}</span>{Boolean(row.is_competitive) && <><label>골<input name={`goals_${member.id}`} type="number" min="0" defaultValue={String(member.goals)} /></label><label>평점<input name={`rating_${member.id}`} type="number" min="0" max="10" step="0.5" defaultValue={String(member.rating ?? "")} /></label></>}</div>)}</section>)}{Boolean(row.is_competitive) && rowTeams.length > 0 && <button className="cta secondary" name="action" value="stats" disabled={saving}>경기 기록 저장</button>}</>}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
