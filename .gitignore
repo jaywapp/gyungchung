@@ -7,3 +7,5 @@ out/
 *.log
 .DS_Store
 supabase/.temp/
+tsconfig.tsbuildinfo
+.impeccable/
