@@ -21,6 +21,8 @@ export function useDialogFocus<T extends HTMLElement>(onClose?: () => void, acti
     const dialog = dialogRef.current;
     if (!dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const focusable = () =>
       Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
         (element) => !element.hidden && !element.matches(":disabled") && element.getAttribute("aria-hidden") !== "true",
@@ -54,6 +56,7 @@ export function useDialogFocus<T extends HTMLElement>(onClose?: () => void, acti
     dialog.addEventListener("keydown", handleKeyDown);
     return () => {
       dialog.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
   }, [active]);

@@ -1,5 +1,20 @@
 import type { Metadata } from "next";
+import { Archivo } from "next/font/google";
 import "./globals.css";
+
+/**
+ * The identity-carrying type in this design — crest, eyebrows, date numerals,
+ * uppercase labels — is all Latin, so that role gets a self-hosted face.
+ * Korean body text stays on an explicit platform stack: a Korean webfont's
+ * unicode-range split costs ~96kB of gzipped CSS on every first paint, which
+ * is not worth it for glyphs every target device already renders well.
+ */
+const display = Archivo({
+  subsets: ["latin"],
+  weight: ["900"],
+  variable: "--font-display",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://gyungchung.vercel.app"),
@@ -18,7 +33,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" className={display.variable}>
       <body>{children}</body>
     </html>
   );

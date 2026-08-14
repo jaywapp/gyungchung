@@ -1,15 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
-import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
+import { editorScopes, tableScopes, toErrorMessage, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import ConfirmDialog from "@/components/confirm-dialog";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 type Section = "members" | "guests" | "fees" | "notices" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions";
 export type EditorConfig = { type: Exclude<Section, "permissions">; row?: Record<string, unknown> };
+
+const groupDefinitions: { key: string; label: string; sections: Section[] }[] = [
+  { key: "roster", label: "회원", sections: ["members", "guests", "fees"] },
+  { key: "schedule", label: "일정", sections: ["events", "attendance", "teams"] },
+  { key: "operations", label: "운영", sections: ["notices", "feedback", "forms", "permissions"] },
+];
+const sectionLabels: Record<Section, string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여", permissions: "권한" };
+const editorTitles: Record<EditorConfig["type"], string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여 항목" };
 
 const roleLabels: Record<AccountRole, string> = { member: "일반 회원", manager: "관리자" };
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
@@ -25,46 +34,113 @@ const permissionLabels: Record<string, string> = {
 
 export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, events, feedback, forms, rolePermissions, officerPermissions, permissions, supabase, reload, toast }: {
   profiles: Profile[]; guestPlayers: GuestPlayer[]; attendance: Attendance[]; fees: Fee[]; guestFees: GuestFee[]; notices: Notice[]; events: Event[]; feedback: Feedback[]; forms: ParticipationForm[]; rolePermissions: RolePermission[]; officerPermissions: OfficerPermission[];
-  permissions: Set<string>; supabase: SupabaseClient; reload: () => void; toast: ToastHandler;
+  permissions: Set<string>; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler;
 }) {
-  const sections = useMemo(() => [
-    permissions.has("members.manage") && ["members", "회원"], permissions.has("events.manage") && ["guests", "용병"], permissions.has("fees.manage") && ["fees", "회비"], permissions.has("notices.manage") && ["notices", "공지"], permissions.has("events.manage") && ["events", "일정"], permissions.has("events.manage") && ["attendance", "출석"], permissions.has("events.manage") && ["teams", "팀 편성"], permissions.has("feedback.manage") && ["feedback", "의견"],
-    (permissions.has("elections.manage") || permissions.has("polls.manage") || permissions.has("surveys.manage")) && ["forms", "참여"], (permissions.has("roles.manage") || permissions.has("officers.manage")) && ["permissions", "권한"],
-  ].filter(Boolean) as [Section, string][], [permissions]);
-  const [section, setSection] = useState<Section>(sections[0]?.[0] ?? "members");
+  /** Narrow by domain first, then by section — ten flat tabs read as a wall. */
+  const sectionGroups = useMemo(() => {
+    const allowed = new Set<Section>();
+    if (permissions.has("members.manage")) allowed.add("members");
+    if (permissions.has("fees.manage")) allowed.add("fees");
+    if (permissions.has("notices.manage")) allowed.add("notices");
+    if (permissions.has("feedback.manage")) allowed.add("feedback");
+    if (permissions.has("events.manage")) ["guests", "events", "attendance", "teams"].forEach((key) => allowed.add(key as Section));
+    if (permissions.has("elections.manage") || permissions.has("polls.manage") || permissions.has("surveys.manage")) allowed.add("forms");
+    if (permissions.has("roles.manage") || permissions.has("officers.manage")) allowed.add("permissions");
+    return groupDefinitions
+      .map((group) => ({ ...group, sections: group.sections.filter((key) => allowed.has(key)) }))
+      .filter((group) => group.sections.length > 0);
+  }, [permissions]);
+  const [selectedSection, setSelectedSection] = useState<Section | null>(null);
+  const activeGroup = sectionGroups.find((group) => selectedSection !== null && group.sections.includes(selectedSection)) ?? sectionGroups[0];
+  const section: Section = (selectedSection !== null && activeGroup?.sections.includes(selectedSection) ? selectedSection : activeGroup?.sections[0]) ?? "members";
+  const setSection = setSelectedSection;
   const [editor, setEditor] = useState<EditorConfig | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ table: string; id: string; label: string } | null>(null);
+  const [bulkFeeOpen, setBulkFeeOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const remove = async (table: string, id: string) => {
-    if (!window.confirm("정말 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
-    const { error } = await supabase.from(table).delete().eq("id", id);
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const { error } = await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id);
+    const scope = tableScopes[pendingDelete.table] ?? "all";
+    setDeleting(false); setPendingDelete(null);
     if (error) return toast(toErrorMessage(error), "error");
-    toast("삭제했습니다."); reload();
+    toast("삭제했습니다."); reload(scope);
   };
   const count = section === "members" ? profiles.length : section === "guests" ? guestPlayers.length : section === "fees" ? fees.length + guestFees.length : section === "notices" ? notices.length : section === "events" || section === "attendance" || section === "teams" ? events.length : section === "feedback" ? feedback.length : section === "forms" ? forms.length : rolePermissions.length + officerPermissions.length;
 
-  return <section className="content admin-page">
+  return <section className="content">
     <div className="page-intro"><span className="eyebrow">OPERATIONS DESK</span><h1>팀 운영 관리</h1><p>시스템 관리 권한은 회원 유형과 별도로 부여되며, 회장·부회장·총무는 직책별 운영 업무를 담당합니다.</p></div>
-    <div className="admin-tabs">{sections.map(([key, label]) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}>{label} 관리</button>)}</div>
-    <div className="admin-toolbar"><b>{count}개 항목</b>{!(["members", "attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div>
+    <div className="admin-groups">{sectionGroups.map((group) => <button key={group.key} type="button" aria-pressed={group.key === activeGroup?.key} onClick={() => setSection(group.sections[0])}>{group.label}</button>)}</div>
+    <div className="admin-tabs">{(activeGroup?.sections ?? []).map((key) => <button key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{sectionLabels[key]} 관리</button>)}</div>
+    <div className="admin-toolbar"><b>{count}개 항목</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["members", "attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>
     {section === "permissions" ? <PermissionMatrix roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
       {section === "members" && profiles.map((row) => <AdminRow key={row.id} title={row.membership_application?.name ?? row.name} meta={`${row.membership_application?.preferred_position ?? row.position ?? "포지션 미정"} · ${row.role === "manager" && row.officer_title ? officerTitleLabels[row.officer_title] : roleLabels[row.role]}${row.is_system_admin ? " · 시스템 관리자" : ""} · ${row.role === "manager" ? "월 15,000원" : row.fee_plan === "per_event" ? "참여 시 10,000원" : "월 30,000원"} · ${row.status === "pending" && !row.membership_application ? "신청서 미작성" : memberStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "members", row: row as unknown as Record<string, unknown> })} />)}
       {section === "guests" && guestPlayers.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.preferred_position ?? "포지션 미정"} · ${row.appearance_count}회 참여 · 참여비 ${row.fee_amount.toLocaleString()}원 · ${row.is_active ? "활동" : "비활동"}`} onEdit={() => setEditor({ type: "guests", row: row as unknown as Record<string, unknown> })} />)}
-      {section === "fees" && fees.map((row) => <AdminRow key={row.id} title={`${row.profiles?.name ?? profiles.find((p) => p.id === row.member_id)?.name ?? "회원"} · ${row.month.slice(0, 7)}`} meta={`${row.fee_type === "participation" ? "참여비" : "월회비"} · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("fees", row.id)} />)}
+      {section === "fees" && fees.map((row) => <AdminRow key={row.id} title={`${row.profiles?.name ?? profiles.find((p) => p.id === row.member_id)?.name ?? "회원"} · ${row.month.slice(0, 7)}`} meta={`${row.fee_type === "participation" ? "참여비" : "월회비"} · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "fees", id: row.id, label })} />)}
       {section === "fees" && guestFees.map((row) => <AdminRow key={`${row.event_id}-${row.guest_player_id}`} title={`${row.guest_players?.name ?? "용병"} · ${row.events ? new Date(row.events.starts_at).toLocaleDateString("ko-KR") : "일정"}`} meta={`용병 참여비 · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: { ...row, _fee_scope: "guest" } as unknown as Record<string, unknown> })} />)}
-      {section === "notices" && notices.map((row) => <AdminRow key={row.id} title={row.title} meta={new Date(row.created_at).toLocaleDateString("ko-KR")} onEdit={() => setEditor({ type: "notices", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("notices", row.id)} />)}
-      {section === "events" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("events", row.id)} />)}
+      {section === "notices" && notices.map((row) => <AdminRow key={row.id} title={row.title} meta={new Date(row.created_at).toLocaleDateString("ko-KR")} onEdit={() => setEditor({ type: "notices", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "notices", id: row.id, label })} />)}
+      {section === "events" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "events", id: row.id, label })} />)}
       {section === "attendance" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · 실제 출석 ${attendance.filter((item) => item.event_id === row.id && item.checked_in_at).length}명`} onEdit={() => setEditor({ type: "attendance", row: row as unknown as Record<string, unknown> })} />)}
       {section === "teams" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "포지션 균형" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
-      {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("feedback", row.id)} />)}
-      {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={() => remove("participation_forms", row.id)} />)}
+      {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "feedback", id: row.id, label })} />)}
+      {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
     </div>}
-    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); toast("저장했습니다."); reload(); }} onError={(message) => toast(message, "error")} />}
+    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={() => { const scope = editorScopes[editor.type] ?? "all"; setEditor(null); toast("저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
+    {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
+    {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
   </section>;
 }
 
-function AdminRow({ title, meta, href, onEdit, onDelete }: { title: string; meta: string; href?: string | null; onEdit: () => void; onDelete?: () => void }) { return <div className="admin-row"><span><b>{title}</b><small>{meta}</small></span><div>{href && <a href={href} target="_blank" rel="noreferrer" aria-label="GitHub 이슈 열기"><Github size={17} /><ExternalLink size={11} /></a>}<button onClick={onEdit} aria-label="수정"><Pencil size={17} /></button>{onDelete && <button onClick={onDelete} aria-label="삭제"><Trash2 size={17} /></button>}</div></div>; }
+/** The row owns its display name, so it hands that name to the delete flow. */
+function AdminRow({ title, meta, href, onEdit, onDelete }: { title: string; meta: string; href?: string | null; onEdit: () => void; onDelete?: (label: string) => void }) { return <div className="admin-row"><span><b>{title}</b><small>{meta}</small></span><div>{href && <a href={href} target="_blank" rel="noreferrer" aria-label={`${title} GitHub 이슈 열기`}><Github size={17} /><ExternalLink size={11} /></a>}<button type="button" onClick={onEdit} aria-label={`${title} 수정`}><Pencil size={17} /></button>{onDelete && <button type="button" onClick={() => onDelete(title)} aria-label={`${title} 삭제`}><Trash2 size={17} /></button>}</div></div>; }
 
-function PermissionMatrix({ roleRows, officerRows, canManageSystemRoles, supabase, reload, toast }: { roleRows: RolePermission[]; officerRows: OfficerPermission[]; canManageSystemRoles: boolean; supabase: SupabaseClient; reload: () => void; toast: ToastHandler }) {
+/**
+ * The treasurer's monthly ritual, collapsed into one action: create this
+ * month's unpaid row for every active monthly-plan member who lacks one.
+ * Per-event members are excluded — their fees are raised per schedule, and the
+ * database rejects a monthly row for them outright.
+ */
+function BulkFeeDialog({ profiles, fees, supabase, onClose, onSaved, onError }: { profiles: Profile[]; fees: Fee[]; supabase: SupabaseClient; onClose: () => void; onSaved: (created: number) => void; onError: (message: string) => void }) {
+  const dialogRef = useDialogFocus<HTMLFormElement>(onClose);
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [saving, setSaving] = useState(false);
+  const targets = profiles.filter((profile) => profile.status === "active" && (profile.role === "manager" || profile.fee_plan !== "per_event"));
+  const registered = new Set(fees.filter((fee) => fee.fee_type === "monthly" && fee.month.slice(0, 7) === month).map((fee) => fee.member_id));
+  const pending = targets.filter((profile) => !registered.has(profile.id));
+  const skipped = targets.length - pending.length;
+  const perEventCount = profiles.filter((profile) => profile.status === "active" && profile.role === "member" && profile.fee_plan === "per_event").length;
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (pending.length === 0) return;
+    setSaving(true);
+    const { error } = await supabase.from("fees").insert(pending.map((profile) => ({
+      member_id: profile.id,
+      fee_type: "monthly",
+      event_id: null,
+      month: `${month}-01`,
+      amount: profile.role === "manager" ? 15000 : 30000,
+      status: "unpaid",
+    })));
+    setSaving(false);
+    if (error) return onError(toErrorMessage(error));
+    onSaved(pending.length);
+  };
+  return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="월회비 일괄 등록">
+    <button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button>
+    <span className="eyebrow">BULK FEE</span><h2>월회비<br />일괄 등록</h2>
+    <p className="form-description">활동 중인 월회비 회원 전원에게 해당 월의 미납 회비를 한 번에 만듭니다. 금액은 회원 유형에 따라 자동 적용됩니다.</p>
+    <label>기준 월<input name="month" type="month" required value={month} onChange={(event) => setMonth(event.target.value)} /></label>
+    <div className="read-box">
+      <b>{pending.length}명에게 새로 등록됩니다</b>
+      <p>대상 {targets.length}명 중 {skipped}명은 이미 등록되어 있어 건너뜁니다.{perEventCount > 0 ? ` 참여비 회원 ${perEventCount}명은 일정별로 부과되므로 제외됩니다.` : ""}</p>
+    </div>
+    <button className="cta" disabled={saving || pending.length === 0}>{saving ? "등록 중…" : pending.length === 0 ? "등록할 회원이 없습니다" : `${pending.length}명 등록하기`}</button>
+  </form></div>;
+}
+
+function PermissionMatrix({ roleRows, officerRows, canManageSystemRoles, supabase, reload, toast }: { roleRows: RolePermission[]; officerRows: OfficerPermission[]; canManageSystemRoles: boolean; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler }) {
   const columns: Array<{ key: "admin" | OfficerTitle; label: string }> = [
     { key: "admin", label: "시스템 관리자" },
     ...(["president", "vice_president", "treasurer"] as OfficerTitle[]).map((title) => ({ key: title, label: officerTitleLabels[title] })),
@@ -73,9 +149,9 @@ function PermissionMatrix({ roleRows, officerRows, canManageSystemRoles, supabas
     if (permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && officerTitle === "president")) return;
     const result = enabled ? await supabase.from("officer_permissions").insert({ officer_title: officerTitle, permission }) : await supabase.from("officer_permissions").delete().eq("officer_title", officerTitle).eq("permission", permission);
     if (result.error) return toast(toErrorMessage(result.error), "error");
-    reload();
+    reload("member");
   };
-  return <div className="permission-matrix"><div className="permission-intro"><ShieldCheck /><p>시스템 관리 권한은 일반회원·관리자 여부와 별개이며 모든 운영 권한을 포함합니다. 회장은 부회장·총무의 세부 운영 권한을 조정할 수 있습니다.</p></div><div className="table-wrap"><table><caption className="sr-only">직책별 운영 권한 설정</caption><thead><tr><th scope="col">권한</th>{columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{Object.entries(permissionLabels).map(([permission, label]) => <tr key={permission}><th scope="row">{label}</th>{columns.map((column) => { const isAdmin = column.key === "admin"; const checked = isAdmin ? roleRows.some((row) => row.role === "admin" && row.permission === permission) : officerRows.some((row) => row.officer_title === column.key && row.permission === permission); const disabled = isAdmin || permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && column.key === "president"); return <td key={column.key}><input aria-label={`${column.label} ${label}`} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => { if (!isAdmin) void toggle(column.key as OfficerTitle, permission, event.target.checked); }} /></td>; })}</tr>)}</tbody></table></div></div>;
+  return <div className="permission-matrix"><div className="permission-intro"><ShieldCheck /><p>시스템 관리 권한은 일반회원·관리자 여부와 별개이며 모든 운영 권한을 포함합니다. 회장은 부회장·총무의 세부 운영 권한을 조정할 수 있습니다.</p></div><div className="table-wrap scroll-region" tabIndex={0} role="region" aria-label="직책별 운영 권한 설정"><table><caption className="sr-only">직책별 운영 권한 설정</caption><thead><tr><th scope="col">권한</th>{columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{Object.entries(permissionLabels).map(([permission, label]) => <tr key={permission}><th scope="row">{label}</th>{columns.map((column) => { const isAdmin = column.key === "admin"; const checked = isAdmin ? roleRows.some((row) => row.role === "admin" && row.permission === permission) : officerRows.some((row) => row.officer_title === column.key && row.permission === permission); const disabled = isAdmin || permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && column.key === "president"); return <td key={column.key}><input aria-label={`${column.label} ${label}`} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => { if (!isAdmin) void toggle(column.key as OfficerTitle, permission, event.target.checked); }} /></td>; })}</tr>)}</tbody></table></div></div>;
 }
 
 type TeamParticipant = { kind: "member" | "guest"; id: string; name: string; position: string | null };
@@ -206,7 +282,7 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
     }
     setSaving(false); if (error) return onError(toErrorMessage(error)); onSaved();
   };
-  return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{row.id ? "정보 수정" : "새 항목 등록"}</h2>
+  return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
     {config.type === "members" && <><label>이름<input name="name" required defaultValue={String(application?.name ?? row.name ?? "")} /></label>{application ? <div className="application-review"><b>가입 신청 정보</b><dl><div><dt>전화번호</dt><dd>{application.phone}</dd></div><div><dt>생년월일</dt><dd>{new Date(`${application.birth_date}T00:00:00`).toLocaleDateString("ko-KR")}</dd></div><div><dt>거주지역</dt><dd>{application.residence}</dd></div><div><dt>선호 포지션</dt><dd>{application.preferred_position}</dd></div><div><dt>신청일</dt><dd>{new Date(application.submitted_at).toLocaleDateString("ko-KR")}</dd></div></dl></div> : row.status === "pending" && <div className="read-box"><b>가입 신청서 미작성</b><p>신청서가 제출되기 전에는 회원 승인을 할 수 없습니다.</p></div>}<div className="field-row"><label>등록 포지션<input name="position" defaultValue={String(application?.preferred_position ?? row.position ?? "")} /></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "pending")}><option value="pending" disabled={Boolean(row.is_system_admin)}>승인 대기</option><option value="active" disabled={!canApprove}>활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 10,000원</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}

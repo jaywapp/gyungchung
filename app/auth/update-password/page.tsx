@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { FormError } from "@/components/section-states";
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
@@ -35,5 +36,5 @@ export default function UpdatePasswordPage() {
     }
   };
 
-  return <main className="password-page"><section className="password-card"><span className="eyebrow">ACCOUNT RECOVERY</span><h1>새 비밀번호 설정</h1><p>경충FC 로그인에 사용할 새 비밀번호를 입력해 주세요. 설정 후 바로 회원 계정으로 연결됩니다.</p><form onSubmit={submit}><label>새 비밀번호<input name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8자 이상 입력" /></label><label>새 비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" /></label>{errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}<button className="cta" disabled={busy}>{busy ? "설정 중…" : "비밀번호 저장"}</button></form><Link className="text-link" href="/">홈으로 돌아가기</Link></section></main>;
+  return <main className="password-page"><section className="password-card"><span className="eyebrow">ACCOUNT RECOVERY</span><h1>새 비밀번호 설정</h1><p>경충FC 로그인에 사용할 새 비밀번호를 입력해 주세요. 설정 후 바로 회원 계정으로 연결됩니다.</p><form onSubmit={submit}><label>새 비밀번호<input name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8자 이상 입력" aria-invalid={errorMessage ? true : undefined} aria-describedby={errorMessage ? "update-password-error" : undefined} /></label><label>새 비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" aria-invalid={errorMessage ? true : undefined} aria-describedby={errorMessage ? "update-password-error" : undefined} /></label>{errorMessage && <FormError id="update-password-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "설정 중…" : "비밀번호 저장"}</button></form><Link className="text-link" href="/">홈으로 돌아가기</Link></section></main>;
 }
