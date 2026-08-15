@@ -11,6 +11,9 @@ export interface MembershipApplication {
   preferred_position: "GK" | "DF" | "MF" | "FW" | "ANY";
   submitted_at: string;
   updated_at: string;
+  review_status: "pending" | "rejected";
+  rejection_reason: string | null;
+  reviewed_at: string | null;
 }
 
 export interface Profile {
@@ -168,6 +171,8 @@ export interface Feedback {
   publish_to_github: boolean;
   github_issue_number: number | null;
   github_issue_url: string | null;
+  github_issue_state: "open" | "closed" | null;
+  github_issue_closed_at: string | null;
   created_at: string;
 }
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
@@ -70,6 +70,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [memberLoadError, setMemberLoadError] = useState(false);
   const [quickEditor, setQuickEditor] = useState<EditorConfig | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ table: string; id: string; label: string } | null>(null);
+  const [pendingKick, setPendingKick] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -194,7 +195,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const isOfficer = permissions.size > 0;
   const manageableParticipationKinds = (["election", "poll", "survey"] as ParticipationKind[]).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
   const needsEmail = Boolean(user && !user.email);
-  const needsApplication = Boolean(user?.email && me?.status === "pending" && !me.membership_application);
+  const applicationRejected = me?.membership_application?.review_status === "rejected";
+  const needsApplication = Boolean(user?.email && me?.status === "pending" && (!me.membership_application || applicationRejected));
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date());
   const myFee = fees.find((fee) => fee.member_id === user?.id);
@@ -213,6 +215,16 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (error) return showToast(toErrorMessage(error), "error");
     showToast("삭제했습니다.");
     await reload(scope);
+  };
+  const confirmKick = async () => {
+    if (!supabase || !pendingKick || pendingKick.is_system_admin) return;
+    const target = pendingKick;
+    setDeleting(true);
+    const { error } = await supabase.from("profiles").update({ status: "inactive" }).eq("id", target.id);
+    setDeleting(false); setPendingKick(null);
+    if (error) return showToast(toErrorMessage(error), "error");
+    showToast(`${target.name} 회원을 강퇴했습니다.`);
+    await reload("member");
   };
   const signIn = async (provider: "google" | "kakao", mode: PasswordAuthMode) => {
     if (!supabase) return showToast("로그인 연결을 준비 중입니다.");
@@ -299,9 +311,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     </header>
 
     <main id="main">
-      {me?.status === "pending" && me.membership_application && <div className="approval-banner">가입 신청이 접수되었습니다. 회원 관리 권한이 있는 관리자의 승인을 기다리고 있습니다.</div>}
+      {me?.status === "pending" && me.membership_application && !applicationRejected && <div className="approval-banner">가입 신청이 접수되었습니다. 회원 관리 권한이 있는 관리자의 승인을 기다리고 있습니다.</div>}
       {tab === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === user?.id)?.status} />}
-      {tab === "members" && <Members profiles={activeProfiles} user={user} loading={sessionPending} loadError={memberLoadError} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
+      {tab === "members" && <Members profiles={activeProfiles} user={user} loading={sessionPending} loadError={memberLoadError} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {tab === "fees" && <Fees fees={fees} profiles={profiles} user={user} loading={sessionPending} loadError={memberLoadError} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {tab === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
       {tab === "events" && <Events events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} reload={() => void reload("member")} toast={showToast} />}
@@ -317,9 +329,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} onPasswordReset={sendPasswordReset} />}
     {needsEmail && supabase && <EmailRequiredModal supabase={supabase} onSignOut={signOut} />}
-    {needsApplication && supabase && me && <MembershipApplicationModal profile={me} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await reload("member"); showToast("가입 신청을 접수했습니다."); }} />}
+    {needsApplication && supabase && me && <MembershipApplicationModal profile={me} rejectionReason={applicationRejected ? me.membership_application?.rejection_reason ?? null : null} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await reload("member"); showToast(applicationRejected ? "가입 신청을 다시 접수했습니다." : "가입 신청을 접수했습니다."); }} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { const scope = editorScopes[quickEditor.type] ?? "all"; setQuickEditor(null); showToast("저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
+    {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
     <div className="toast" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "success" && <><Check size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
     <div className="toast error" role="alert" aria-live="assertive" aria-atomic="true">{toast?.kind === "error" && <><AlertCircle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
   </div>;
@@ -377,10 +390,11 @@ function EmailRequiredModal({ supabase, onSignOut }: { supabase: NonNullable<Ret
   </form></div>;
 }
 
-function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted }: { profile: Profile; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
+function MembershipApplicationModal({ profile, rejectionReason, supabase, onSignOut, onSubmitted }: { profile: Profile; rejectionReason: string | null; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
   const dialogRef = useDialogFocus<HTMLFormElement>();
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const previousApplication = profile.membership_application;
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true); setErrorMessage(null);
@@ -397,13 +411,13 @@ function MembershipApplicationModal({ profile, supabase, onSignOut, onSubmitted 
     await onSubmitted();
   };
   return <div className="modal-backdrop membership-gate"><form ref={dialogRef} tabIndex={-1} className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="경충FC 가입 신청">
-    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2><p className="form-description">필수 정보를 작성해 주세요. 회원 관리 권한이 있는 관리자가 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>
-    <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={profile.name} /></label>
-    <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} /></label></div>
-    <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" /></label>
-    <label>선호 포지션<select name="preferred_position" required defaultValue=""><option value="" disabled>포지션을 선택해 주세요</option><option value="GK">골키퍼 (GK)</option><option value="DF">수비 (DF)</option><option value="MF">미드필더 (MF)</option><option value="FW">공격 (FW)</option><option value="ANY">상관없음</option></select></label>
+    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2>{rejectionReason ? <div className="read-box"><b>가입 신청이 반려되었습니다</b><p>{rejectionReason}</p></div> : <p className="form-description">필수 정보를 작성해 주세요. 회원 관리 권한이 있는 관리자가 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>}
+    <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={previousApplication?.name ?? profile.name} /></label>
+    <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={previousApplication?.phone ?? ""} /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} defaultValue={previousApplication?.birth_date ?? ""} /></label></div>
+    <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" defaultValue={previousApplication?.residence ?? ""} /></label>
+    <label>선호 포지션<select name="preferred_position" required defaultValue={previousApplication?.preferred_position ?? ""}><option value="" disabled>포지션을 선택해 주세요</option><option value="GK">골키퍼 (GK)</option><option value="DF">수비 (DF)</option><option value="MF">미드필더 (MF)</option><option value="FW">공격 (FW)</option><option value="ANY">상관없음</option></select></label>
     {errorMessage && <FormError id="application-error" message={errorMessage} />}
-    <button className="cta" disabled={saving}>{saving ? "신청 중…" : "가입 신청서 제출"}</button>
+    <button className="cta" disabled={saving}>{saving ? "신청 중…" : rejectionReason ? "가입 신청서 다시 제출" : "가입 신청서 제출"}</button>
     <button className="text-link application-signout" type="button" onClick={() => void onSignOut()}>다른 계정으로 로그인</button>
   </form></div>;
 }
@@ -421,13 +435,13 @@ function Home({ upcoming, notice, fee, goingCount, memberCount, user, publicLoad
 }
 
 function PageIntro({ kicker, title, description }: { kicker: string; title: string; description: string }) { return <div className="page-intro"><span className="eyebrow">{kicker}</span><h1>{title}</h1><p>{description}</p></div>; }
-function Members({ profiles, user, loading, loadError, canManage, onEdit, onLogin, onRetry }: { profiles: Profile[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onEdit: (profile: Profile) => void; onLogin: () => void; onRetry: () => void }) {
+function Members({ profiles, user, loading, loadError, canManage, onEdit, onKick, onLogin, onRetry }: { profiles: Profile[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onEdit: (profile: Profile) => void; onKick: (profile: Profile) => void; onLogin: () => void; onRetry: () => void }) {
   const intro = <PageIntro kicker="SQUAD" title="함께 뛰는 사람들" description={user ? "포지션보다 이름을 먼저 기억하는 경충FC의 회원입니다." : "회원 명단은 승인된 회원에게만 공개합니다."} />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="회원 명단을 불러오는 중" /></section>;
   if (!user) return <section className="content">{intro}<LoginGate icon={<UserRound />} title="로그인 후 회원 명단을 확인하세요" description="회원 명단은 승인된 회원에게만 공개합니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   if (profiles.length === 0) return <section className="content">{intro}<Empty icon={<UserRound />} title="공개된 회원이 없습니다" description="가입 승인이 완료된 회원이 생기면 이곳에 표시됩니다." /></section>;
-  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 수정 버튼을 눌러 회원 정보를 변경할 수 있습니다.</div>}<div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number" aria-hidden="true">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span>{canManage && <button className="resource-icon-action" aria-label={`${profile.name} 회원 정보 수정`} onClick={() => onEdit(profile)}><Pencil size={16} /></button>}<div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>{profile.jersey_number != null ? `NO. ${profile.jersey_number} · ` : ""}JOINED {new Date(profile.joined_at).getFullYear()}</p><div className="member-badges">{profile.role === "manager" && <span className="admin-badge">{profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels.manager}</span>}{profile.is_system_admin && <span className="admin-badge system">시스템 관리자</span>}</div></article>)}</div></section>;
+  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 수정·강퇴 버튼으로 회원을 관리할 수 있습니다.</div>}<div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number" aria-hidden="true">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span>{canManage && <div className="member-management-actions"><button className="resource-icon-action" aria-label={`${profile.name} 회원 정보 수정`} onClick={() => onEdit(profile)}><Pencil size={16} /></button>{profile.id !== user.id && !profile.is_system_admin && <button className="resource-icon-action" aria-label={`${profile.name} 회원 강퇴`} onClick={() => onKick(profile)}><UserMinus size={16} /></button>}</div>}<div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>{profile.jersey_number != null ? `NO. ${profile.jersey_number} · ` : ""}JOINED {new Date(profile.joined_at).getFullYear()}</p><div className="member-badges">{profile.role === "manager" && <span className="admin-badge">{profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels.manager}</span>}{profile.is_system_admin && <span className="admin-badge system">시스템 관리자</span>}</div></article>)}</div></section>;
 }
 function Fees({ fees, profiles, user, loading, loadError, canManage, onCreate, onEdit, onDelete, onLogin, onRetry, onAsk }: { fees: Fee[]; profiles: Profile[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onLogin: () => void; onRetry: () => void; onAsk: () => void }) {
   const myUnpaid = fees.filter((fee) => fee.member_id === user?.id && fee.status === "unpaid");
