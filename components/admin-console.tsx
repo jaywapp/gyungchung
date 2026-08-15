@@ -2,23 +2,23 @@
 
 import { useMemo, useState } from "react";
 import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
-import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission } from "@/lib/types";
+import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { editorScopes, tableScopes, toErrorMessage, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import ConfirmDialog from "@/components/confirm-dialog";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
-type Section = "members" | "guests" | "fees" | "notices" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions";
+type Section = "members" | "guests" | "fees" | "notices" | "venues" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions";
 export type EditorConfig = { type: Exclude<Section, "permissions">; row?: Record<string, unknown> };
 
 const groupDefinitions: { key: string; label: string; sections: Section[] }[] = [
   { key: "roster", label: "회원", sections: ["members", "guests", "fees"] },
-  { key: "schedule", label: "일정", sections: ["events", "attendance", "teams"] },
+  { key: "schedule", label: "일정", sections: ["venues", "events", "attendance", "teams"] },
   { key: "operations", label: "운영", sections: ["notices", "feedback", "forms", "permissions"] },
 ];
-const sectionLabels: Record<Section, string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여", permissions: "권한" };
-const editorTitles: Record<EditorConfig["type"], string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여 항목" };
+const sectionLabels: Record<Section, string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", venues: "구장", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여", permissions: "권한" };
+const editorTitles: Record<EditorConfig["type"], string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", venues: "구장", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여 항목" };
 
 const roleLabels: Record<AccountRole, string> = { member: "일반 회원", manager: "관리자" };
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
@@ -32,8 +32,8 @@ const permissionLabels: Record<string, string> = {
   "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
 };
 
-export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, events, feedback, forms, rolePermissions, officerPermissions, permissions, supabase, reload, toast }: {
-  profiles: Profile[]; guestPlayers: GuestPlayer[]; attendance: Attendance[]; fees: Fee[]; guestFees: GuestFee[]; notices: Notice[]; events: Event[]; feedback: Feedback[]; forms: ParticipationForm[]; rolePermissions: RolePermission[]; officerPermissions: OfficerPermission[];
+export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, permissions, supabase, reload, toast }: {
+  profiles: Profile[]; guestPlayers: GuestPlayer[]; attendance: Attendance[]; fees: Fee[]; guestFees: GuestFee[]; notices: Notice[]; venues: Venue[]; events: Event[]; feedback: Feedback[]; forms: ParticipationForm[]; rolePermissions: RolePermission[]; officerPermissions: OfficerPermission[];
   permissions: Set<string>; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler;
 }) {
   /** Narrow by domain first, then by section — ten flat tabs read as a wall. */
@@ -43,7 +43,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     if (permissions.has("fees.manage")) allowed.add("fees");
     if (permissions.has("notices.manage")) allowed.add("notices");
     if (permissions.has("feedback.manage")) allowed.add("feedback");
-    if (permissions.has("events.manage")) ["guests", "events", "attendance", "teams"].forEach((key) => allowed.add(key as Section));
+    if (permissions.has("events.manage")) ["guests", "venues", "events", "attendance", "teams"].forEach((key) => allowed.add(key as Section));
     if (permissions.has("elections.manage") || permissions.has("polls.manage") || permissions.has("surveys.manage")) allowed.add("forms");
     if (permissions.has("roles.manage") || permissions.has("officers.manage")) allowed.add("permissions");
     return groupDefinitions
@@ -68,7 +68,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     if (error) return toast(toErrorMessage(error), "error");
     toast("삭제했습니다."); reload(scope);
   };
-  const count = section === "members" ? profiles.length : section === "guests" ? guestPlayers.length : section === "fees" ? fees.length + guestFees.length : section === "notices" ? notices.length : section === "events" || section === "attendance" || section === "teams" ? events.length : section === "feedback" ? feedback.length : section === "forms" ? forms.length : rolePermissions.length + officerPermissions.length;
+  const count = section === "members" ? profiles.length : section === "guests" ? guestPlayers.length : section === "fees" ? fees.length + guestFees.length : section === "notices" ? notices.length : section === "venues" ? venues.length : section === "events" || section === "attendance" || section === "teams" ? events.length : section === "feedback" ? feedback.length : section === "forms" ? forms.length : rolePermissions.length + officerPermissions.length;
 
   return <section className="content">
     <div className="page-intro"><span className="eyebrow">OPERATIONS DESK</span><h1>팀 운영 관리</h1><p>시스템 관리 권한은 회원 유형과 별도로 부여되며, 회장·부회장·총무는 직책별 운영 업무를 담당합니다.</p></div>
@@ -81,13 +81,14 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
       {section === "fees" && fees.map((row) => <AdminRow key={row.id} title={`${row.profiles?.name ?? profiles.find((p) => p.id === row.member_id)?.name ?? "회원"} · ${row.month.slice(0, 7)}`} meta={`${row.fee_type === "participation" ? "참여비" : "월회비"} · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "fees", id: row.id, label })} />)}
       {section === "fees" && guestFees.map((row) => <AdminRow key={`${row.event_id}-${row.guest_player_id}`} title={`${row.guest_players?.name ?? "용병"} · ${row.events ? new Date(row.events.starts_at).toLocaleDateString("ko-KR") : "일정"}`} meta={`용병 참여비 · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: { ...row, _fee_scope: "guest" } as unknown as Record<string, unknown> })} />)}
       {section === "notices" && notices.map((row) => <AdminRow key={row.id} title={row.title} meta={new Date(row.created_at).toLocaleDateString("ko-KR")} onEdit={() => setEditor({ type: "notices", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "notices", id: row.id, label })} />)}
+      {section === "venues" && venues.map((row) => <AdminRow key={row.id} title={row.name} meta={row.address || "주소 미등록"} onEdit={() => setEditor({ type: "venues", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "venues", id: row.id, label })} />)}
       {section === "events" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "events", id: row.id, label })} />)}
       {section === "attendance" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · 실제 출석 ${attendance.filter((item) => item.event_id === row.id && item.checked_in_at).length}명`} onEdit={() => setEditor({ type: "attendance", row: row as unknown as Record<string, unknown> })} />)}
       {section === "teams" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "포지션 균형" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
       {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "feedback", id: row.id, label })} />)}
       {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
     </div>}
-    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={() => { const scope = editorScopes[editor.type] ?? "all"; setEditor(null); toast("저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
+    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={() => { const scope = editorScopes[editor.type] ?? "all"; setEditor(null); toast("저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
   </section>;
@@ -186,7 +187,7 @@ function shuffled<T>(items: T[]) {
   return result;
 }
 
-export function AdminEditor({ config, profiles, guestPlayers, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: () => void; onError: (message: string) => void }) {
+export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: () => void; onError: (message: string) => void }) {
   const dialogRef = useDialogFocus<HTMLFormElement>(onClose);
   const row = config.row ?? {};
   const eventRow = row as unknown as Event;
@@ -197,8 +198,14 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
   const canApprove = row.status !== "pending" || Boolean(application);
   const [venue, setVenue] = useState(String(row.venue ?? ""));
   const [address, setAddress] = useState(String(row.address ?? ""));
-  /** Reusing a past venue is the common case; offer them instead of retyping. */
-  const venueOptions = useMemo(() => Array.from(new Map(events.filter((event) => event.venue.trim()).map((event) => [JSON.stringify([event.venue, event.address ?? ""]), { venue: event.venue, address: event.address ?? "" }])).values()), [events]);
+  const [venueId, setVenueId] = useState(String(row.venue_id ?? ""));
+  /** Registered venues come first, with event snapshots filling legacy gaps. */
+  const venueOptions = useMemo(() => {
+    const registered = venues.map((item) => ({ id: item.id, venue: item.name, address: item.address }));
+    const keys = new Set(registered.map((item) => JSON.stringify([item.venue, item.address])));
+    const recent = Array.from(new Map(events.filter((item) => item.venue.trim()).map((item) => [JSON.stringify([item.venue, item.address ?? ""]), { id: "", venue: item.venue, address: item.address ?? "" }])).values()).filter((item) => !keys.has(JSON.stringify([item.venue, item.address])));
+    return [...registered, ...recent];
+  }, [events, venues]);
   const [saving, setSaving] = useState(false);
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
@@ -251,17 +258,25 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
       ({ error } = await supabase.from("fees").upsert({ ...(row.id ? { id: row.id } : {}), member_id: fd.get("member_id") ?? row.member_id, fee_type: feeType, event_id: eventId, month: `${month}-01`, amount: standardFeeAmount, status: fd.get("status"), paid_at: fd.get("status") === "paid" ? new Date().toISOString() : null }));
     }
     if (config.type === "notices") ({ error } = await supabase.from("notices").upsert({ ...(row.id ? { id: row.id } : {}), title: fd.get("title"), body: fd.get("body"), is_pinned: fd.get("is_pinned") === "on" }));
+    if (config.type === "venues") ({ error } = await supabase.from("venues").upsert({ ...(row.id ? { id: row.id } : {}), name: fd.get("name"), address: fd.get("address") || "", note: fd.get("note") || null }));
     if (config.type === "events") {
       const startsAt = new Date(String(fd.get("starts_at")));
-      const eventPayload = { title: fd.get("title"), starts_at: startsAt.toISOString(), venue: fd.get("venue"), address: fd.get("address") || null, note: fd.get("note") || null, capacity: Number(fd.get("capacity")) || null, is_competitive: fd.get("is_competitive") === "on" };
+      const recurring = fd.get("recurring") === "on";
+      const currentYear = new Date().getFullYear();
+      if (recurring && startsAt.getFullYear() !== currentYear) error = { message: `정기 일정 시작일은 ${currentYear}년 안에서 선택해 주세요.` };
+      let selectedVenueId = String(fd.get("venue_id") ?? "");
+      if (!error && !selectedVenueId && fd.get("save_venue") === "on") {
+        const venueResult = await supabase.from("venues").upsert({ name: fd.get("venue"), address: fd.get("address") || "" }, { onConflict: "name,address" }).select("id").single();
+        error = venueResult.error;
+        selectedVenueId = venueResult.data?.id ?? "";
+      }
+      const eventPayload = { title: fd.get("title"), starts_at: startsAt.toISOString(), venue_id: selectedVenueId || null, venue: fd.get("venue"), address: fd.get("address") || null, note: fd.get("note") || null, capacity: Number(fd.get("capacity")) || null, is_competitive: fd.get("is_competitive") === "on" };
       let eventIds: string[] = [];
-      if (row.id) {
+      if (!error && row.id) {
         const eventResult = await supabase.from("events").update(eventPayload).eq("id", row.id).select("id").single();
         error = eventResult.error;
         if (eventResult.data) eventIds = [eventResult.data.id];
-      } else if (fd.get("recurring") === "on") {
-        const currentYear = new Date().getFullYear();
-        if (startsAt.getFullYear() !== currentYear) error = { message: `정기 일정 시작일은 ${currentYear}년 안에서 선택해 주세요.` };
+      } else if (!error && recurring) {
         const existingStarts = new Set(events.map((item) => new Date(item.starts_at).getTime()));
         const recurringPayloads: Array<typeof eventPayload> = [];
         for (const date = new Date(startsAt); !error && date.getFullYear() === currentYear; date.setDate(date.getDate() + 7)) {
@@ -273,7 +288,7 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
           error = eventResult.error;
           eventIds = eventResult.data?.map((item) => item.id) ?? [];
         }
-      } else {
+      } else if (!error) {
         const eventResult = await supabase.from("events").insert(eventPayload).select("id").single();
         error = eventResult.error;
         if (eventResult.data) eventIds = [eventResult.data.id];
@@ -339,7 +354,8 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "notices" && <><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>내용<textarea name="body" required rows={6} defaultValue={String(row.body ?? "")} /></label><label className="check"><input name="is_pinned" type="checkbox" defaultChecked={Boolean(row.is_pinned)} /> 상단 고정</label></>}
-    {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>이전에 사용한 장소</b><div>{venueOptions.map((option) => <button type="button" key={JSON.stringify([option.venue, option.address])} onClick={() => { setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{option.address && <small>{option.address}</small>}</button>)}</div></div>}<div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => setVenue(event.target.value)} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => setAddress(event.target.value)} /></label><label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
+    {config.type === "venues" && <><label>구장명<input name="name" required maxLength={120} defaultValue={String(row.name ?? "")} /></label><label>주소<input name="address" maxLength={240} defaultValue={String(row.address ?? "")} /></label><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label></>}
+    {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>등록·최근 사용 구장</b><div>{venueOptions.map((option) => <button type="button" key={JSON.stringify([option.id, option.venue, option.address])} onClick={() => { setVenueId(option.id); setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{option.address && <small>{option.address}</small>}</button>)}</div></div>}<input name="venue_id" type="hidden" value={venueId} /><div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => { setVenueId(""); setVenue(event.target.value); }} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => { setVenueId(""); setAddress(event.target.value); }} /></label>{!venueId && <label className="check"><input name="save_venue" type="checkbox" defaultChecked /> 입력한 구장을 구장 목록에도 등록</label>}<label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
     {config.type === "attendance" && <><div className="read-box"><b>{String(row.title)}</b><p>{new Date(String(row.starts_at)).toLocaleString("ko-KR")} · {String(row.venue)}</p></div><fieldset className="check-grid"><legend>실제 출석 회원</legend>{profiles.filter((profile) => profile.status === "active").map((profile) => { const record = attendance.find((item) => item.event_id === row.id && item.member_id === profile.id); return <label className="check" key={profile.id}><input name="checked_member_ids" value={profile.id} type="checkbox" defaultChecked={Boolean(record?.checked_in_at)} /> {profile.name} · {profile.position ?? "PLAYER"}{record?.status === "going" ? " · 참석 예정" : ""}</label>; })}</fieldset></>}
     {config.type === "teams" && <><div className="read-box"><b>{String(row.title)}</b><p>참석 예정 또는 실제 출석 회원과 지정 용병을 대상으로 팀을 구성합니다.</p></div><div className="field-row"><label>편성 방식<select name="team_mode" defaultValue={String(row.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, rowTeams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div><button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : rowTeams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>{rowTeams.map((team) => <section className="team-admin-card" key={team.id}><div className="field-row"><h3>{team.team_name}</h3>{Boolean(row.is_competitive) && <label>팀 스코어<input name={`team_score_${team.id}`} type="number" min="0" defaultValue={String(team.score ?? 0)} /></label>}</div>{team.event_team_members.map((member) => <div className="team-member-stat" key={member.id}><b>{member.participant_name}</b><span>{member.participant_position ?? "ANY"}</span>{Boolean(row.is_competitive) && <><label>골<input name={`goals_${member.id}`} type="number" min="0" defaultValue={String(member.goals)} /></label><label>평점<input name={`rating_${member.id}`} type="number" min="0" max="10" step="0.5" defaultValue={String(member.rating ?? "")} /></label></>}</div>)}</section>)}{Boolean(row.is_competitive) && rowTeams.length > 0 && <button className="cta secondary" name="action" value="stats" disabled={saving}>경기 기록 저장</button>}</>}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}

@@ -44,6 +44,7 @@ export interface Event {
   id: string;
   title: string;
   starts_at: string;
+  venue_id: string | null;
   venue: string;
   address: string | null;
   note: string | null;
@@ -52,6 +53,15 @@ export interface Event {
   team_mode: "random" | "balanced" | null;
   event_guest_players?: EventGuestPlayer[];
   event_teams?: EventTeam[];
+}
+
+export interface Venue {
+  id: string;
+  name: string;
+  address: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EventGuestPlayer {
