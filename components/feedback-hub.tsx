@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import type { Feedback, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
+import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
@@ -25,23 +26,29 @@ const statusLabels: Record<Feedback["status"], string> = {
   closed: "종결",
 };
 
-export default function FeedbackHub({ user, profile, feedback, supabase, canManage, onEdit, onDelete, reload, onLogin, toast }: {
+export default function FeedbackHub({ user, profile, feedback, supabase, loading, loadError, canManage, onEdit, onDelete, reload, onLogin, onRetry, toast }: {
   user: User | null;
   profile: Profile | null;
   feedback: Feedback[];
   supabase: SupabaseClient | null;
+  loading: boolean;
+  loadError: boolean;
   canManage: boolean;
   onEdit: (feedback: Feedback) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, label: string) => void;
   reload: () => void;
   onLogin: () => void;
+  onRetry: () => void;
   toast: ToastHandler;
 }) {
   const [saving, setSaving] = useState(false);
+  const [titleLength, setTitleLength] = useState(0);
+  const [bodyLength, setBodyLength] = useState(0);
   const [syncedIssuesKey, setSyncedIssuesKey] = useState("");
   const syncedIssuesRef = useRef("");
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
+  const formLocked = !user || profile?.status !== "active";
   const linkedIssuesKey = feedback
     .filter((item) => item.github_issue_number)
     .map((item) => `${item.github_issue_number}:${item.github_issue_state ?? "unknown"}`)
@@ -102,6 +109,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
     try {
       const published = shouldPublish && saved ? await publishToGithub(saved.id) : false;
       formElement.reset();
+      setTitleLength(0); setBodyLength(0);
       toast(shouldPublish ? published ? "의견을 접수하고 GitHub 이슈로 연결했습니다." : "내부 접수는 완료했지만 GitHub 연결에 실패했습니다." : "의견을 안전하게 접수했습니다.");
       reload();
     } finally {
@@ -120,18 +128,23 @@ export default function FeedbackHub({ user, profile, feedback, supabase, canMana
         <form className="voice-form" onSubmit={submit}>
           <div className="panel-title"><Lightbulb /><span><small>NEW FEEDBACK</small><b>의견 보내기</b></span></div>
           {!user && <button type="button" className="login-callout" onClick={onLogin}>로그인하고 의견 남기기</button>}
-          <label>분류<select name="category" defaultValue="operation" aria-describedby="feedback-routing-notice"><option value="operation">팀 운영</option><option value="system">시스템</option><option value="facility">구장·시설</option><option value="finance">회비·재정</option><option value="safety">안전</option><option value="other">기타</option></select></label>
-          <label>제목<input name="title" required minLength={2} maxLength={120} placeholder="어떤 의견인가요?" /></label>
-          <label>내용<textarea name="body" required minLength={5} maxLength={5000} rows={7} placeholder="상황과 개선 아이디어를 구체적으로 알려주세요." /></label>
-          <label className="check"><input type="checkbox" name="is_anonymous" /> 목록에서 익명으로 표시</label>
-          <p className="github-notice" id="feedback-routing-notice"><Github size={16} /> 시스템 제보는 공개 GitHub 이슈로 자동 등록됩니다. 다른 의견은 운영진 게시판에만 접수됩니다. 이름·이메일 등 개인정보는 내용에 적지 마세요.</p>
-          <button className="cta" disabled={saving || !user}><Send size={17} /> {saving ? "접수 중…" : "의견 접수"}</button>
+          {user && profile?.status !== "active" && <p className="form-lock-notice">회원 승인이 완료되면 의견을 작성할 수 있습니다.</p>}
+          <fieldset disabled={formLocked || saving}>
+            <label>분류<select name="category" defaultValue="operation" aria-describedby="feedback-routing-notice"><option value="operation">팀 운영</option><option value="system">시스템</option><option value="facility">구장·시설</option><option value="finance">회비·재정</option><option value="safety">안전</option><option value="other">기타</option></select></label>
+            <label>제목<input name="title" required minLength={2} maxLength={120} placeholder="어떤 의견인가요?" aria-describedby="feedback-title-count" onChange={(event) => setTitleLength(event.target.value.length)} /></label>
+            <span className="character-count" id="feedback-title-count">{titleLength.toLocaleString()} / 120</span>
+            <label>내용<textarea name="body" required minLength={5} maxLength={5000} rows={7} placeholder="상황과 개선 아이디어를 구체적으로 알려주세요." aria-describedby="feedback-body-count" onChange={(event) => setBodyLength(event.target.value.length)} /></label>
+            <span className="character-count" id="feedback-body-count">{bodyLength.toLocaleString()} / 5,000</span>
+            <label className="check"><input type="checkbox" name="is_anonymous" /> 목록에서 익명으로 표시</label>
+            <p className="github-notice" id="feedback-routing-notice"><Github size={16} /> 시스템 제보는 공개 GitHub 이슈로 자동 등록됩니다. 다른 의견은 운영진 게시판에만 접수됩니다. 이름·이메일 등 개인정보는 내용에 적지 마세요.</p>
+            <button className="cta"><Send size={17} /> {saving ? "접수 중…" : "의견 접수"}</button>
+          </fieldset>
         </form>
         <div className="voice-history">
-          <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div><span>{visibleFeedback.length}건</span></div>
-          {visibleFeedback.length === 0 ? <div className="empty"><MessageSquareText /><h2>아직 접수한 의견이 없습니다</h2><p>작은 아이디어도 팀을 더 좋게 만듭니다.</p></div> : visibleFeedback.map((item) => (
+          <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div>{!loading && !loadError && <span>{visibleFeedback.length}건</span>}</div>
+          {loading ? <SectionSkeleton label="접수 내역을 불러오는 중" /> : loadError ? <LoadError onRetry={onRetry} /> : visibleFeedback.length === 0 ? <Empty icon={<MessageSquareText />} title="아직 접수한 의견이 없습니다" description="작은 아이디어도 팀을 더 좋게 만듭니다." /> : visibleFeedback.map((item) => (
             <article className="feedback-card" key={item.id}>
-              <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id)}><Trash2 size={16} /></button></span>}</div>
+              <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id, item.title)}><Trash2 size={16} /></button></span>}</div>
               <h3>{item.title}</h3><p>{item.body}</p>
               {item.github_issue_url && <a className="github-issue-link" href={item.github_issue_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub Issue #{item.github_issue_number} <ExternalLink size={14} /></a>}
               {item.publish_to_github && !item.github_issue_url && item.author_id === user?.id && <button className="github-retry" disabled={saving} onClick={() => void retryGithubPublish(item.id)}><Github size={16} /> GitHub 연결 다시 시도</button>}

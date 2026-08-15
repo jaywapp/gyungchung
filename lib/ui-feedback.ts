@@ -1,6 +1,37 @@
 export type ToastKind = "success" | "error";
 export type ToastHandler = (message: string, kind?: ToastKind) => void;
 
+/**
+ * Which half of the clubhouse data set a mutation invalidated. `public` covers
+ * events, notices and participation forms; `member` covers everything that
+ * requires a signed-in session. Passing the narrower scope keeps a single
+ * save from refetching all eighteen queries.
+ */
+export type ReloadScope = "all" | "public" | "member";
+export type ReloadHandler = (scope?: ReloadScope) => void;
+
+/** Which half of the data set a delete on each table invalidates. */
+export const tableScopes: Record<string, ReloadScope> = {
+  fees: "member",
+  notices: "public",
+  events: "all",
+  participation_forms: "public",
+  feedback: "member",
+};
+
+/** Same, keyed by the admin editor that saved. */
+export const editorScopes: Record<string, ReloadScope> = {
+  members: "member",
+  guests: "member",
+  fees: "member",
+  notices: "public",
+  events: "all",
+  attendance: "member",
+  teams: "public",
+  feedback: "member",
+  forms: "public",
+};
+
 type ErrorLike = { code?: string | null; message?: string | null };
 
 export function toErrorMessage(error: unknown): string {
