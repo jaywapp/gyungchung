@@ -15,6 +15,7 @@ export const tableScopes: Record<string, ReloadScope> = {
   fees: "member",
   notices: "public",
   events: "all",
+  venues: "public",
   participation_forms: "public",
   feedback: "member",
 };
@@ -26,6 +27,7 @@ export const editorScopes: Record<string, ReloadScope> = {
   fees: "member",
   notices: "public",
   events: "all",
+  venues: "public",
   attendance: "member",
   teams: "public",
   feedback: "member",
