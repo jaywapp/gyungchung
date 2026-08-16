@@ -1658,11 +1658,35 @@ td { font-weight: 800; }
 .event-team > div span { color: var(--green-text); }
 
 .event-team > p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
 }
+
+.event-team-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.event-team-player:not(:last-child)::after {
+  margin-left: 4px;
+  color: var(--muted);
+  content: "·";
+}
+
+.event-team-player-goals {
+  color: var(--green-text);
+  letter-spacing: 1px;
+}
+
+.event-team-player-rating { color: var(--muted); }
 
 .event-match-history {
   display: grid;
@@ -2895,7 +2919,7 @@ td { font-weight: 800; }
     padding: 20px 15px;
   }
 
-  .event-info { padding: 0 0 0 18px; }
+  .event-info { padding: 0; }
 
   .event-info p {
     flex-wrap: wrap;
