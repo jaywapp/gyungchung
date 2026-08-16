@@ -23,6 +23,7 @@ type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "fe
 type RawGuestPlayer = Omit<GuestPlayer, "appearance_count">;
 const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "관리자" };
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
+const systemAdminPermissions = ["roles.manage", "officers.manage", "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage", "elections.manage", "polls.manage", "surveys.manage"];
 const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["rankings", "랭킹"], ["feedback", "의견"], ["participation", "참여"]];
 const tabPaths: Record<Tab, string> = { home: "/", members: "/members", fees: "/fees", notices: "/notices", events: "/events", rankings: "/rankings", feedback: "/feedback", participation: "/participation", admin: "/admin" };
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
@@ -185,7 +186,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   const permissions = useMemo(() => {
-    if (me?.is_system_admin) return new Set(rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission));
+    if (me?.is_system_admin) return new Set([...systemAdminPermissions, ...rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission)]);
     if (me?.role === "manager" && me.officer_title) return new Set(officerPermissions.filter((row) => row.officer_title === me.officer_title).map((row) => row.permission));
     return new Set<string>();
   }, [me?.is_system_admin, me?.officer_title, me?.role, officerPermissions, rolePermissions]);
@@ -248,7 +249,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     try {
       const result = identifier.includes("@")
         ? await supabase.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password })
-        : await supabase.auth.signInWithPassword({ phone: normalizePhone(identifier), password });
+        : await supabase.auth.signInWithPassword({ phone: normalizePhone(identifier), password: password === "1234" ? "gyungchung-1234" : password });
       if (result.error) {
         if (result.error.code === "invalid_credentials") return "로그인 정보 또는 비밀번호를 확인해 주세요.";
         if (result.error.code === "weak_password") return "더 안전한 비밀번호를 사용해 주세요.";
@@ -327,7 +328,7 @@ function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean
     const error = await onPasswordAuth(phone, String(form.get("password") ?? ""));
     if (error) setErrorMessage(error);
   };
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인</h2><p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p><form className="password-auth-form" onSubmit={submit}><label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label><label>비밀번호<input name="password" type="password" required minLength={8} autoComplete="current-password" placeholder="8자 이상 입력" /></label>{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button><small>비밀번호를 잊었다면 운영진에게 재설정을 요청해 주세요.</small><button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button></form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button><small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인</h2><p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p><form className="password-auth-form" onSubmit={submit}><label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label><label>비밀번호<input name="password" type="password" required minLength={legacyEmail ? 6 : 4} autoComplete="current-password" placeholder={legacyEmail ? "비밀번호 입력" : "초기 비밀번호 1234"} /></label>{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button><small>{legacyEmail ? "기존 이메일 계정의 비밀번호를 입력해 주세요." : "초기 비밀번호는 1234입니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요."}</small><button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button></form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button><small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small></div></div>;
 }
 
 function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { user: User; profile: Profile; busy: boolean; onClose: () => void; onLink: (provider: "google" | "kakao") => void; onSignOut: () => Promise<void> }) {
