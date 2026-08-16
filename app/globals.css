@@ -2710,6 +2710,78 @@ td { font-weight: 800; }
   background: var(--surface);
 }
 
+.attendance-status-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.editor .attendance-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: var(--tap);
+  margin: 0;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.attendance-member {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.attendance-member small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.editor .attendance-row select {
+  width: 116px;
+  flex: 0 0 116px;
+  margin: 0;
+}
+
+.attendance-walk-in {
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--lime) 35%, var(--paper));
+}
+
+.attendance-walk-in summary {
+  min-height: var(--tap);
+  padding: 14px 15px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.attendance-walk-in > .form-description {
+  margin: 0 15px 10px;
+}
+
+.attendance-walk-in .check-grid {
+  margin: 0 10px 10px;
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+@media (max-width: 560px) {
+  .editor .attendance-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .editor .attendance-row select {
+    width: 100%;
+    flex-basis: var(--tap);
+  }
+}
+
 /* --------------------------------------------------------------------------
    Standalone auth pages
    -------------------------------------------------------------------------- */
