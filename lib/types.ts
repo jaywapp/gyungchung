@@ -157,6 +157,7 @@ export interface Attendance {
   event_id: string;
   member_id: string;
   status: "going" | "not_going" | "undecided";
+  check_in_status: "present" | "late" | "absent" | null;
   checked_in_at: string | null;
   checked_in_by: string | null;
 }
