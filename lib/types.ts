@@ -54,6 +54,7 @@ export interface Event {
   team_mode: "random" | "balanced" | null;
   event_guest_players?: EventGuestPlayer[];
   event_teams?: EventTeam[];
+  event_matches?: EventMatch[];
 }
 
 export interface Venue {
@@ -106,6 +107,28 @@ export interface EventTeam {
   score: number | null;
   generation_mode: "random" | "balanced";
   event_team_members: EventTeamMember[];
+}
+
+export interface EventMatchScorer {
+  id: string;
+  event_id: string;
+  match_id: string;
+  team_id: string;
+  profile_id: string | null;
+  guest_player_id: string | null;
+  scorer_name: string;
+  goals: number;
+}
+
+export interface EventMatch {
+  id: string;
+  event_id: string;
+  match_number: number;
+  team_a_id: string;
+  team_b_id: string;
+  team_a_score: number;
+  team_b_score: number;
+  event_match_scorers: EventMatchScorer[];
 }
 
 export interface Fee {

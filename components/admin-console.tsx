@@ -171,6 +171,33 @@ function nextSundayMorning() {
 
 type TeamParticipant = { kind: "member" | "guest"; id: string; name: string; position: string | null };
 
+type MatchScorerDraft = { id: string; team_id: string; member_id: string; goals: number };
+type MatchDraft = { id: string; match_number: number; team_a_id: string; team_b_id: string; team_a_score: number; team_b_score: number; scorers: MatchScorerDraft[] };
+
+function buildMatchDrafts(event: Event): MatchDraft[] {
+  const teams = event.event_teams ?? [];
+  const members = teams.flatMap((team) => team.event_team_members);
+  return (event.event_matches ?? []).map((match) => ({
+    id: match.id,
+    match_number: match.match_number,
+    team_a_id: match.team_a_id,
+    team_b_id: match.team_b_id,
+    team_a_score: match.team_a_score,
+    team_b_score: match.team_b_score,
+    scorers: (match.event_match_scorers ?? []).map((scorer) => ({
+      id: scorer.id,
+      team_id: scorer.team_id,
+      member_id: members.find((member) => (scorer.profile_id !== null && member.profile_id === scorer.profile_id) || (scorer.guest_player_id !== null && member.guest_player_id === scorer.guest_player_id))?.id ?? "",
+      goals: scorer.goals,
+    })),
+  }));
+}
+
+function createMatchDraft(teams: Event["event_teams"], matchNumber: number): MatchDraft {
+  const [teamA, teamB] = teams ?? [];
+  return { id: `draft-${Date.now()}-${matchNumber}`, match_number: matchNumber, team_a_id: teamA?.id ?? "", team_b_id: teamB?.id ?? "", team_a_score: 0, team_b_score: 0, scorers: [] };
+}
+
 function shuffled<T>(items: T[]) {
   const result = [...items];
   if (result.length < 2) return result;
@@ -201,6 +228,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     return [...registered, ...recent];
   }, [events, venues]);
   const [saving, setSaving] = useState(false);
+  const [matchDrafts, setMatchDrafts] = useState<MatchDraft[]>(() => buildMatchDrafts(eventRow));
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
   const [selectedFeeMemberId, setSelectedFeeMemberId] = useState(String(row.member_id ?? initialFeeMember?.id ?? ""));
@@ -328,11 +356,41 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
           ordered.forEach((participant, index) => { const round = Math.floor(index / teamCount); const offset = index % teamCount; const teamIndex = round % 2 === 0 ? offset : teamCount - 1 - offset; teams[teamIndex].participants.push(participant); });
           ({ error } = await supabase.rpc("save_event_teams", { target_event_id: eventRow.id, target_mode: mode, target_teams: teams }));
         }
-      } else {
+      } else if (action === "stats") {
         const teams = eventRow.event_teams ?? [];
         const teamStats = teams.map((team) => ({ id: team.id, score: Number(fd.get(`team_score_${team.id}`) ?? 0) }));
         const playerStats = teams.flatMap((team) => team.event_team_members.map((member) => ({ id: member.id, goals: Number(fd.get(`goals_${member.id}`) ?? 0), rating: String(fd.get(`rating_${member.id}`) ?? "") })));
         ({ error } = await supabase.rpc("save_competitive_event_stats", { target_event_id: eventRow.id, target_team_stats: teamStats, target_player_stats: playerStats }));
+      } else if (action === "matches") {
+        const teams = eventRow.event_teams ?? [];
+        const members = teams.flatMap((team) => team.event_team_members);
+        const targetMatches: Array<Record<string, unknown>> = [];
+        for (const match of matchDrafts) {
+          if (!match.team_a_id || !match.team_b_id || match.team_a_id === match.team_b_id) {
+            error = { message: "각 경기에 서로 다른 두 팀을 선택해 주세요." };
+            break;
+          }
+          if (match.team_a_score < 0 || match.team_b_score < 0) {
+            error = { message: "스코어는 0 이상이어야 합니다." };
+            break;
+          }
+          const scorers: Array<Record<string, unknown>> = [];
+          for (const scorer of match.scorers) {
+            if (!scorer.member_id) {
+              error = { message: `${match.match_number}경기의 득점자를 선택해 주세요.` };
+              break;
+            }
+            const member = members.find((item) => item.id === scorer.member_id);
+            if (!member || scorer.team_id !== member.event_team_id) {
+              error = { message: `${match.match_number}경기의 득점자 팀을 확인해 주세요.` };
+              break;
+            }
+            scorers.push({ team_id: scorer.team_id, profile_id: member.profile_id, guest_player_id: member.guest_player_id, scorer_name: member.participant_name, goals: Math.max(1, Number(scorer.goals) || 1) });
+          }
+          if (error) break;
+          targetMatches.push({ match_number: match.match_number, team_a_id: match.team_a_id, team_b_id: match.team_b_id, team_a_score: match.team_a_score, team_b_score: match.team_b_score, scorers });
+        }
+        if (!error) ({ error } = await supabase.rpc("save_event_match_history", { target_event_id: eventRow.id, target_matches: targetMatches }));
       }
     }
     if (config.type === "feedback") ({ error } = await supabase.from("feedback").update({ status: fd.get("status"), officer_response: fd.get("officer_response") || null }).eq("id", row.id));
@@ -357,9 +415,21 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     {config.type === "venues" && <><label>구장명<input name="name" required maxLength={120} defaultValue={String(row.name ?? "")} /></label><label>주소<input name="address" maxLength={240} defaultValue={String(row.address ?? "")} /></label><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label></>}
     {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>등록·최근 사용 구장</b><div>{venueOptions.map((option) => <button type="button" key={JSON.stringify([option.id, option.venue, option.address])} onClick={() => { setVenueId(option.id); setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{option.address && <small>{option.address}</small>}</button>)}</div></div>}<input name="venue_id" type="hidden" value={venueId} /><div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => { setVenueId(""); setVenue(event.target.value); }} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => { setVenueId(""); setAddress(event.target.value); }} /></label>{!venueId && <label className="check"><input name="save_venue" type="checkbox" defaultChecked /> 입력한 구장을 구장 목록에도 등록</label>}<label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
     {config.type === "attendance" && <><div className="read-box"><b>{String(row.title)}</b><p>{new Date(String(row.starts_at)).toLocaleString("ko-KR")} · {String(row.venue)}</p></div><fieldset className="check-grid"><legend>실제 출석 회원</legend>{profiles.filter((profile) => profile.status === "active").map((profile) => { const record = attendance.find((item) => item.event_id === row.id && item.member_id === profile.id); return <label className="check" key={profile.id}><input name="checked_member_ids" value={profile.id} type="checkbox" defaultChecked={Boolean(record?.checked_in_at)} /> {profile.name} · {profile.position ?? "PLAYER"}{record?.status === "going" ? " · 참석 예정" : ""}</label>; })}</fieldset></>}
-    {config.type === "teams" && <><div className="read-box"><b>{String(row.title)}</b><p>참여 회원을 직접 선택하고 지정 용병과 함께 팀을 구성합니다. 로그인 계정이 없는 회원도 명부에 있으면 선택할 수 있습니다.</p></div><fieldset className="check-grid"><legend>참여 회원</legend>{profiles.filter((profile) => profile.status === "active").map((profile) => { const attended = attendance.some((item) => item.event_id === eventRow.id && item.member_id === profile.id && (item.status === "going" || item.checked_in_at)); return <label className="check" key={profile.id}><input name="member_ids" value={profile.id} type="checkbox" defaultChecked={assignedMemberIds.has(profile.id) || attended} /> {profile.name} · {profile.position ?? "ANY"}{attended ? " · 참석" : ""}</label>; })}</fieldset><div className="field-row"><label>편성 방식<select name="team_mode" defaultValue={String(row.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, rowTeams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div><button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : rowTeams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>{rowTeams.map((team) => <section className="team-admin-card" key={team.id}><div className="field-row"><h3>{team.team_name}</h3>{Boolean(row.is_competitive) && <label>팀 스코어<input name={`team_score_${team.id}`} type="number" min="0" defaultValue={String(team.score ?? 0)} /></label>}</div>{team.event_team_members.map((member) => <div className="team-member-stat" key={member.id}><b>{member.participant_name}</b><span>{member.participant_position ?? "ANY"}</span>{Boolean(row.is_competitive) && <><label>골<input name={`goals_${member.id}`} type="number" min="0" defaultValue={String(member.goals)} /></label><label>평점<input name={`rating_${member.id}`} type="number" min="0" max="10" step="0.5" defaultValue={String(member.rating ?? "")} /></label></>}</div>)}</section>)}{Boolean(row.is_competitive) && rowTeams.length > 0 && <button className="cta secondary" name="action" value="stats" disabled={saving}>경기 기록 저장</button>}</>}
+    {config.type === "teams" && <><div className="read-box"><b>{String(row.title)}</b><p>참여 회원을 직접 선택하고 지정 용병과 함께 팀을 구성합니다. 로그인 계정이 없는 회원도 명부에 있으면 선택할 수 있습니다.</p></div><fieldset className="check-grid"><legend>참여 회원</legend>{profiles.filter((profile) => profile.status === "active").map((profile) => { const attended = attendance.some((item) => item.event_id === eventRow.id && item.member_id === profile.id && (item.status === "going" || item.checked_in_at)); return <label className="check" key={profile.id}><input name="member_ids" value={profile.id} type="checkbox" defaultChecked={assignedMemberIds.has(profile.id) || attended} /> {profile.name} · {profile.position ?? "ANY"}{attended ? " · 참석" : ""}</label>; })}</fieldset><div className="field-row"><label>편성 방식<select name="team_mode" defaultValue={String(row.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, rowTeams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div><button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : rowTeams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>{rowTeams.map((team) => <section className="team-admin-card" key={team.id}><div className="field-row"><h3>{team.team_name}</h3>{Boolean(row.is_competitive) && <label>팀 스코어<input name={`team_score_${team.id}`} type="number" min="0" defaultValue={String(team.score ?? 0)} /></label>}</div>{team.event_team_members.map((member) => <div className="team-member-stat" key={member.id}><b>{member.participant_name}</b><span>{member.participant_position ?? "ANY"}</span>{Boolean(row.is_competitive) && <><label>골<input name={`goals_${member.id}`} type="number" min="0" defaultValue={String(member.goals)} /></label><label>평점<input name={`rating_${member.id}`} type="number" min="0" max="10" step="0.5" defaultValue={String(member.rating ?? "")} /></label></>}</div>)}</section>)}{Boolean(row.is_competitive) && rowTeams.length > 0 && <button className="cta secondary" name="action" value="stats" disabled={saving}>팀 집계 저장</button>}{rowTeams.length > 0 && <><MatchHistoryEditor teams={rowTeams} matches={matchDrafts} onChange={setMatchDrafts} /><button className="cta secondary" name="action" value="matches" disabled={saving}>{saving ? "저장 중…" : "경기별 기록 저장"}</button></>}</>}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
     {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
     {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : "저장하기"}</button>}
   </form></div>;
+}
+
+function MatchHistoryEditor({ teams, matches, onChange }: { teams: Event["event_teams"]; matches: MatchDraft[]; onChange: (matches: MatchDraft[]) => void }) {
+  const availableTeams = teams ?? [];
+  const updateMatch = (matchId: string, patch: Partial<MatchDraft>) => onChange(matches.map((match) => match.id === matchId ? { ...match, ...patch } : match));
+  const removeMatch = (matchId: string) => onChange(matches.filter((match) => match.id !== matchId));
+  const addMatch = () => onChange([...matches, createMatchDraft(availableTeams, Math.max(0, ...matches.map((match) => match.match_number)) + 1)]);
+  const addScorer = (matchId: string) => onChange(matches.map((match) => match.id === matchId ? { ...match, scorers: [...match.scorers, { id: `draft-scorer-${Date.now()}`, team_id: match.team_a_id, member_id: "", goals: 1 }] } : match));
+  const updateScorer = (matchId: string, scorerId: string, patch: Partial<MatchScorerDraft>) => onChange(matches.map((match) => match.id === matchId ? { ...match, scorers: match.scorers.map((scorer) => scorer.id === scorerId ? { ...scorer, ...patch } : scorer) } : match));
+  const removeScorer = (matchId: string, scorerId: string) => onChange(matches.map((match) => match.id === matchId ? { ...match, scorers: match.scorers.filter((scorer) => scorer.id !== scorerId) } : match));
+
+  return <section className="match-history-editor"><header><div><h3>경기별 기록</h3><p className="form-description">한 일정에 여러 경기를 추가하고, 경기마다 스코어와 득점자를 남깁니다.</p></div><span>{matches.length}경기</span></header>{matches.map((match) => { const teamOptions = availableTeams.filter((team) => team.id === match.team_a_id || team.id === match.team_b_id); return <div className="match-history-row" key={match.id}><header><b>{match.match_number}경기</b><button type="button" onClick={() => removeMatch(match.id)}>삭제</button></header><div className="match-history-score"><label>팀 A<select value={match.team_a_id} onChange={(event) => updateMatch(match.id, { team_a_id: event.target.value })}>{availableTeams.filter((team) => team.id !== match.team_b_id).map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label><label>점수<input type="number" min="0" value={match.team_a_score} onChange={(event) => updateMatch(match.id, { team_a_score: Math.max(0, Number(event.target.value) || 0) })} /></label><span>:</span><label>점수<input type="number" min="0" value={match.team_b_score} onChange={(event) => updateMatch(match.id, { team_b_score: Math.max(0, Number(event.target.value) || 0) })} /></label><label>팀 B<select value={match.team_b_id} onChange={(event) => updateMatch(match.id, { team_b_id: event.target.value })}>{availableTeams.filter((team) => team.id !== match.team_a_id).map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label></div><div className="match-history-scorers"><header><span>득점자</span><button type="button" className="text-link" onClick={() => addScorer(match.id)}>득점자 추가</button></header>{match.scorers.map((scorer) => { const scorerTeam = teamOptions.find((team) => team.id === scorer.team_id); const memberOptions = scorerTeam?.event_team_members ?? []; return <div className="match-scorer-row" key={scorer.id}><label>팀<select value={scorer.team_id} onChange={(event) => updateScorer(match.id, scorer.id, { team_id: event.target.value, member_id: "" })}>{teamOptions.map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label><label>선수<select value={scorer.member_id} onChange={(event) => updateScorer(match.id, scorer.id, { member_id: event.target.value })}><option value="">선수 선택</option>{memberOptions.map((member) => <option key={member.id} value={member.id}>{member.participant_name}</option>)}</select></label><label>골<input type="number" min="1" value={scorer.goals} onChange={(event) => updateScorer(match.id, scorer.id, { goals: Math.max(1, Number(event.target.value) || 1) })} /></label><button type="button" aria-label="득점자 삭제" onClick={() => removeScorer(match.id, scorer.id)}>×</button></div>; })}</div></div>; })}<button type="button" className="cta secondary" onClick={addMatch} disabled={availableTeams.length < 2}>경기 추가</button></section>;
 }
