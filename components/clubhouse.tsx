@@ -20,7 +20,6 @@ const AdminEditor = dynamic(() => import("@/components/admin-console").then((mod
 const ConfirmDialog = dynamic(() => import("@/components/confirm-dialog"));
 
 type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "admin";
-type PasswordAuthMode = "login" | "activate";
 type RawGuestPlayer = Omit<GuestPlayer, "appearance_count">;
 const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "관리자" };
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
@@ -265,39 +264,6 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       setBusy(false);
     }
   };
-  const requestActivation = async (phone: string) => {
-    if (!supabase) return "로그인 연결을 준비 중입니다.";
-    setBusy(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({ phone: normalizePhone(phone), options: { shouldCreateUser: false } });
-      if (error) {
-        if (error.code?.includes("rate_limit")) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
-        return "등록된 회원 번호인지 확인해 주세요. 계정이 준비되지 않았다면 운영진에게 문의해 주세요.";
-      }
-      return null;
-    } catch {
-      return "인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-    } finally {
-      setBusy(false);
-    }
-  };
-  const verifyActivation = async (phone: string, token: string, password: string) => {
-    if (!supabase) return "로그인 연결을 준비 중입니다.";
-    setBusy(true);
-    try {
-      const verified = await supabase.auth.verifyOtp({ phone: normalizePhone(phone), token, type: "sms" });
-      if (verified.error) return "인증번호가 올바르지 않거나 만료되었습니다.";
-      const updated = await supabase.auth.updateUser({ password });
-      if (updated.error) return updated.error.code === "weak_password" ? "더 안전한 비밀번호를 사용해 주세요." : "비밀번호를 저장하지 못했습니다.";
-      setLoginOpen(false);
-      showToast("회원 계정을 활성화했습니다.");
-      return null;
-    } catch {
-      return "인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-    } finally {
-      setBusy(false);
-    }
-  };
   const linkIdentity = async (provider: "google" | "kakao") => {
     if (!supabase) return;
     setBusy(true);
@@ -340,7 +306,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     </main>
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
-    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} onActivationRequest={requestActivation} onActivationVerify={verifyActivation} />}
+    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} />}
     {accountOpen && user && me && <AccountModal user={user} profile={me} busy={busy} onClose={() => setAccountOpen(false)} onLink={linkIdentity} onSignOut={async () => { setAccountOpen(false); await signOut(); }} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { const scope = editorScopes[quickEditor.type] ?? "all"; setQuickEditor(null); showToast("저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
@@ -350,33 +316,18 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   </div>;
 }
 
-function LoginModal({ busy, onClose, onSignIn, onPasswordAuth, onActivationRequest, onActivationVerify }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null>; onActivationRequest: (phone: string) => Promise<string | null>; onActivationVerify: (phone: string, token: string, password: string) => Promise<string | null> }) {
+function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null> }) {
   const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
-  const [mode, setMode] = useState<PasswordAuthMode>("login");
   const [phone, setPhone] = useState("");
   const [legacyEmail, setLegacyEmail] = useState(false);
-  const [codeSent, setCodeSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setErrorMessage(null);
     const form = new FormData(event.currentTarget);
-    if (mode === "login") {
-      const error = await onPasswordAuth(phone, String(form.get("password") ?? ""));
-      if (error) setErrorMessage(error);
-      return;
-    }
-    if (!codeSent) {
-      const error = await onActivationRequest(phone);
-      if (error) setErrorMessage(error); else setCodeSent(true);
-      return;
-    }
-    const password = String(form.get("password") ?? "");
-    if (password !== String(form.get("password_confirm") ?? "")) return setErrorMessage("비밀번호 확인이 일치하지 않습니다.");
-    const error = await onActivationVerify(phone, String(form.get("token") ?? ""), password);
+    const error = await onPasswordAuth(phone, String(form.get("password") ?? ""));
     if (error) setErrorMessage(error);
   };
-  const changeMode = (nextMode: PasswordAuthMode) => { setMode(nextMode); setLegacyEmail(false); setCodeSent(false); setPhone(""); setErrorMessage(null); };
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>{mode === "login" ? "로그인" : "계정 활성화"}</h2><p>{mode === "login" ? "등록된 전화번호와 비밀번호로 로그인하세요." : "운영진이 등록한 전화번호를 인증하고 본인 비밀번호를 설정하세요."}</p><div className="auth-mode-tabs"><button type="button" aria-pressed={mode === "login"} onClick={() => changeMode("login")}>로그인</button><button type="button" aria-pressed={mode === "activate"} onClick={() => changeMode("activate")}>계정 활성화</button></div><form className="password-auth-form" onSubmit={submit}><label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} disabled={codeSent} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label>{mode === "login" && <label>비밀번호<input name="password" type="password" required minLength={8} autoComplete="current-password" placeholder="8자 이상 입력" /></label>}{mode === "activate" && codeSent && <><label>SMS 인증번호<input name="token" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required placeholder="6자리 인증번호" /></label><label>새 비밀번호<input name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8자 이상 입력" /></label><label>새 비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" /></label></>}{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : mode === "login" ? legacyEmail ? "이메일로 로그인" : "전화번호로 로그인" : codeSent ? "인증하고 비밀번호 저장" : "SMS 인증번호 받기"}</button>{mode === "login" && <><button type="button" className="password-reset-link" onClick={() => changeMode("activate")}>비밀번호 설정·재설정</button><button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button></>}</form>{mode === "login" && <><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button><small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small></>}</div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인</h2><p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p><form className="password-auth-form" onSubmit={submit}><label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label><label>비밀번호<input name="password" type="password" required minLength={8} autoComplete="current-password" placeholder="8자 이상 입력" /></label>{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button><small>비밀번호를 잊었다면 운영진에게 재설정을 요청해 주세요.</small><button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button></form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button><small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small></div></div>;
 }
 
 function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { user: User; profile: Profile; busy: boolean; onClose: () => void; onLink: (provider: "google" | "kakao") => void; onSignOut: () => Promise<void> }) {
