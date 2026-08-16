@@ -95,6 +95,12 @@ Deno.serve(async (request: Request) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    const { data: member, error: memberError } = await admin
+      .from("profiles")
+      .select("id,name")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+    if (memberError || !member) return json(request, { error: "연결된 회원을 찾을 수 없습니다." }, 403);
     const payload = await request.json();
     if (payload?.action === "sync") {
       const { data: linkedFeedback, error: linkedFeedbackError } = await userClient
@@ -132,9 +138,9 @@ Deno.serve(async (request: Request) => {
 
     const { data: feedback, error: feedbackError } = await admin
       .from("feedback")
-      .select("id,author_id,category,title,body,publish_to_github,github_issue_number,github_issue_url,created_at")
+      .select("id,author_id,category,title,body,is_anonymous,publish_to_github,github_issue_number,github_issue_url,created_at")
       .eq("id", feedbackId)
-      .eq("author_id", user.id)
+      .eq("author_id", member.id)
       .single();
     if (feedbackError || !feedback) return json(request, { error: "제보를 찾을 수 없습니다." }, 404);
     if (feedback.category !== "system" || !feedback.publish_to_github) {
@@ -148,7 +154,7 @@ Deno.serve(async (request: Request) => {
     const { count, error: countError } = await admin
       .from("feedback")
       .select("id", { count: "exact", head: true })
-      .eq("author_id", user.id)
+      .eq("author_id", member.id)
       .eq("publish_to_github", true)
       .gte("created_at", oneHourAgo);
     if (countError) throw countError;
@@ -177,12 +183,14 @@ Deno.serve(async (request: Request) => {
         body: [
           `## ${category} 제보`,
           "",
+          `- 제보자: ${feedback.is_anonymous ? "익명" : member.name}`,
+          "",
           body,
           "",
           "---",
           "",
           `<!-- gyungchung-feedback:${feedback.id} -->`,
-          "> 경충FC 클럽하우스에서 시스템 제보로 접수되어 자동 생성된 이슈입니다. 작성자 정보는 포함하지 않습니다.",
+          "> 경충FC 클럽하우스에서 시스템 제보로 접수되어 자동 생성된 이슈입니다.",
         ].join("\n"),
         labels: [GITHUB_LABEL],
       }),
@@ -197,7 +205,7 @@ Deno.serve(async (request: Request) => {
       .from("feedback")
       .update({ github_issue_number: issue.number, github_issue_url: issue.html_url, github_issue_state: "open", github_issue_closed_at: null })
       .eq("id", feedback.id)
-      .eq("author_id", user.id)
+      .eq("author_id", member.id)
       .is("github_issue_url", null);
     if (updateError) throw updateError;
 

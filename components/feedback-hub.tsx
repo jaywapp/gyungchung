@@ -95,7 +95,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
     const category = String(form.get("category")) as Feedback["category"];
     const shouldPublish = category === "system";
     const { data: saved, error } = await supabase.from("feedback").insert({
-      author_id: user.id,
+      author_id: profile.id,
       category,
       title: form.get("title"),
       body: form.get("body"),
@@ -135,8 +135,8 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
             <span className="character-count" id="feedback-title-count">{titleLength.toLocaleString()} / 120</span>
             <label>내용<textarea name="body" required minLength={5} maxLength={5000} rows={7} placeholder="상황과 개선 아이디어를 구체적으로 알려주세요." aria-describedby="feedback-body-count" onChange={(event) => setBodyLength(event.target.value.length)} /></label>
             <span className="character-count" id="feedback-body-count">{bodyLength.toLocaleString()} / 5,000</span>
-            <label className="check"><input type="checkbox" name="is_anonymous" /> 목록에서 익명으로 표시</label>
-            <p className="github-notice" id="feedback-routing-notice"><Github size={16} /> 시스템 제보는 공개 GitHub 이슈로 자동 등록됩니다. 다른 의견은 운영진 게시판에만 접수됩니다. 이름·이메일 등 개인정보는 내용에 적지 마세요.</p>
+            <label className="check"><input type="checkbox" name="is_anonymous" /> 익명으로 제보</label>
+            <p className="github-notice" id="feedback-routing-notice"><Github size={16} /> 시스템 제보는 공개 GitHub 이슈로 자동 등록되며, 익명을 선택하지 않으면 회원 이름도 함께 기록됩니다. 다른 의견은 운영진 게시판에만 접수됩니다.</p>
             <button className="cta"><Send size={17} /> {saving ? "접수 중…" : "의견 접수"}</button>
           </fieldset>
         </form>
@@ -147,7 +147,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
               <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id, item.title)}><Trash2 size={16} /></button></span>}</div>
               <h3>{item.title}</h3><p>{item.body}</p>
               {item.github_issue_url && <a className="github-issue-link" href={item.github_issue_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub Issue #{item.github_issue_number} <ExternalLink size={14} /></a>}
-              {item.publish_to_github && !item.github_issue_url && item.author_id === user?.id && <button className="github-retry" disabled={saving} onClick={() => void retryGithubPublish(item.id)}><Github size={16} /> GitHub 연결 다시 시도</button>}
+              {item.publish_to_github && !item.github_issue_url && item.author_id === profile?.id && <button className="github-retry" disabled={saving} onClick={() => void retryGithubPublish(item.id)}><Github size={16} /> GitHub 연결 다시 시도</button>}
               {item.officer_response && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>운영진 답변</b>{item.officer_response}</span></div>}
             </article>
           ))}
