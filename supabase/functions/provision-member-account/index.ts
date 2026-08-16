@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_PUBLISHABLE_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SUPABASE_SECRET_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// Supabase requires at least six characters; the client maps the member-facing 1234 to this value.
+const INITIAL_PASSWORD = "gyungchung-1234";
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get("origin") ?? "*";
@@ -87,12 +89,18 @@ Deno.serve(async (request: Request) => {
     .eq("id", memberId)
     .maybeSingle();
   if (memberError || !member) return json(request, { error: "회원을 찾을 수 없습니다." }, 404);
-  if (member.auth_user_id) return json(request, { error: "이미 로그인 계정이 연결된 회원입니다." }, 409);
   if (!member.phone) return json(request, { error: "전화번호를 먼저 등록해 주세요." }, 400);
+
+  if (member.auth_user_id) {
+    const { error } = await adminClient.auth.admin.updateUserById(member.auth_user_id, { password: INITIAL_PASSWORD });
+    if (error) return json(request, { error: "비밀번호를 변경하지 못했습니다." }, 500);
+    return json(request, { member_id: member.id, auth_user_id: member.auth_user_id, password_updated: true });
+  }
 
   const { data, error } = await adminClient.auth.admin.createUser({
     phone: member.phone,
     phone_confirm: true,
+    password: INITIAL_PASSWORD,
     user_metadata: { member_id: member.id, full_name: member.name },
   });
   if (error || !data.user) {
