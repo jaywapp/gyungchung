@@ -27,7 +27,7 @@ as $$
     when pg_catalog.regexp_replace(raw_phone, '[^0-9+]', '', 'g') ~ '^\+82[0-9]{9,10}$'
       then pg_catalog.regexp_replace(raw_phone, '[^0-9+]', '', 'g')
     when pg_catalog.regexp_replace(raw_phone, '[^0-9]', '', 'g') ~ '^01[016789][0-9]{7,8}$'
-      then '+82' || pg_catalog.substring(pg_catalog.regexp_replace(raw_phone, '[^0-9]', '', 'g') from 2)
+      then '+82' || pg_catalog.substr(pg_catalog.regexp_replace(raw_phone, '[^0-9]', '', 'g'), 2)
     else null
   end;
 $$;
