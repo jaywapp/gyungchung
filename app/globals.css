@@ -1710,6 +1710,53 @@ td { font-weight: 800; }
   line-height: 1.5;
 }
 
+.event-match-scorers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.event-match-scorer-group,
+.event-match-scorer-list,
+.event-match-scorer {
+  display: inline-flex;
+  align-items: center;
+}
+
+.event-match-scorer-group { flex-wrap: wrap; gap: 6px; }
+
+.event-match-scorer-list {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.event-match-scorer-group > b {
+  color: var(--green-text);
+  font-size: 11px;
+}
+
+.event-match-scorer {
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.event-match-balls {
+  color: var(--green-text);
+  letter-spacing: 1px;
+}
+
+.event-match-scorer-separator {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .mom-results {
   display: flex;
   flex-wrap: wrap;
