@@ -9,3 +9,5 @@ out/
 supabase/.temp/
 tsconfig.tsbuildinfo
 .impeccable/
+.codex-worktrees/
+.codex-remote-attachments/

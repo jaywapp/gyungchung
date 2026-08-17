@@ -5,6 +5,7 @@ import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, 
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { editorScopes, tableScopes, toErrorMessage, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
+import { getCheckInStatus, isCheckedIn } from "@/lib/attendance";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import ConfirmDialog from "@/components/confirm-dialog";
 
@@ -29,15 +30,6 @@ const feedbackStatusLabels: Record<Feedback["status"], string> = { received: "�
 const formKindLabels: Record<ParticipationForm["kind"], string> = { election: "회장단 선거", poll: "의사 결정 투표", survey: "회원 설문" };
 const formStatusLabels: Record<ParticipationForm["status"], string> = { draft: "초안", open: "진행 중", closed: "마감", archived: "보관" };
 const checkInStatusLabels: Record<NonNullable<Attendance["check_in_status"]>, string> = { present: "출석", late: "지각", absent: "결석" };
-
-function getCheckInStatus(record?: Attendance): Attendance["check_in_status"] {
-  return record?.check_in_status ?? (record?.checked_in_at ? "present" : null);
-}
-
-function isCheckedIn(record?: Attendance) {
-  const status = getCheckInStatus(record);
-  return status === "present" || status === "late";
-}
 
 const permissionLabels: Record<string, string> = {
   "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
