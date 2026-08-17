@@ -208,7 +208,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const manageableParticipationKinds = (["election", "poll", "survey"] as ParticipationKind[]).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date());
-  const myFee = fees.find((fee) => fee.member_id === me?.id);
+  /** RLS already narrows a regular member to their own rows; an officer reads the club, so the home card still has to filter. */
+  const myFees = useMemo(() => fees.filter((fee) => fee.member_id === me?.id), [fees, me?.id]);
+  const myStanding = myFees.length > 0 ? summarizeFees(myFees) : null;
   const goingCount = upcoming ? attendance.filter((item) => item.event_id === upcoming.id && item.status === "going").length : 0;
   /** Sections gated behind a session must not flash their signed-out state first. */
   const sessionPending = authLoading || memberLoading;
@@ -298,9 +300,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     </header>
 
     <main id="main">
-      {view === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
+      {view === "home" && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
       {view === "members" && <Members profiles={activeProfiles} user={user} loading={sessionPending} loadError={memberLoadError} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
-      {view === "fees" && <Fees fees={fees} profiles={profiles} user={user} loading={sessionPending} loadError={memberLoadError} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
+      {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={memberLoadError} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
       {view === "events" && <Events events={events} attendance={attendance} user={user} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
       {view === "rankings" && <Rankings rankings={rankings} goalEvents={events} momLeaderboard={momLeaderboard} user={user} profile={me} loading={sessionPending || publicLoading} loadError={memberLoadError || eventLoadError} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
@@ -344,7 +346,7 @@ function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { use
   return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">간편 로그인 계정을 연결하면 다음부터 해당 계정으로도 로그인할 수 있습니다.</p><button type="button" className="social kakao" disabled={busy || providers.has("custom:kakao")} onClick={() => onLink("kakao")}><Link2 size={17} /> {providers.has("custom:kakao") ? "카카오 연결됨" : "카카오 계정 연결"}</button><button type="button" className="social google" disabled={busy || providers.has("google")} onClick={() => onLink("google")}><Link2 size={17} /> {providers.has("google") ? "Google 연결됨" : "Google 계정 연결"}</button><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
 }
 
-function Home({ upcoming, notice, fee, goingCount, memberCount, user, publicLoading, eventLoadError, noticeLoadError, onRetry, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; fee?: Fee; goingCount: number; memberCount: number; user: User | null; publicLoading: boolean; eventLoadError: boolean; noticeLoadError: boolean; onRetry: () => void; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
+function Home({ upcoming, notice, feeStanding, goingCount, memberCount, user, publicLoading, eventLoadError, noticeLoadError, onRetry, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; feeStanding: FeeStanding | null; goingCount: number; memberCount: number; user: User | null; publicLoading: boolean; eventLoadError: boolean; noticeLoadError: boolean; onRetry: () => void; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
   const date = upcoming ? new Date(upcoming.starts_at) : null;
   const now = new Date();
   return <><section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> EST. 2014 · SEOUL</span><h1>우리의 주말,<br /><em>우리의 풋살.</em></h1><div className="lead-row"><strong>2026<br />SEASON</strong><p>경쟁보다 함께 뛰는 즐거움. 경충FC는 주말마다 모여 공을 차고, 땀 흘리고, 오래 함께할 사람을 만듭니다.</p></div><div className="hero-actions"><button className="cta" onClick={() => onNavigate("events")}>다음 일정 참석하기 <ChevronRight /></button><button className="text-link" onClick={() => onNavigate("participation")}>팀 의사결정 참여</button></div></div>
@@ -352,7 +354,7 @@ function Home({ upcoming, notice, fee, goingCount, memberCount, user, publicLoad
     <section className="locker"><div className="section-heading"><div><span className="eyebrow">MEMBER LOCKER ROOM</span><h2>팀 클럽하우스</h2></div><span suppressHydrationWarning>{now.getFullYear()} · {String(now.getMonth() + 1).padStart(2, "0")}</span></div><div className="panel-grid">
       <article className="panel"><div className="panel-title"><CalendarDays /><span><small>NEXT SCHEDULE RSVP</small><h3>참석 여부</h3></span></div>{upcoming ? <div className="rsvp-schedule"><time dateTime={upcoming.starts_at}>{formatDate(upcoming.starts_at)} · {formatTime(upcoming.starts_at)}</time><a href={naverMapUrl(upcoming)} target="_blank" rel="noreferrer"><MapPin size={16} /><span><b>{upcoming.venue}</b><small>{upcoming.address || "네이버 지도에서 위치 확인"}</small></span><ChevronRight size={16} /></a></div> : <p>아직 등록된 다음 일정이 없습니다.</p>}{upcoming && <div className="rsvp"><button className={myAttendance === "going" ? "selected" : ""} aria-pressed={myAttendance === "going"} onClick={() => onAttendance("going")}>{user ? "참석" : "로그인 후 참석"}</button><button className={myAttendance === "not_going" ? "selected no" : ""} aria-pressed={myAttendance === "not_going"} onClick={() => onAttendance("not_going")}>불참</button></div>}</article>
       <article className="panel green-top"><div className="panel-title"><Megaphone /><span><small>LATEST NOTICE</small><h3>팀 공지</h3></span></div>{publicLoading ? <div className="panel-loading" role="status" aria-label="공지를 불러오는 중"><span /><span /></div> : noticeLoadError ? <><p className="panel-headline">공지를 불러오지 못했습니다.</p><button className="panel-link" onClick={onRetry}>다시 시도 <ChevronRight /></button></> : <><p className="panel-headline">{notice?.title ?? "등록된 공지가 없습니다"}</p><p>{notice?.body}</p><button className="panel-link" onClick={() => onNavigate("notices")}>전체 공지 <ChevronRight /></button></>}</article>
-      <article className="panel"><div className="panel-title"><CircleDollarSign /><span><small>MEMBERSHIP FEE</small><h3>회비 현황</h3></span></div><div className="fee-amount">{fee ? `${fee.amount.toLocaleString()}원` : user ? "등록 내역 없음" : "로그인 필요"}</div>{fee && <FeeStatus status={fee.status} />}<button className="panel-link" onClick={() => onNavigate("fees")}>상세 보기 <ChevronRight /></button></article>
+      <article className="panel"><div className="panel-title"><CircleDollarSign /><span><small>MEMBERSHIP FEE</small><h3>회비 현황</h3></span></div><div className="fee-amount">{!user ? "로그인 필요" : !feeStanding ? "등록 내역 없음" : feeStanding.unpaidCount > 0 ? `${feeStanding.unpaidTotal.toLocaleString()}원` : "미납 없음"}</div>{feeStanding && <><FeeStatus status={feeStanding.unpaidCount > 0 ? "unpaid" : feeStanding.paidCount > 0 ? "paid" : "exempt"} /><p className="fee-panel-note">{feeStanding.unpaidCount > 0 ? `미납 ${feeStanding.unpaidCount}건 · 납부 완료 ${feeStanding.paidCount}건` : `납부 완료 ${feeStanding.paidCount}건 · 면제 ${feeStanding.exemptCount}건`}</p></>}<button className="panel-link" onClick={() => onNavigate("fees")}>상세 보기 <ChevronRight /></button></article>
     </div></section><a className="video-banner" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer"><span className="play"><Youtube /></span><span><small>GYUNGCHUNG FILM</small><b>구장에서 기록한 경충FC의 플레이를 만나보세요.</b></span><ChevronRight /></a></>;
 }
 
@@ -365,16 +367,101 @@ function Members({ profiles, user, loading, loadError, canManage, onEdit, onKick
   if (profiles.length === 0) return <section className="content">{intro}<Empty icon={<UserRound />} title="공개된 회원이 없습니다" description="가입 승인이 완료된 회원이 생기면 이곳에 표시됩니다." /></section>;
   return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 수정·강퇴 버튼으로 회원을 관리할 수 있습니다.</div>}<div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number" aria-hidden="true">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span>{canManage && <div className="member-management-actions"><button className="resource-icon-action" aria-label={`${profile.name} 회원 정보 수정`} onClick={() => onEdit(profile)}><Pencil size={16} /></button>{profile.auth_user_id !== user.id && !profile.is_system_admin && <button className="resource-icon-action" aria-label={`${profile.name} 회원 강퇴`} onClick={() => onKick(profile)}><UserMinus size={16} /></button>}</div>}<div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>{profile.jersey_number != null ? `NO. ${profile.jersey_number} · ` : ""}JOINED {new Date(profile.joined_at).getFullYear()}</p><div className="member-badges">{profile.role === "manager" && <span className="admin-badge">{profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels.manager}</span>}{profile.is_system_admin && <span className="admin-badge system">시스템 관리자</span>}</div></article>)}</div></section>;
 }
-function Fees({ fees, profiles, user, loading, loadError, canManage, onCreate, onEdit, onDelete, onLogin, onRetry, onAsk }: { fees: Fee[]; profiles: Profile[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onLogin: () => void; onRetry: () => void; onAsk: () => void }) {
-  const myMemberId = profiles.find((profile) => profile.auth_user_id === user?.id)?.id;
-  const myUnpaid = fees.filter((fee) => fee.member_id === myMemberId && fee.status === "unpaid");
-  const intro = <PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description={user ? "시스템 관리 권한과 무관하게 관리자 월 15,000원, 일반회원 월 30,000원 또는 참여 시 10,000원을 적용합니다." : "회원에게만 공개하는 정보입니다."} />;
+/* `fees` row-level security hands a regular member only their own rows, so the
+   old club-wide table degenerated into their own name repeated once per month.
+   Each audience now gets the screen its data can actually answer. */
+function Fees({ fees, profiles, profile, events, user, loading, loadError, canManage, onCreate, onEdit, onDelete, onLogin, onRetry, onAsk }: { fees: Fee[]; profiles: Profile[]; profile: Profile | null; events: Event[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onLogin: () => void; onRetry: () => void; onAsk: () => void }) {
+  const myFees = useMemo(() => fees.filter((fee) => fee.member_id === profile?.id), [fees, profile?.id]);
+  const intro = <PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description={!user ? "회원에게만 공개하는 정보입니다." : canManage ? "회원별 납부 상태를 확인하고 회비를 등록·수정합니다. 관리자 월 15,000원, 일반회원 월 30,000원 또는 참여 시 10,000원을 적용합니다." : "내가 낸 회비와 아직 남은 회비를 월별로 확인합니다."} />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="회비 내역을 불러오는 중" /></section>;
-  if (!user) return <section className="content">{intro}<LoginGate icon={<CircleDollarSign />} title="로그인 후 회비를 확인하세요" description="회원별 납부 내역은 승인된 회원에게만 공개합니다." onLogin={onLogin} /></section>;
+  if (!user) return <section className="content">{intro}<LoginGate icon={<CircleDollarSign />} title="로그인 후 회비를 확인하세요" description="납부 내역은 본인과 회비 담당 운영진에게만 공개합니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
-  return <section className="content">{intro}{myUnpaid.length > 0 && <div className="unpaid-callout"><CircleDollarSign size={20} /><span><b>미납 회비가 {myUnpaid.length}건 있습니다</b>납부 계좌와 방법은 총무가 안내합니다. 확인이 필요하면 의견 보내기로 문의해 주세요.</span><button type="button" className="cta small" onClick={onAsk}>총무에게 문의 <ChevronRight size={16} /></button></div>}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 회비 등록</button></div>}<div className="table-wrap scroll-region" tabIndex={0} role="region" aria-label="회원별 회비 납부 현황"><table><caption className="sr-only">회원별 회비 납부 현황</caption><thead><tr><th scope="col">회원</th><th scope="col">구분</th><th scope="col">기준</th><th scope="col">금액</th><th scope="col">상태</th>{canManage && <th scope="col">관리</th>}</tr></thead><tbody>{fees.map((fee) => { const memberName = fee.profiles?.name ?? profiles.find((profile) => profile.id === fee.member_id)?.name ?? "회원"; const feeLabel = `${memberName} · ${fee.month.slice(0, 7)} ${fee.fee_type === "participation" ? "참여비" : "월회비"}`; return <tr key={fee.id}><th scope="row">{memberName}</th><td>{fee.fee_type === "participation" ? "참여비" : "월회비"}</td><td>{fee.month.slice(0, 7)}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td>{canManage && <td><div className="resource-actions"><button aria-label={`${feeLabel} 수정`} onClick={() => onEdit(fee)}><Pencil size={16} /></button><button aria-label={`${feeLabel} 삭제`} onClick={() => onDelete(fee.id, feeLabel)}><Trash2 size={16} /></button></div></td>}</tr>; })}</tbody></table>{fees.length === 0 && <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비 내역을 등록하면 여기에 표시됩니다." />}</div></section>;
+  return <section className="content">{intro}{canManage ? <FeeLedger fees={fees} profiles={profiles} events={events} myFees={myFees} onCreate={onCreate} onEdit={onEdit} onDelete={onDelete} onAsk={onAsk} /> : <FeeMemberView fees={myFees} profile={profile} events={events} onAsk={onAsk} />}</section>;
+}
+
+/** One member reading their own ledger: what is owed, what it is based on, what the plan is. */
+function FeeMemberView({ fees, profile, events, onAsk }: { fees: Fee[]; profile: Profile | null; events: Event[]; onAsk: () => void }) {
+  const standing = summarizeFees(fees);
+  const plan = feePlan(profile);
+  /* Participation fees are raised per schedule, so one month can hold several
+     rows. Grouping by month keeps that legible instead of flattening it. */
+  const months = useMemo(() => {
+    const buckets = new Map<string, Fee[]>();
+    fees.forEach((fee) => { const key = fee.month.slice(0, 7); buckets.set(key, [...(buckets.get(key) ?? []), fee]); });
+    return Array.from(buckets.entries()).sort((a, b) => b[0].localeCompare(a[0])).map(([key, rows]) => {
+      const monthlyCount = rows.filter((row) => row.fee_type === "monthly").length;
+      return { key, rows: [...rows].sort((a, b) => (a.fee_type === b.fee_type ? 0 : a.fee_type === "monthly" ? -1 : 1)), standing: summarizeFees(rows), composition: [monthlyCount > 0 ? `월회비 ${monthlyCount}건` : null, rows.length - monthlyCount > 0 ? `참여비 ${rows.length - monthlyCount}건` : null].filter(Boolean).join(" · ") };
+    });
+  }, [fees]);
+  const ask = <button type="button" className="cta small" onClick={onAsk}>총무에게 문의 <ChevronRight size={16} /></button>;
+  return <>
+    <div className={standing.unpaidCount > 0 ? "fee-standing owing" : "fee-standing"}>
+      <div className="fee-standing-figure"><small>{standing.unpaidCount > 0 ? "내야 할 회비" : "내야 할 회비 없음"}</small><b>{standing.unpaidTotal.toLocaleString()}원</b><span>{standing.unpaidCount > 0 ? `미납 ${standing.unpaidCount}건` : "지금까지 등록된 회비를 모두 정리했습니다"}</span></div>
+      <dl className="fee-standing-facts"><div><dt>내 회비 기준</dt><dd>{plan ? `${plan.label} ${plan.amount.toLocaleString()}원` : "총무 확인 필요"}<small>{plan?.note ?? "회비 방식이 아직 지정되지 않았습니다"}</small></dd></div><div><dt>납부 완료</dt><dd>{standing.paidCount}건<small>{standing.paidTotal.toLocaleString()}원</small></dd></div><div><dt>면제</dt><dd>{standing.exemptCount}건<small>{standing.exemptCount > 0 ? "납부 의무가 없는 회비입니다" : "면제 처리된 회비가 없습니다"}</small></dd></div><div><dt>마지막 납부</dt><dd>{standing.lastPaidAt ? formatDate(standing.lastPaidAt) : "기록 없음"}<small>전체 {standing.total}건 등록됨</small></dd></div></dl>
+    </div>
+    {/* Knowing you owe money is a dead end without a way to settle it, so the escape hatch stays on both states. */}
+    {standing.unpaidCount > 0 ? <div className="unpaid-callout"><CircleDollarSign size={20} /><span><b>납부 계좌와 방법은 총무가 안내합니다</b>이미 입금했는데 미납으로 남아 있으면 의견 보내기로 알려 주세요.</span>{ask}</div> : <div className="unpaid-callout settled"><Check size={20} /><span><b>확인이 필요한 회비가 없습니다</b>금액이나 기준이 실제와 다르면 의견 보내기로 알려 주세요.</span>{ask}</div>}
+    {fees.length === 0 ? <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비를 등록하면 월별 납부 내역이 이곳에 쌓입니다." /> : <ol className="fee-month-list">{months.map((group) => <li key={group.key}>
+      <div className="fee-month-head"><b>{formatFeeMonth(group.key)}</b><small>{group.composition}</small><span className={group.standing.unpaidCount > 0 ? "owing" : undefined}>{group.standing.unpaidCount > 0 ? `미납 ${group.standing.unpaidCount}건 · ${group.standing.unpaidTotal.toLocaleString()}원` : "미납 없음"}</span></div>
+      <ul className="fee-entry-list">{group.rows.map((fee) => <li key={fee.id} className={`fee-entry ${fee.fee_type} ${fee.status}`}><span className="fee-entry-kind">{fee.fee_type === "participation" ? "참여비" : "월회비"}</span><span className="fee-entry-basis"><b>{feeBasis(fee, events, false)}</b><small>{fee.status === "paid" && fee.paid_at ? `${formatDate(fee.paid_at)} 납부` : fee.status === "exempt" ? "총무가 면제 처리한 회비" : fee.fee_type === "participation" ? "참여한 일정에 대한 회비" : "해당 월의 정기 회비"}</small></span><span className="fee-entry-amount">{fee.amount.toLocaleString()}원</span><FeeStatus status={fee.status} /></li>)}</ul>
+    </li>)}</ol>}
+  </>;
+}
+
+/** The officer answer to "has 김OO paid?": one row group per member, unpaid members first. */
+function FeeLedger({ fees, profiles, events, myFees, onCreate, onEdit, onDelete, onAsk }: { fees: Fee[]; profiles: Profile[]; events: Event[]; myFees: Fee[]; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onAsk: () => void }) {
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
+  const groups = useMemo(() => {
+    const byMember = new Map<string, { id: string; name: string; plan: ReturnType<typeof feePlan>; rows: Fee[] }>();
+    fees.forEach((fee) => {
+      const owner = profiles.find((item) => item.id === fee.member_id);
+      const group = byMember.get(fee.member_id) ?? { id: fee.member_id, name: fee.profiles?.name ?? owner?.name ?? "회원", plan: feePlan(owner), rows: [] };
+      group.rows.push(fee);
+      byMember.set(fee.member_id, group);
+    });
+    return Array.from(byMember.values()).map((group) => ({ ...group, standing: summarizeFees(group.rows) })).sort((a, b) => b.standing.unpaidTotal - a.standing.unpaidTotal || b.standing.unpaidCount - a.standing.unpaidCount || a.name.localeCompare(b.name, "ko"));
+  }, [fees, profiles]);
+  const owing = groups.filter((group) => group.standing.unpaidCount > 0);
+  const owingTotal = owing.reduce((sum, group) => sum + group.standing.unpaidTotal, 0);
+  const myUnpaidCount = myFees.filter((fee) => fee.status === "unpaid").length;
+  const visible = unpaidOnly ? owing : groups;
+  return <>
+    {myUnpaidCount > 0 && <div className="unpaid-callout"><CircleDollarSign size={20} /><span><b>본인 회비도 {myUnpaidCount}건 미납입니다</b>아래 명단에서 본인 이름을 찾아 확인하거나, 의견 보내기로 문의해 주세요.</span><button type="button" className="cta small" onClick={onAsk}>총무에게 문의 <ChevronRight size={16} /></button></div>}
+    <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 회비 등록</button></div>
+    <div className="fee-ledger-head">
+      <dl className="fee-ledger-summary"><div className={owing.length > 0 ? "owing" : undefined}><dt>미납 회원</dt><dd>{owing.length}명</dd></div><div className={owingTotal > 0 ? "owing" : undefined}><dt>미납 합계</dt><dd>{owingTotal.toLocaleString()}원</dd></div><div><dt>등록 회원</dt><dd>{groups.length}명</dd></div><div><dt>등록 건수</dt><dd>{fees.length}건</dd></div></dl>
+      <div className="fee-filter" role="group" aria-label="표시할 회원 범위"><button type="button" className={unpaidOnly ? undefined : "selected"} aria-pressed={!unpaidOnly} onClick={() => setUnpaidOnly(false)}>전체 {groups.length}명</button><button type="button" className={unpaidOnly ? "selected" : undefined} aria-pressed={unpaidOnly} onClick={() => setUnpaidOnly(true)}>미납 {owing.length}명</button></div>
+    </div>
+    {visible.length === 0 ? <Empty icon={<CircleDollarSign />} title={fees.length === 0 ? "등록된 회비 내역이 없습니다" : "미납 회원이 없습니다"} description={fees.length === 0 ? "회비 등록으로 회원별 납부 상태를 만들어 주세요." : "등록된 회비가 모두 납부되었거나 면제 처리되었습니다."} /> : <div className="table-wrap fee-ledger scroll-region" tabIndex={0} role="region" aria-label="회원별 회비 납부 현황"><table><caption className="sr-only">회원별 회비 납부 현황. 회원 이름 행 아래에 그 회원의 회비 내역이 이어집니다.</caption><thead><tr><th scope="col">기준</th><th scope="col">구분</th><th scope="col">금액</th><th scope="col">상태</th><th scope="col">관리</th></tr></thead>{visible.map((group) => <tbody key={group.id}>
+      <tr className={group.standing.unpaidCount > 0 ? "fee-member-row owing" : "fee-member-row"}><th scope="colgroup" colSpan={5}><div><span className="fee-member-mark" aria-hidden="true">{group.name.slice(0, 1)}</span><span className="fee-member-name"><b>{group.name}</b><small>{group.plan ? `${group.plan.label} ${group.plan.amount.toLocaleString()}원` : "회비 기준 미설정"}</small></span><span className="fee-member-standing">{group.standing.unpaidCount > 0 ? `미납 ${group.standing.unpaidCount}건 · ${group.standing.unpaidTotal.toLocaleString()}원` : `미납 없음 · 납부 ${group.standing.paidCount}건`}</span></div></th></tr>
+      {group.rows.map((fee) => { const feeLabel = `${group.name} · ${fee.month.slice(0, 7)} ${fee.fee_type === "participation" ? "참여비" : "월회비"}`; return <tr key={fee.id}><th scope="row">{feeBasis(fee, events)}</th><td>{fee.fee_type === "participation" ? "참여비" : "월회비"}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td><td><div className="resource-actions"><button aria-label={`${feeLabel} 수정`} onClick={() => onEdit(fee)}><Pencil size={16} /></button><button aria-label={`${feeLabel} 삭제`} onClick={() => onDelete(fee.id, feeLabel)}><Trash2 size={16} /></button></div></td></tr>; })}
+    </tbody>)}</table></div>}
+  </>;
 }
 function FeeStatus({ status }: { status: Fee["status"] }) { return <span className={`status ${status}`}>{status === "paid" ? "납부 완료" : status === "exempt" ? "면제" : "미납"}</span>; }
+type FeeStanding = { total: number; unpaidCount: number; unpaidTotal: number; paidCount: number; paidTotal: number; exemptCount: number; lastPaidAt: string | null };
+/** `exempt` is neither paid nor unpaid, so it is counted on its own line everywhere it surfaces. */
+function summarizeFees(rows: Fee[]): FeeStanding {
+  const unpaid = rows.filter((row) => row.status === "unpaid");
+  const paid = rows.filter((row) => row.status === "paid");
+  const paidDates = paid.map((row) => row.paid_at).filter((value): value is string => Boolean(value)).sort();
+  return { total: rows.length, unpaidCount: unpaid.length, unpaidTotal: unpaid.reduce((sum, row) => sum + row.amount, 0), paidCount: paid.length, paidTotal: paid.reduce((sum, row) => sum + row.amount, 0), exemptCount: rows.length - unpaid.length - paid.length, lastPaidAt: paidDates[paidDates.length - 1] ?? null };
+}
+/** Standard dues by account type, mirroring the amount the fee editor applies. */
+function feePlan(profile: Profile | null | undefined) {
+  if (!profile) return null;
+  if (profile.role === "manager") return { label: "관리자 월회비", amount: 15000, note: "직책과 무관하게 매월 15,000원" };
+  if (profile.fee_plan === "per_event") return { label: "참여비", amount: 10000, note: "참여한 일정마다 10,000원" };
+  return { label: "월회비", amount: 30000, note: "매월 30,000원" };
+}
+function formatFeeMonth(month: string) { const [year, value] = month.slice(0, 7).split("-"); return `${year}년 ${Number(value)}월`; }
+/** A participation fee belongs to a schedule, a monthly fee to a month — naming the source is what makes five rows in one month readable. */
+function feeBasis(fee: Fee, events: Event[], withMonth = true) {
+  if (fee.fee_type !== "participation") return withMonth ? `${formatFeeMonth(fee.month)} 정기 회비` : "정기 회비";
+  const event = events.find((item) => item.id === fee.event_id);
+  if (event) return `${new Date(event.starts_at).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} · ${event.title}`;
+  return withMonth ? `${formatFeeMonth(fee.month)} 참여 일정` : "참여 일정";
+}
 function Notices({ notices, loading, loadError, canManage, onCreate, onEdit, onDelete, onRetry }: { notices: Notice[]; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (notice: Notice) => void; onDelete: (id: string, label: string) => void; onRetry: () => void }) {
   const intro = <PageIntro kicker="NOTICE BOARD" title="공지사항" description="놓치면 안 되는 클럽 소식을 전합니다." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="공지를 불러오는 중" /></section>;
