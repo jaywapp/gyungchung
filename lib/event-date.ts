@@ -4,9 +4,14 @@
  * on the local calendar day, which is the day the member actually plays.
  */
 
-export function toEventDateKey(startsAt: string) {
-  const date = new Date(startsAt);
+/** The one place a local calendar day becomes a key, so the month grid and an
+ *  event row can never disagree about which day a date belongs to. */
+export function toDateKey(date: Date) {
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function toEventDateKey(startsAt: string) {
+  return toDateKey(new Date(startsAt));
 }
 
 export function eventDatePath(startsAt: string) {

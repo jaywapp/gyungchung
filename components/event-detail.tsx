@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, MapPin, Pencil, Shield, Trash2, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ClipboardCheck, MapPin, Pencil, Shield, Trash2, Trophy, X } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Profile } from "@/lib/types";
@@ -129,7 +129,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
 
         {(!isPast || canVote || canManage) && <div className="event-detail-actions">
           {!isPast && <button type="button" className="cta" onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{myAttendance?.status === "going" ? "참석 유지하기" : "참석하기"}</button>}
-          {canManage && <><button type="button" className="text-link" onClick={() => onManageAttendance(event)}>출석 체크</button><button type="button" className="text-link" onClick={() => onManageMatch(event)}>팀·경기 기록</button></>}
+          {canManage && <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className="officer-menu-item" aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className="officer-menu-item" aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>}
           {canVote && <button type="button" className="text-link" onClick={() => setVotingEvent(event)}>{ownVote ? "MOM 재투표" : "MOM 투표"}</button>}
         </div>}
 

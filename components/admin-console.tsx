@@ -235,14 +235,14 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const attendanceLateCount = attendanceScope.filter((profile) => getCheckInStatus(attendanceRecordFor(profile)) === "late").length;
   const attendanceAbsentCount = attendanceScope.filter((profile) => getCheckInStatus(attendanceRecordFor(profile)) === "absent").length;
   const attendanceProgress = attendanceScope.length > 0 ? Math.round((attendanceCheckedCount / attendanceScope.length) * 100) : 0;
-  const matchesAttendanceSearch = (profile: Profile) => !attendanceSearch || `${profile.name} ${profile.position ?? ""}`.toLocaleLowerCase().includes(attendanceSearch);
+  const matchesAttendanceSearch = (profile: Profile) => !attendanceSearch || profile.name.toLocaleLowerCase().includes(attendanceSearch);
   const filteredScheduledProfiles = scheduledProfiles.filter(matchesAttendanceSearch);
   const filteredWalkInProfiles = walkInProfiles.filter(matchesAttendanceSearch);
   const renderAttendanceRow = (profile: Profile) => {
     const record = attendanceRecordFor(profile);
     const status = getCheckInStatus(record);
     const responseLabel = record?.status === "going" ? "참석 예정" : record?.status === "not_going" ? "불참 응답" : record?.status === "undecided" ? "미응답" : "현장 추가 가능";
-    return <label className={`attendance-row attendance-row-${status ?? "pending"}`} key={profile.id}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{profile.position ?? "PLAYER"} · {responseLabel}</small></span><select className="attendance-status-select" name={`check_in_status_${profile.id}`} defaultValue={status ?? ""} aria-label={`${profile.name} 출석 상태`}><option value="">미체크</option>{(Object.keys(checkInStatusLabels) as Array<NonNullable<Attendance["check_in_status"]>>).map((option) => <option key={option} value={option}>{checkInStatusLabels[option]}</option>)}</select></label>;
+    return <label className={`attendance-row attendance-row-${status ?? "pending"}`} key={profile.id}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{responseLabel}</small></span><select className="attendance-status-select" name={`check_in_status_${profile.id}`} defaultValue={status ?? ""} aria-label={`${profile.name} 출석 상태`}><option value="">미체크</option>{(Object.keys(checkInStatusLabels) as Array<NonNullable<Attendance["check_in_status"]>>).map((option) => <option key={option} value={option}>{checkInStatusLabels[option]}</option>)}</select></label>;
   };
   const [venue, setVenue] = useState(String(row.venue ?? ""));
   const [address, setAddress] = useState(String(row.address ?? ""));
@@ -448,7 +448,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         <div className="attendance-progress" aria-hidden="true"><span style={{ width: `${attendanceProgress}%` }} /></div>
         <div className="attendance-summary-stats"><span className="attendance-stat-present">{attendancePresentCount} 출석</span><span className="attendance-stat-late">{attendanceLateCount} 지각</span><span className="attendance-stat-absent">{attendanceAbsentCount} 결석</span></div>
       </section>
-      <label className="attendance-search"><span className="sr-only">회원 검색</span><input type="search" value={attendanceQuery} onChange={(event) => setAttendanceQuery(event.target.value)} placeholder="이름 또는 포지션 검색" /></label>
+      <label className="attendance-search"><span className="sr-only">회원 검색</span><input type="search" value={attendanceQuery} onChange={(event) => setAttendanceQuery(event.target.value)} placeholder="이름 검색" /></label>
       <section className="attendance-group">
         <div className="attendance-group-heading"><b>참석 예정</b><span>{scheduledProfiles.length}명</span></div>
         <div className="attendance-status-grid">{filteredScheduledProfiles.length > 0 ? filteredScheduledProfiles.map(renderAttendanceRow) : <p className="form-description">{attendanceSearch ? "검색 결과가 없습니다." : "참석 예정으로 답한 회원이 없습니다."}</p>}</div>
