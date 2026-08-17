@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, CalendarDays, Check, ChevronRight, CircleDollarSign, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserMinus, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission } from "@/lib/types";
+import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
 import type { EditorConfig } from "@/components/admin-console";
 import { editorScopes, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
+import { getCheckInStatus } from "@/lib/attendance";
 import { eventDatePath } from "@/lib/event-date";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { Empty, FormError, LoadError, LoginGate, SectionSkeleton } from "@/components/section-states";
@@ -22,21 +23,25 @@ const ConfirmDialog = dynamic(() => import("@/components/confirm-dialog"));
 const EventDetail = dynamic(() => import("@/components/event-detail"), { loading: () => <SectionSkeleton /> });
 
 type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "admin";
-type PasswordAuthMode = "login" | "signup";
 type RawGuestPlayer = Omit<GuestPlayer, "appearance_count">;
 const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "관리자" };
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
+const systemAdminPermissions = ["roles.manage", "officers.manage", "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage", "elections.manage", "polls.manage", "surveys.manage"];
 const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["rankings", "랭킹"], ["feedback", "의견"], ["participation", "참여"]];
 const tabPaths: Record<Tab, string> = { home: "/", members: "/members", fees: "/fees", notices: "/notices", events: "/events", rankings: "/rankings", feedback: "/feedback", participation: "/participation", admin: "/admin" };
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
 
+function normalizePhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (/^01[016789]\d{7,8}$/.test(digits)) return `+82${digits.slice(1)}`;
+  return value.trim();
+}
+
 /** Results the auth callback and the OAuth redirect hand back on the URL. */
 const authResults: Record<string, { message: string; kind: ToastKind }> = {
   error: { message: "로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.", kind: "error" },
-  "email-required": { message: "소셜 계정에서 이메일을 받지 못했습니다. 이메일을 등록해 주세요.", kind: "error" },
-  "email-confirmed": { message: "이메일 인증을 완료했습니다.", kind: "success" },
+  linked: { message: "간편 로그인 계정을 연결했습니다.", kind: "success" },
   login: { message: "로그인했습니다.", kind: "success" },
-  signup: { message: "회원가입했습니다. 가입 신청서를 작성해 주세요.", kind: "success" },
 };
 
 export default function Clubhouse({ children }: { children?: React.ReactNode }) {
@@ -50,10 +55,12 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const view: Tab | null = eventDateKey ? null : tab;
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
   const [rawGuestPlayers, setRawGuestPlayers] = useState<RawGuestPlayer[]>([]);
   const [rankings, setRankings] = useState<MemberRanking[]>([]);
   const [momVotes, setMomVotes] = useState<EventMomVote[]>([]);
@@ -94,14 +101,20 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const loadPublicData = useCallback(async (showSkeleton = false) => {
     if (!supabase) return;
     if (showSkeleton) setPublicLoading(true);
-    const [eventRes, noticeRes, formRes] = await Promise.all([
-      supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at"),
+    const [eventRes, noticeRes, formRes, venueRes] = await Promise.all([
+      supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at"),
       supabase.from("notices").select("id, title, body, is_pinned, created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }),
+      supabase.from("venues").select("id, name, address, note, created_at, updated_at").order("name"),
     ]);
-    setEvents(eventRes.error ? [] : (eventRes.data as Event[] | null) ?? []);
+    /** Keep the app usable if the frontend deploy reaches production before its migration. */
+    const resolvedEventRes = eventRes.error
+      ? await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at")
+      : eventRes;
+    setEvents(resolvedEventRes.error ? [] : ((resolvedEventRes.data as Event[] | null) ?? []).map((event) => ({ ...event, venue_id: event.venue_id ?? null })));
+    setVenues(venueRes.error ? [] : (venueRes.data as Venue[] | null) ?? []);
     setNotices(noticeRes.error ? [] : (noticeRes.data as Notice[] | null) ?? []);
-    setEventLoadError(Boolean(eventRes.error)); setNoticeLoadError(Boolean(noticeRes.error));
+    setEventLoadError(Boolean(resolvedEventRes.error)); setNoticeLoadError(Boolean(noticeRes.error));
     if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
     setPublicLoading(false);
   }, [supabase]);
@@ -113,10 +126,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       setMemberLoadError(false); setMemberLoading(false); return;
     }
     if (showSkeleton) setMemberLoading(true);
-    const [profileRes, allProfileRes, applicationRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, officerPermissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
+    const [profileRes, allProfileRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, officerPermissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
       supabase.rpc("get_member_directory"),
       supabase.from("profiles").select("*").order("name"),
-      supabase.from("membership_applications").select("*"),
       supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }),
       supabase.from("event_guest_fees").select("*, guest_players(name), events(title, starts_at)").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*"),
@@ -130,19 +142,13 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       supabase.rpc("get_event_mom_results"),
       supabase.rpc("get_mom_leaderboard"),
     ]);
-    const applications = applicationRes.data ?? [];
     const privateProfiles = (allProfileRes.data as Profile[] | null) ?? [];
     const visibleProfiles = new Map(((profileRes.data as Profile[] | null) ?? []).map((profile) => [profile.id, profile]));
     privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
-    const enrichedProfiles = Array.from(visibleProfiles.values())
-      .map((profile) => ({ ...profile, membership_application: applications.find((application) => application.member_id === profile.id) ?? null }))
-      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
-    const ownProfile = privateProfiles.find((profile) => profile.id === currentUser.id) ?? null;
+    const enrichedProfiles = Array.from(visibleProfiles.values()).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const ownProfile = privateProfiles.find((profile) => profile.auth_user_id === currentUser.id) ?? null;
     setProfiles(enrichedProfiles);
-    setMe(ownProfile ? {
-      ...ownProfile,
-      membership_application: applications.find((application) => application.member_id === ownProfile.id) ?? null,
-    } : null);
+    setMe(ownProfile);
     setFees((feeRes.data as unknown as Fee[]) ?? []); setGuestFees((guestFeeRes.data as unknown as GuestFee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setOfficerPermissions((officerPermissionRes.data as OfficerPermission[]) ?? []); setRawGuestPlayers((guestRes.data as RawGuestPlayer[]) ?? []); setRankings((rankingRes.data as MemberRanking[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []); setMomLeaderboard((momLeaderboardRes.data as MomLeaderboardEntry[]) ?? []);
     setMemberLoadError(Boolean(allProfileRes.error || feeRes.error || rankingRes.error || feedbackRes.error));
     setMemberLoading(false);
@@ -186,7 +192,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   const permissions = useMemo(() => {
-    if (me?.is_system_admin) return new Set(rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission));
+    if (me?.is_system_admin) return new Set([...systemAdminPermissions, ...rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission)]);
     if (me?.role === "manager" && me.officer_title) return new Set(officerPermissions.filter((row) => row.officer_title === me.officer_title).map((row) => row.permission));
     return new Set<string>();
   }, [me?.is_system_admin, me?.officer_title, me?.role, officerPermissions, rolePermissions]);
@@ -200,12 +206,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [events, rawGuestPlayers]);
   const isOfficer = permissions.size > 0;
   const manageableParticipationKinds = (["election", "poll", "survey"] as ParticipationKind[]).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
-  const needsEmail = Boolean(user && !user.email);
-  const applicationRejected = me?.membership_application?.review_status === "rejected";
-  const needsApplication = Boolean(user?.email && me?.status === "pending" && (!me.membership_application || applicationRejected));
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date());
-  const myFee = fees.find((fee) => fee.member_id === user?.id);
+  const myFee = fees.find((fee) => fee.member_id === me?.id);
   const goingCount = upcoming ? attendance.filter((item) => item.event_id === upcoming.id && item.status === "going").length : 0;
   /** Sections gated behind a session must not flash their signed-out state first. */
   const sessionPending = authLoading || memberLoading;
@@ -232,12 +235,12 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     showToast(`${target.name} 회원을 강퇴했습니다.`);
     await reload("member");
   };
-  const signIn = async (provider: "google" | "kakao", mode: PasswordAuthMode) => {
+  const signIn = async (provider: "google" | "kakao") => {
     if (!supabase) return showToast("로그인 연결을 준비 중입니다.");
     setBusy(true);
     const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
     const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", `/?auth=${mode}`);
+    callbackUrl.searchParams.set("next", "/?auth=login");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: oauthProvider,
       options: {
@@ -246,31 +249,21 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     });
     if (error) { showToast("로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); setBusy(false); }
   };
-  const passwordAuth = async (mode: PasswordAuthMode, email: string, password: string) => {
+  const passwordAuth = async (identifier: string, password: string) => {
     if (!supabase) return "로그인 연결을 준비 중입니다.";
     setBusy(true);
     try {
-      const result = mode === "login"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-        });
+      const result = identifier.includes("@")
+        ? await supabase.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password })
+        : await supabase.auth.signInWithPassword({ phone: normalizePhone(identifier), password: password === "1234" ? "gyungchung-1234" : password });
       if (result.error) {
-        if (result.error.code === "invalid_credentials") return "이메일 또는 비밀번호를 확인해 주세요. 소셜 계정과 같은 이메일이라면 비밀번호를 먼저 설정해 주세요.";
-        if (result.error.code === "email_not_confirmed") return "이메일 인증을 완료한 뒤 로그인해 주세요.";
-        if (result.error.code === "email_address_invalid") return "사용할 수 있는 이메일 주소를 입력해 주세요.";
+        if (result.error.code === "invalid_credentials") return "로그인 정보를 확인하거나 운영진에게 문의해 주세요.";
         if (result.error.code === "weak_password") return "더 안전한 비밀번호를 사용해 주세요.";
         if (result.error.code?.includes("rate_limit")) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
-        return mode === "login" ? "로그인하지 못했습니다. 입력 정보를 확인해 주세요." : "회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        return "로그인하지 못했습니다. 입력 정보를 확인해 주세요.";
       }
       setLoginOpen(false);
-      if (mode === "signup" && !result.data.session) {
-        showToast("메일을 확인해 주세요. 기존 소셜 계정이라면 비밀번호 설정을 이용해 주세요.");
-      } else {
-        showToast(mode === "signup" ? "회원가입했습니다. 가입 신청서를 작성해 주세요." : "로그인했습니다.");
-      }
+      showToast("로그인했습니다.");
       return null;
     } catch {
       return "인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
@@ -278,34 +271,22 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       setBusy(false);
     }
   };
-  const sendPasswordReset = async (email: string) => {
-    if (!supabase) return "로그인 연결을 준비 중입니다.";
+  const linkIdentity = async (provider: "google" | "kakao") => {
+    if (!supabase) return;
     setBusy(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/auth/update-password`,
-      });
-      if (error) {
-        if (error.code === "email_address_invalid") return "사용할 수 있는 이메일 주소를 입력해 주세요.";
-        if (error.code?.includes("rate_limit")) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
-        return "비밀번호 설정 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.";
-      }
-      setLoginOpen(false);
-      showToast("계정이 존재하면 비밀번호 설정 메일이 발송됩니다.");
-      return null;
-    } catch {
-      return "인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-    } finally {
-      setBusy(false);
-    }
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", "/?auth=linked");
+    const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
+    const { error } = await supabase.auth.linkIdentity({ provider: oauthProvider, options: { redirectTo: callbackUrl.toString() } });
+    if (error) { setBusy(false); showToast("간편 로그인 계정을 연결하지 못했습니다.", "error"); }
   };
   const signOut = async () => { await supabase?.auth.signOut(); navigate("home"); showToast("로그아웃했습니다."); };
   const setMyAttendance = async (status: Attendance["status"], eventId = upcoming?.id) => {
     if (!user || !eventId || !supabase) return setLoginOpen(true);
     if (me?.status !== "active") return showToast("회원 승인 후 참석 여부를 등록할 수 있습니다.");
-    const { error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: user.id, status }, { onConflict: "event_id,member_id" });
+    const { error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: me.id, status }, { onConflict: "event_id,member_id" });
     if (error) return showToast(toErrorMessage(error), "error");
-    setAttendance((rows) => { const existing = rows.find((row) => row.event_id === eventId && row.member_id === user.id); return [...rows.filter((row) => row.event_id !== eventId || row.member_id !== user.id), { event_id: eventId, member_id: user.id, status, checked_in_at: existing?.checked_in_at ?? null, checked_in_by: existing?.checked_in_by ?? null }]; }); showToast("참석 여부를 저장했습니다.");
+    setAttendance((rows) => { const existing = rows.find((row) => row.event_id === eventId && row.member_id === me.id); return [...rows.filter((row) => row.event_id !== eventId || row.member_id !== me.id), { event_id: eventId, member_id: me.id, status, check_in_status: existing?.check_in_status ?? null, checked_in_at: existing?.checked_in_at ?? null, checked_in_by: existing?.checked_in_by ?? null }]; }); showToast("참석 여부를 저장했습니다.");
   };
 
   return <div className="page">
@@ -313,31 +294,29 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <header className="topbar">
       <Link className="brand" href="/" onClick={() => setMenuOpen(false)} aria-label="경충FC 홈"><span className="crest"><span>GC</span></span><span className="brand-copy"><strong>경충FC</strong><small>WEEKEND FUTSAL CLUB</small></span></Link>
       <nav ref={navRef} tabIndex={-1} id="primary-navigation" className={menuOpen ? "nav open" : "nav"} aria-label="주 메뉴">{navItems.map(([key, label]) => <Link key={key} href={tabPaths[key]} className={tab === key ? "active" : ""} aria-current={pathname === tabPaths[key] ? "page" : tab === key ? "true" : undefined} onClick={() => setMenuOpen(false)}>{label}</Link>)}{isOfficer && <Link href={tabPaths.admin} className={tab === "admin" ? "active" : ""} aria-current={tab === "admin" ? "page" : undefined} onClick={() => setMenuOpen(false)}>관리</Link>}<button type="button" className="nav-close" onClick={() => setMenuOpen(false)}><X size={16} /> 메뉴 닫기</button></nav>
-      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" role="status" aria-label="로그인 상태 확인 중" /> : user ? <button className="login-button" onClick={signOut} aria-label={me?.name ? `${me.name} · 로그아웃` : "로그아웃"}><LogOut size={16} /> {me?.name ?? "로그아웃"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
+      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" role="status" aria-label="로그인 상태 확인 중" /> : user ? <button className="login-button" onClick={() => setAccountOpen(true)} aria-label={me?.name ? `${me.name} · 마이페이지` : "마이페이지"}><UserRound size={16} /> {me?.name ?? "마이페이지"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
 
     <main id="main">
-      {me?.status === "pending" && me.membership_application && !applicationRejected && <div className="approval-banner">가입 신청이 접수되었습니다. 회원 관리 권한이 있는 관리자의 승인을 기다리고 있습니다.</div>}
-      {view === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === user?.id)?.status} />}
+      {view === "home" && <Home upcoming={upcoming} notice={notices[0]} fee={myFee} goingCount={goingCount} memberCount={activeProfiles.length} user={user} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
       {view === "members" && <Members profiles={activeProfiles} user={user} loading={sessionPending} loadError={memberLoadError} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "fees" && <Fees fees={fees} profiles={profiles} user={user} loading={sessionPending} loadError={memberLoadError} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
-      {view === "events" && <Events events={events} attendance={attendance} user={user} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
-      {view === "rankings" && <Rankings rankings={rankings} momLeaderboard={momLeaderboard} user={user} profile={me} loading={sessionPending} loadError={memberLoadError} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
+      {view === "events" && <Events events={events} attendance={attendance} user={user} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
+      {view === "rankings" && <Rankings rankings={rankings} goalEvents={events} momLeaderboard={momLeaderboard} user={user} profile={me} loading={sessionPending || publicLoading} loadError={memberLoadError || eventLoadError} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
       {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} supabase={supabase} loading={sessionPending} loadError={memberLoadError} canManage={permissions.has("feedback.manage")} onEdit={(item) => setQuickEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
       {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={publicLoading} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} toast={showToast} />}
       {view === "admin" && sessionPending && <SectionSkeleton />}
-      {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} permissions={permissions} supabase={supabase} reload={(scope) => void reload(scope)} toast={showToast} />}
+      {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} permissions={permissions} supabase={supabase} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}
-      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError} sessionPending={sessionPending} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} reload={() => void reload("member")} toast={showToast} />}
+      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError} sessionPending={sessionPending} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} reload={() => void reload("member")} toast={showToast} />}
       {children}
     </main>
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
-    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} onPasswordReset={sendPasswordReset} />}
-    {needsEmail && supabase && <EmailRequiredModal supabase={supabase} onSignOut={signOut} />}
-    {needsApplication && supabase && me && <MembershipApplicationModal profile={me} rejectionReason={applicationRejected ? me.membership_application?.rejection_reason ?? null : null} supabase={supabase} onSignOut={signOut} onSubmitted={async () => { await reload("member"); showToast(applicationRejected ? "가입 신청을 다시 접수했습니다." : "가입 신청을 접수했습니다."); }} />}
-    {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { const scope = editorScopes[quickEditor.type] ?? "all"; setQuickEditor(null); showToast("저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
+    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} />}
+    {accountOpen && user && me && <AccountModal user={user} profile={me} busy={busy} onClose={() => setAccountOpen(false)} onLink={linkIdentity} onSignOut={async () => { setAccountOpen(false); await signOut(); }} />}
+    {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={() => { const scope = editorScopes[quickEditor.type] ?? "all"; setQuickEditor(null); showToast("저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
     <div className="toast" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "success" && <><Check size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
@@ -345,88 +324,24 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   </div>;
 }
 
-function LoginModal({ busy, onClose, onSignIn, onPasswordAuth, onPasswordReset }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao", mode: PasswordAuthMode) => void; onPasswordAuth: (mode: PasswordAuthMode, email: string, password: string) => Promise<string | null>; onPasswordReset: (email: string) => Promise<string | null> }) {
+function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null> }) {
   const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
-  const [mode, setMode] = useState<PasswordAuthMode>("login");
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [legacyEmail, setLegacyEmail] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setErrorMessage(null);
+    event.preventDefault(); setErrorMessage(null);
     const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "").trim().toLowerCase();
-    const password = String(form.get("password") ?? "");
-    if (mode === "signup" && password !== String(form.get("password_confirm") ?? "")) return setErrorMessage("비밀번호 확인이 일치하지 않습니다.");
-    const error = await onPasswordAuth(mode, email, password);
+    const error = await onPasswordAuth(phone, String(form.get("password") ?? ""));
     if (error) setErrorMessage(error);
   };
-  const resetPassword = async () => {
-    setErrorMessage(null);
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !normalizedEmail.includes("@")) return setErrorMessage("비밀번호를 설정할 이메일 주소를 입력해 주세요.");
-    const error = await onPasswordReset(normalizedEmail);
-    if (error) setErrorMessage(error);
-  };
-  const changeMode = (nextMode: PasswordAuthMode) => { setMode(nextMode); setErrorMessage(null); };
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="로그인 또는 회원가입"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>{mode === "login" ? <>로그인</> : <>회원가입</>}</h2><p>{mode === "login" ? "가입한 이메일 또는 연결된 소셜 계정으로 로그인하세요." : "이메일로 가입하거나 Google·카카오의 이름과 이메일을 불러와 가입을 시작하세요."}</p><div className="auth-mode-tabs"><button type="button" aria-pressed={mode === "login"} onClick={() => changeMode("login")}>로그인</button><button type="button" aria-pressed={mode === "signup"} onClick={() => changeMode("signup")}>회원가입</button></div><form className="password-auth-form" onSubmit={submit}><label>이메일 아이디<input name="email" type="email" required autoComplete="email" placeholder="member@example.com" aria-invalid={errorMessage ? true : undefined} aria-describedby={errorMessage ? "login-error" : undefined} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>비밀번호<input name="password" type="password" required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상 입력" aria-describedby={errorMessage ? "login-error login-password-hint" : "login-password-hint"} aria-invalid={errorMessage ? true : undefined} /></label><small className="field-hint" id="login-password-hint">8자 이상 입력해 주세요.</small>{mode === "signup" && <label>비밀번호 확인<input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" placeholder="비밀번호를 다시 입력" aria-invalid={errorMessage ? true : undefined} aria-describedby={errorMessage ? "login-error" : undefined} /></label>}{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : mode === "login" ? "이메일로 로그인" : "이메일로 회원가입"}</button>{mode === "login" && <button type="button" className="password-reset-link" disabled={busy} onClick={resetPassword}>비밀번호 설정·재설정</button>}</form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao", mode)}><span>●</span> {mode === "login" ? "카카오로 로그인" : "카카오 정보로 회원가입"}</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google", mode)}><span>G</span> {mode === "login" ? "Google로 로그인" : "Google 정보로 회원가입"}</button><small>{mode === "signup" ? "소셜 계정도 이메일이 반드시 필요하며, 처음 이용하면 가입 신청서로 이어집니다. " : "가입한 이메일과 동일한 인증 이메일의 소셜 계정은 기존 회원 계정으로 연결됩니다. "}가입 신청서 제출 후 회원 관리 권한이 있는 관리자가 승인해야 회원 기능을 이용할 수 있습니다.</small></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인</h2><p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p><form className="password-auth-form" onSubmit={submit}><label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label><label>비밀번호<input name="password" type="password" required minLength={legacyEmail ? 6 : 4} autoComplete="current-password" placeholder={legacyEmail ? "비밀번호 입력" : "초기 비밀번호 1234"} /></label>{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button><small>{legacyEmail ? "기존 이메일 계정의 비밀번호를 입력해 주세요." : "초기 비밀번호는 1234입니다. 로그인할 수 없으면 운영진에게 문의해 주세요."}</small><button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button></form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button><small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small></div></div>;
 }
 
-function EmailRequiredModal({ supabase, onSignOut }: { supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void> }) {
-  const dialogRef = useDialogFocus<HTMLFormElement>();
-  const [saving, setSaving] = useState(false);
-  const [sentTo, setSentTo] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true); setErrorMessage(null);
-    const email = String(new FormData(event.currentTarget).get("email") ?? "").trim().toLowerCase();
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", "/?auth=email-confirmed");
-    const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: callbackUrl.toString() });
-    setSaving(false);
-    if (error?.code === "email_exists" || error?.message.toLowerCase().includes("already")) return setErrorMessage("이미 가입된 이메일입니다. 해당 이메일로 로그인한 뒤 소셜 계정을 연결해 주세요.");
-    if (error) return setErrorMessage("이메일 인증을 시작하지 못했습니다. 주소를 확인해 주세요.");
-    setSentTo(email);
-  };
-  return <div className="modal-backdrop membership-gate"><form ref={dialogRef} tabIndex={-1} className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="가입 이메일 등록">
-    <span className="eyebrow">EMAIL REQUIRED</span><h2>이메일<br />등록</h2><p className="form-description">경충FC 회원 계정에는 인증된 이메일이 반드시 필요합니다. 소셜 계정에서 이메일을 받지 못해 직접 확인합니다.</p>
-    {sentTo ? <div className="read-box"><b>인증 메일을 보냈습니다</b><p>{sentTo}의 메일에서 인증 링크를 누르면 가입 신청을 계속할 수 있습니다.</p></div> : <label>이메일<input name="email" type="email" required autoComplete="email" placeholder="member@example.com" aria-invalid={errorMessage ? true : undefined} aria-describedby={errorMessage ? "email-required-error" : undefined} /></label>}
-    {errorMessage && <FormError id="email-required-error" message={errorMessage} />}
-    {!sentTo && <button className="cta" disabled={saving}>{saving ? "전송 중…" : "이메일 인증하기"}</button>}
-    <button className="text-link application-signout" type="button" onClick={() => void onSignOut()}>다른 계정으로 로그인</button>
-  </form></div>;
-}
-
-function MembershipApplicationModal({ profile, rejectionReason, supabase, onSignOut, onSubmitted }: { profile: Profile; rejectionReason: string | null; supabase: NonNullable<ReturnType<typeof createClient>>; onSignOut: () => Promise<void>; onSubmitted: () => Promise<void> }) {
-  const dialogRef = useDialogFocus<HTMLFormElement>();
-  const [saving, setSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const previousApplication = profile.membership_application;
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true); setErrorMessage(null);
-    const form = new FormData(event.currentTarget);
-    const { error } = await supabase.rpc("submit_membership_application", {
-      applicant_name: String(form.get("name") ?? "").trim(),
-      applicant_phone: String(form.get("phone") ?? "").trim(),
-      applicant_birth_date: String(form.get("birth_date") ?? ""),
-      applicant_residence: String(form.get("residence") ?? "").trim(),
-      applicant_preferred_position: String(form.get("preferred_position") ?? ""),
-    });
-    setSaving(false);
-    if (error) return setErrorMessage("입력 정보를 확인한 뒤 다시 시도해 주세요.");
-    await onSubmitted();
-  };
-  return <div className="modal-backdrop membership-gate"><form ref={dialogRef} tabIndex={-1} className="editor membership-form" onSubmit={submit} role="dialog" aria-modal="true" aria-label="경충FC 가입 신청">
-    <span className="eyebrow">MEMBERSHIP APPLICATION</span><h2>경충FC<br />가입 신청</h2>{rejectionReason ? <div className="read-box"><b>가입 신청이 반려되었습니다</b><p>{rejectionReason}</p></div> : <p className="form-description">필수 정보를 작성해 주세요. 회원 관리 권한이 있는 관리자가 신청 내용을 확인하고 승인하면 회원 기능이 열립니다.</p>}
-    <label>이름<input name="name" required minLength={2} maxLength={50} autoComplete="name" defaultValue={previousApplication?.name ?? profile.name} /></label>
-    <div className="field-row"><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={previousApplication?.phone ?? ""} /></label><label>생년월일<input name="birth_date" required type="date" max={new Date().toISOString().slice(0, 10)} defaultValue={previousApplication?.birth_date ?? ""} /></label></div>
-    <label>거주지역<input name="residence" required minLength={2} maxLength={100} autoComplete="address-level1" placeholder="예: 서울 송파구" defaultValue={previousApplication?.residence ?? ""} /></label>
-    <label>선호 포지션<select name="preferred_position" required defaultValue={previousApplication?.preferred_position ?? ""}><option value="" disabled>포지션을 선택해 주세요</option><option value="GK">골키퍼 (GK)</option><option value="DF">수비 (DF)</option><option value="MF">미드필더 (MF)</option><option value="FW">공격 (FW)</option><option value="ANY">상관없음</option></select></label>
-    {errorMessage && <FormError id="application-error" message={errorMessage} />}
-    <button className="cta" disabled={saving}>{saving ? "신청 중…" : rejectionReason ? "가입 신청서 다시 제출" : "가입 신청서 제출"}</button>
-    <button className="text-link application-signout" type="button" onClick={() => void onSignOut()}>다른 계정으로 로그인</button>
-  </form></div>;
+function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { user: User; profile: Profile; busy: boolean; onClose: () => void; onLink: (provider: "google" | "kakao") => void; onSignOut: () => Promise<void> }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
+  const providers = new Set((user.identities ?? []).map((identity) => identity.provider));
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">간편 로그인 계정을 연결하면 다음부터 해당 계정으로도 로그인할 수 있습니다.</p><button type="button" className="social kakao" disabled={busy || providers.has("custom:kakao")} onClick={() => onLink("kakao")}><Link2 size={17} /> {providers.has("custom:kakao") ? "카카오 연결됨" : "카카오 계정 연결"}</button><button type="button" className="social google" disabled={busy || providers.has("google")} onClick={() => onLink("google")}><Link2 size={17} /> {providers.has("google") ? "Google 연결됨" : "Google 계정 연결"}</button><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
 }
 
 function Home({ upcoming, notice, fee, goingCount, memberCount, user, publicLoading, eventLoadError, noticeLoadError, onRetry, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; fee?: Fee; goingCount: number; memberCount: number; user: User | null; publicLoading: boolean; eventLoadError: boolean; noticeLoadError: boolean; onRetry: () => void; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
@@ -448,10 +363,11 @@ function Members({ profiles, user, loading, loadError, canManage, onEdit, onKick
   if (!user) return <section className="content">{intro}<LoginGate icon={<UserRound />} title="로그인 후 회원 명단을 확인하세요" description="회원 명단은 승인된 회원에게만 공개합니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   if (profiles.length === 0) return <section className="content">{intro}<Empty icon={<UserRound />} title="공개된 회원이 없습니다" description="가입 승인이 완료된 회원이 생기면 이곳에 표시됩니다." /></section>;
-  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 수정·강퇴 버튼으로 회원을 관리할 수 있습니다.</div>}<div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number" aria-hidden="true">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span>{canManage && <div className="member-management-actions"><button className="resource-icon-action" aria-label={`${profile.name} 회원 정보 수정`} onClick={() => onEdit(profile)}><Pencil size={16} /></button>{profile.id !== user.id && !profile.is_system_admin && <button className="resource-icon-action" aria-label={`${profile.name} 회원 강퇴`} onClick={() => onKick(profile)}><UserMinus size={16} /></button>}</div>}<div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>{profile.jersey_number != null ? `NO. ${profile.jersey_number} · ` : ""}JOINED {new Date(profile.joined_at).getFullYear()}</p><div className="member-badges">{profile.role === "manager" && <span className="admin-badge">{profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels.manager}</span>}{profile.is_system_admin && <span className="admin-badge system">시스템 관리자</span>}</div></article>)}</div></section>;
+  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 수정·강퇴 버튼으로 회원을 관리할 수 있습니다.</div>}<div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number" aria-hidden="true">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span>{canManage && <div className="member-management-actions"><button className="resource-icon-action" aria-label={`${profile.name} 회원 정보 수정`} onClick={() => onEdit(profile)}><Pencil size={16} /></button>{profile.auth_user_id !== user.id && !profile.is_system_admin && <button className="resource-icon-action" aria-label={`${profile.name} 회원 강퇴`} onClick={() => onKick(profile)}><UserMinus size={16} /></button>}</div>}<div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>{profile.jersey_number != null ? `NO. ${profile.jersey_number} · ` : ""}JOINED {new Date(profile.joined_at).getFullYear()}</p><div className="member-badges">{profile.role === "manager" && <span className="admin-badge">{profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels.manager}</span>}{profile.is_system_admin && <span className="admin-badge system">시스템 관리자</span>}</div></article>)}</div></section>;
 }
 function Fees({ fees, profiles, user, loading, loadError, canManage, onCreate, onEdit, onDelete, onLogin, onRetry, onAsk }: { fees: Fee[]; profiles: Profile[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onLogin: () => void; onRetry: () => void; onAsk: () => void }) {
-  const myUnpaid = fees.filter((fee) => fee.member_id === user?.id && fee.status === "unpaid");
+  const myMemberId = profiles.find((profile) => profile.auth_user_id === user?.id)?.id;
+  const myUnpaid = fees.filter((fee) => fee.member_id === myMemberId && fee.status === "unpaid");
   const intro = <PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description={user ? "시스템 관리 권한과 무관하게 관리자 월 15,000원, 일반회원 월 30,000원 또는 참여 시 10,000원을 적용합니다." : "회원에게만 공개하는 정보입니다."} />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="회비 내역을 불러오는 중" /></section>;
   if (!user) return <section className="content">{intro}<LoginGate icon={<CircleDollarSign />} title="로그인 후 회비를 확인하세요" description="회원별 납부 내역은 승인된 회원에게만 공개합니다." onLogin={onLogin} /></section>;
@@ -465,28 +381,77 @@ function Notices({ notices, loading, loadError, canManage, onCreate, onEdit, onD
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 공지 등록</button></div>}{notices.length === 0 ? <Empty icon={<Megaphone />} title="등록된 공지가 없습니다" description="운영진이 공지를 올리면 이곳에 표시됩니다." /> : <div className="notice-list">{notices.map((notice, index) => <article key={notice.id}><span className="notice-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">고정</small>}{isRecent(notice.created_at) && <small className="badge-new">새 공지</small>}<h2>{notice.title}</h2><p>{notice.body}</p><time dateTime={notice.created_at}>{formatDate(notice.created_at)}</time></div>{canManage && <div className="resource-actions"><button aria-label={`${notice.title} 수정`} onClick={() => onEdit(notice)}><Pencil size={16} /></button><button aria-label={`${notice.title} 삭제`} onClick={() => onDelete(notice.id, notice.title)}><Trash2 size={16} /></button></div>}</article>)}</div>}</section>;
 }
-function Events({ events, attendance, user, loading, loadError, canManage, onCreate, onEdit, onDelete, onAttendance, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
-  const intro = <PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="상대 팀과의 경기가 아닌, 우리끼리 모여 뛰는 주말 풋살 일정입니다. 날짜를 열면 참석 명단과 경기 기록을 볼 수 있습니다." />;
+
+function MonthCalendar({ events }: { events: Event[] }) {
+  const initialDate = new Date(events.find((event) => new Date(event.starts_at) >= new Date())?.starts_at ?? events[0]?.starts_at ?? Date.now());
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
+  const days = useMemo(() => {
+    const first = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+    const start = new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
+    const eventsByDate = new Map<string, Event[]>();
+    events.forEach((event) => {
+      const date = new Date(event.starts_at);
+      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      eventsByDate.set(key, [...(eventsByDate.get(key) ?? []), event]);
+    });
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      return { date, events: eventsByDate.get(key) ?? [] };
+    });
+  }, [events, visibleMonth]);
+  const moveMonth = (offset: number) => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
+  const today = new Date();
+  return <section className="month-calendar" aria-labelledby="month-calendar-title">
+    <header><div><small>MONTHLY SCHEDULE</small><h2 id="month-calendar-title">{visibleMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" })}</h2></div><div className="month-calendar-controls"><button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft /></button><button type="button" onClick={() => setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1))}>이번 달</button><button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight /></button></div></header>
+    <div className="month-calendar-scroll scroll-region" tabIndex={0} role="region" aria-label={`${visibleMonth.getFullYear()}년 ${visibleMonth.getMonth() + 1}월 일정 달력`}><div className="month-calendar-grid"><div className="month-calendar-weekdays" aria-hidden="true">{["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-calendar-days">{days.map(({ date, events: dayEvents }) => { const isCurrentMonth = date.getMonth() === visibleMonth.getMonth(); const isToday = date.toDateString() === today.toDateString(); return <div key={date.toISOString()} className={`${isCurrentMonth ? "" : "outside"}${isToday ? " today" : ""}`}><time dateTime={date.toISOString().slice(0, 10)}>{date.getDate()}</time>{dayEvents.map((event) => <button key={event.id} type="button" aria-label={`${date.toLocaleDateString("ko-KR")} ${formatTime(event.starts_at)} ${event.title} 상세 일정으로 이동`} onClick={() => document.getElementById(`event-${event.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}><b>{formatTime(event.starts_at)}</b><span>{event.title}</span></button>)}</div>; })}</div></div></div>
+  </section>;
+}
+
+function Events({ events, attendance, user, loading, loadError, canManage, onCreate, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onManageMatch: (event: Event) => void; onManageAttendance: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
+  const intro = <PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="월간 달력에서 매주 풋살 일정을 한눈에 확인하고, 날짜를 열면 참석 명단과 경기 기록을 볼 수 있습니다." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="일정을 불러오는 중" /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
-  /* The list stays an index of dates. Roster, teams, score and MOM are read on
-     the day page at /events/YYYYMMDD, so one row stays legible at a glance. */
-  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <div className="event-list">{events.map((event) => {
-    const count = attendance.filter((item) => item.event_id === event.id && item.status === "going").length;
+  /* The list stays an index of dates. Roster, teams, match results and MOM are
+     read on the day page at /events/YYYYMMDD so one row stays legible. */
+  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<MonthCalendar events={events} />{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <div className="event-list">{events.map((event) => {
+    const eventAttendance = attendance.filter((item) => item.event_id === event.id);
+    const goingCount = eventAttendance.filter((item) => item.status === "going").length;
+    const presentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "present").length;
     const guestCount = event.event_guest_players?.length ?? 0;
     const isPast = new Date(event.starts_at) < new Date();
     const eventDate = new Date(event.starts_at);
-    return <article key={event.id} className={`event-card${isPast ? " past" : ""}`}><time className="event-date" dateTime={event.starts_at}><small>{eventDate.getFullYear()} · {eventDate.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{String(eventDate.getDate()).padStart(2, "0")}</b><span>{eventDate.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="event-info"><small>{isPast ? "지난 일정" : "WEEKLY FUTSAL"}{event.is_competitive ? " · 커피 내기" : ""}</small><h2><Link className="event-card-link" href={eventDatePath(event.starts_at)}>{event.title}</Link></h2><p><MapPin size={16} /> {event.venue}<span className="event-meta-time">· {formatTime(event.starts_at)}</span></p></div><div className="event-action"><b>회원 {count}명 · 용병 {guestCount}명</b>{canManage && <div className="resource-actions"><button aria-label={`${event.title} 수정`} onClick={() => onEdit(event)}><Pencil size={16} /></button><button aria-label={`${event.title} 삭제`} onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={16} /></button></div>}<button className="cta small" disabled={isPast} onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{isPast ? "지난 일정" : "참석하기"}</button></div><ChevronRight className="event-open-cue" size={20} aria-hidden="true" /></article>;
+    return <article id={`event-${event.id}`} key={event.id} className={`event-card${isPast ? " past" : ""}`}><time className="event-date" dateTime={event.starts_at}><small>{eventDate.getFullYear()} · {eventDate.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{String(eventDate.getDate()).padStart(2, "0")}</b><span>{eventDate.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="event-info"><small>{isPast ? "지난 일정" : "WEEKLY FUTSAL"}{event.is_competitive ? " · 커피 내기" : ""}</small><h2><Link className="event-card-link" href={eventDatePath(event.starts_at)}>{event.title}</Link></h2><p><MapPin size={16} /> {event.venue}<span className="event-meta-time">· {formatTime(event.starts_at)}</span></p></div><div className="event-action"><b>{isPast ? `출석 ${presentCount}명` : `참석 예정 ${goingCount}명`} · 용병 {guestCount}명</b>{canManage && <div className="resource-actions"><button aria-label={`${event.title} 수정`} onClick={() => onEdit(event)}><Pencil size={16} /></button><button aria-label={`${event.title} 삭제`} onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={16} /></button></div>}<button className="cta small" disabled={isPast} onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{isPast ? "지난 일정" : "참석하기"}</button>{canManage && <><button className="text-link" onClick={() => onManageAttendance(event)}>출석 체크</button><button className="text-link" onClick={() => onManageMatch(event)}>팀·경기 기록</button></>}</div><ChevronRight className="event-open-cue" size={20} aria-hidden="true" /></article>;
   })}</div>}</section>;
 }
 
-function Rankings({ rankings, momLeaderboard, user, profile, loading, loadError, onLogin, onRetry }: { rankings: MemberRanking[]; momLeaderboard: MomLeaderboardEntry[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
-  const intro = <PageIntro kicker="CLUB RANKING" title="활동 랭킹" description="실제 출석 1회는 3점, 회비 납부 1개월은 1점으로 집계합니다. 금액과 개인 연락처는 공개하지 않습니다." />;
+function Rankings({ rankings, goalEvents, momLeaderboard, user, profile, loading, loadError, onLogin, onRetry }: { rankings: MemberRanking[]; goalEvents: Event[]; momLeaderboard: MomLeaderboardEntry[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
+  const goalRankings = useMemo(() => {
+    const totals = new Map<string, { member_id: string; member_name: string; goals: number; scoring_event_ids: Set<string> }>();
+    const addGoals = (eventId: string, memberId: string | null, memberName: string, goals: number) => {
+      if (!memberId || goals <= 0) return;
+      const current = totals.get(memberId) ?? { member_id: memberId, member_name: memberName, goals: 0, scoring_event_ids: new Set<string>() };
+      current.member_name = memberName;
+      current.goals += goals;
+      current.scoring_event_ids.add(eventId);
+      totals.set(memberId, current);
+    };
+    goalEvents.forEach((event) => {
+      if (event.event_matches?.length) {
+        event.event_matches.forEach((match) => match.event_match_scorers.forEach((scorer) => addGoals(event.id, scorer.profile_id, scorer.scorer_name, scorer.goals)));
+        return;
+      }
+      event.event_teams?.forEach((team) => team.event_team_members.forEach((member) => addGoals(event.id, member.profile_id, member.participant_name, member.goals)));
+    });
+    return Array.from(totals.values()).map(({ scoring_event_ids, ...ranking }) => ({ ...ranking, scoring_event_count: scoring_event_ids.size })).sort((a, b) => b.goals - a.goals || b.scoring_event_count - a.scoring_event_count || a.member_name.localeCompare(b.member_name, "ko"));
+  }, [goalEvents]);
+  const intro = <PageIntro kicker="CLUB RANKING" title="클럽 랭킹" description="출석·회비 활동과 득점, MOM 기록을 한곳에서 확인합니다. 금액과 개인 연락처는 공개하지 않습니다." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="활동 기록을 불러오는 중" /></section>;
-  if (!user) return <section className="content">{intro}<LoginGate icon={<Shield />} title="로그인 후 활동 기록을 확인하세요" description="출석과 회비 납부 기록으로 집계한 회원 전용 대시보드입니다." onLogin={onLogin} /></section>;
+  if (!user) return <section className="content">{intro}<LoginGate icon={<Shield />} title="로그인 후 클럽 기록을 확인하세요" description="득점과 활동, MOM 기록을 모아 보여주는 회원 전용 대시보드입니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   if (profile?.status !== "active") return <section className="content">{intro}<Empty icon={<Shield />} title="회원 승인 후 확인할 수 있습니다" description="가입 승인이 완료되면 활동 랭킹이 공개됩니다." /></section>;
-  return <section className="content">{intro}<div className="ranking-layout"><div><div className="section-heading compact"><div><span className="eyebrow">ACTIVITY</span><h2>활동 순위</h2></div></div><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 출석 및 회비 납부 활동 순위"><table><caption className="sr-only">회원별 출석 및 회비 납부 활동 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">실제 출석</th><th scope="col">회비 납부</th><th scope="col">종합 점수</th></tr></thead><tbody>{rankings.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.attendance_count}회</td><td>{ranking.paid_fee_count}개월</td><td><b>{ranking.total_score}점</b></td></tr>)}</tbody></table>{rankings.length === 0 && <Empty icon={<CalendarDays />} title="아직 집계된 기록이 없습니다" description="실제 출석이나 회비 납부 기록이 등록되면 순위가 표시됩니다." />}</div></div><div><div className="section-heading compact"><div><span className="eyebrow">MOM HALL OF FAME</span><h2>MOM 명예의 전당</h2></div></div><p className="section-note">MOM(Man of the Match)은 그날 경기의 최우수 선수입니다. 일정이 끝나면 실제 출석한 회원끼리 본인을 제외하고 한 명씩 투표해 상위 3명을 정합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 MOM 수상 및 득표 순위"><table><caption className="sr-only">회원별 MOM 수상 및 득표 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">1위</th><th scope="col">2위</th><th scope="col">3위</th><th scope="col">득표</th></tr></thead><tbody>{momLeaderboard.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.first_place_count}회</td><td>{ranking.second_place_count}회</td><td>{ranking.third_place_count}회</td><td>{ranking.total_votes}표</td></tr>)}</tbody></table>{momLeaderboard.length === 0 && <Empty icon={<Shield />} title="아직 MOM 기록이 없습니다" description="지난 일정에서 MOM 투표가 진행되면 이곳에 집계됩니다." />}</div></div></div></section>;
+  return <section className="content">{intro}<div className="ranking-layout"><div><div className="section-heading compact"><div><span className="eyebrow">GOAL LEADERS</span><h2>득점 순위</h2></div></div><p className="section-note">경기별 득점 기록을 우선하고, 없는 일정은 팀 종합 기록을 사용해 전체 기간 득점을 합산합니다. 용병 기록은 회원 순위에서 제외합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 누적 득점 순위"><table><caption className="sr-only">회원별 누적 득점 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">득점 일정</th><th scope="col">누적 득점</th></tr></thead><tbody>{goalRankings.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.scoring_event_count}회</td><td><b>{ranking.goals}골</b></td></tr>)}</tbody></table>{goalRankings.length === 0 && <Empty icon={<Shield />} title="아직 득점 기록이 없습니다" description="경기 결과에 회원 득점이 등록되면 순위가 표시됩니다." />}</div></div><div><div className="section-heading compact"><div><span className="eyebrow">ACTIVITY</span><h2>활동 순위</h2></div></div><p className="section-note">실제 출석 1회는 3점, 회비 납부 1개월은 1점으로 집계합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 출석 및 회비 납부 활동 순위"><table><caption className="sr-only">회원별 출석 및 회비 납부 활동 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">실제 출석</th><th scope="col">회비 납부</th><th scope="col">종합 점수</th></tr></thead><tbody>{rankings.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.attendance_count}회</td><td>{ranking.paid_fee_count}개월</td><td><b>{ranking.total_score}점</b></td></tr>)}</tbody></table>{rankings.length === 0 && <Empty icon={<CalendarDays />} title="아직 집계된 기록이 없습니다" description="실제 출석이나 회비 납부 기록이 등록되면 순위가 표시됩니다." />}</div></div><div><div className="section-heading compact"><div><span className="eyebrow">MOM HALL OF FAME</span><h2>MOM 명예의 전당</h2></div></div><p className="section-note">MOM(Man of the Match)은 그날 경기의 최우수 선수입니다. 일정이 끝나면 실제 출석한 회원끼리 본인을 제외하고 한 명씩 투표해 상위 3명을 정합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 MOM 수상 및 득표 순위"><table><caption className="sr-only">회원별 MOM 수상 및 득표 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">1위</th><th scope="col">2위</th><th scope="col">3위</th><th scope="col">득표</th></tr></thead><tbody>{momLeaderboard.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.first_place_count}회</td><td>{ranking.second_place_count}회</td><td>{ranking.third_place_count}회</td><td>{ranking.total_votes}표</td></tr>)}</tbody></table>{momLeaderboard.length === 0 && <Empty icon={<Shield />} title="아직 MOM 기록이 없습니다" description="지난 일정에서 MOM 투표가 진행되면 이곳에 집계됩니다." />}</div></div></div></section>;
 }
 function formatDate(value: string) { return new Date(value).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" }); }
 function formatRelativeDate(value: string) {

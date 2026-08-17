@@ -18,6 +18,7 @@ export interface MembershipApplication {
 
 export interface Profile {
   id: string;
+  auth_user_id: string | null;
   name: string;
   email: string | null;
   phone: string | null;
@@ -44,6 +45,7 @@ export interface Event {
   id: string;
   title: string;
   starts_at: string;
+  venue_id: string | null;
   venue: string;
   address: string | null;
   note: string | null;
@@ -52,6 +54,16 @@ export interface Event {
   team_mode: "random" | "balanced" | null;
   event_guest_players?: EventGuestPlayer[];
   event_teams?: EventTeam[];
+  event_matches?: EventMatch[];
+}
+
+export interface Venue {
+  id: string;
+  name: string;
+  address: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EventGuestPlayer {
@@ -97,6 +109,28 @@ export interface EventTeam {
   event_team_members: EventTeamMember[];
 }
 
+export interface EventMatchScorer {
+  id: string;
+  event_id: string;
+  match_id: string;
+  team_id: string;
+  profile_id: string | null;
+  guest_player_id: string | null;
+  scorer_name: string;
+  goals: number;
+}
+
+export interface EventMatch {
+  id: string;
+  event_id: string;
+  match_number: number;
+  team_a_id: string;
+  team_b_id: string;
+  team_a_score: number;
+  team_b_score: number;
+  event_match_scorers: EventMatchScorer[];
+}
+
 export interface Fee {
   id: string;
   member_id: string;
@@ -123,6 +157,7 @@ export interface Attendance {
   event_id: string;
   member_id: string;
   status: "going" | "not_going" | "undecided";
+  check_in_status: "present" | "late" | "absent" | null;
   checked_in_at: string | null;
   checked_in_by: string | null;
 }
