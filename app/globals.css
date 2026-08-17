@@ -1093,7 +1093,8 @@ footer a {
   font-size: 12px;
 }
 
-/* Knowing you owe money is a dead end without a way to settle it. */
+/* Knowing you owe money is a dead end without a way to settle it — so the
+   callout carries the escape hatch on both the owing and the settled state. */
 .unpaid-callout {
   display: flex;
   align-items: center;
@@ -1124,10 +1125,358 @@ footer a {
   box-shadow: 4px 4px 0 var(--danger-ink);
 }
 
+.unpaid-callout.settled {
+  border-left-color: var(--green);
+  background: var(--note-bg);
+}
+
+.unpaid-callout.settled > svg { color: var(--green-text); }
+
+/* The standing block already carries the number, so the callout that follows
+   it no longer needs to pull itself up under the page intro. */
+.fee-standing + .unpaid-callout { margin-top: 0; }
+
 .fee-amount {
   margin: 28px 0 10px;
   font-size: 29px;
   font-weight: 900;
+}
+
+.fee-panel-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+   Fees — member standing, month ledger, officer roll-up
+   Status is always spelled out in the badge, so the accent edges and surfaces
+   below are reinforcement, never the only signal.
+   -------------------------------------------------------------------------- */
+.fee-standing {
+  display: grid;
+  grid-template-columns: minmax(230px, .85fr) minmax(0, 1.55fr);
+  gap: 1px;
+  margin-bottom: 22px;
+  border: 1px solid var(--line);
+  border-top: var(--accent-bar) solid var(--green);
+  background: var(--line);
+}
+
+.fee-standing.owing { border-top-color: var(--danger-ink); }
+
+.fee-standing-figure {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px;
+  background: var(--navy);
+  color: var(--surface);
+}
+
+.fee-standing.owing .fee-standing-figure { background: var(--danger-solid); }
+
+.fee-standing-figure small {
+  color: var(--muted-on-navy);
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.fee-standing.owing .fee-standing-figure small { color: var(--danger-echo); }
+
+.fee-standing-figure b {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 42px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+
+.fee-standing-figure span {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.fee-standing-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+}
+
+.fee-standing-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--surface);
+}
+
+.fee-standing-facts dt,
+.fee-ledger-summary dt {
+  color: var(--muted);
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.fee-standing-facts dd {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.fee-standing-facts dd small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fee-month-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fee-month-list > li {
+  border-top: var(--accent-bar) solid var(--navy);
+  background: var(--surface);
+  box-shadow: var(--shadow-block);
+}
+
+.fee-month-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  padding: 17px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.fee-month-head b {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -.02em;
+}
+
+.fee-month-head small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fee-month-head span {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.fee-month-head span.owing { color: var(--danger-ink); }
+
+.fee-entry-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fee-entry {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 22px 14px 17px;
+  border-left: var(--accent-bar) solid transparent;
+}
+
+.fee-entry + .fee-entry { border-top: 1px solid var(--line); }
+.fee-entry.paid { border-left-color: var(--green); }
+.fee-entry.unpaid { border-left-color: var(--danger-ink); }
+.fee-entry.exempt { border-left-color: var(--neutral-ink); }
+
+.fee-entry-kind {
+  display: inline-flex;
+  justify-content: center;
+  padding: 6px 8px;
+  background: var(--paper);
+  color: var(--navy);
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.fee-entry.participation .fee-entry-kind { background: var(--lime); }
+
+.fee-entry-basis {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fee-entry-basis b { font-size: 15px; }
+
+.fee-entry-basis small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fee-entry-amount {
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* A waived row must not read as paid, so the amount recedes and the badge says why. */
+.fee-entry.exempt .fee-entry-amount {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.fee-ledger-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.fee-ledger-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, auto));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.fee-ledger-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 20px;
+  background: var(--surface);
+}
+
+.fee-ledger-summary dd {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.fee-ledger-summary > div.owing dd { color: var(--danger-ink); }
+
+.fee-filter {
+  display: flex;
+  gap: 8px;
+}
+
+.fee-filter button {
+  min-height: var(--tap);
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--navy);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.fee-filter button.selected {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--surface);
+}
+
+/* One row group per member: the header row is that member's whole standing. */
+.fee-ledger .fee-member-row th {
+  padding: 0;
+  border-bottom: 1px solid var(--navy);
+}
+
+.fee-ledger .fee-member-row th > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 24px;
+  border-left: var(--accent-bar) solid var(--navy);
+  background: var(--paper);
+}
+
+.fee-ledger .fee-member-row.owing th > div { border-left-color: var(--danger-ink); }
+
+.fee-member-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lime);
+  color: var(--navy);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: normal;
+}
+
+.fee-member-row.owing .fee-member-mark { background: var(--danger-bg); }
+
+.fee-member-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fee-member-name b {
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
+
+.fee-member-name small {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: normal;
+}
+
+.fee-member-standing {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: normal;
+}
+
+.fee-member-row.owing .fee-member-standing { color: var(--danger-ink); }
+
+.fee-ledger td,
+.fee-ledger tbody th[scope="row"] { padding: 14px 24px; }
+
+.fee-ledger tbody th[scope="row"] {
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: normal;
 }
 
 .video-banner {
@@ -1493,15 +1842,41 @@ td { font-weight: 800; }
   text-align: center;
 }
 
-.month-calendar-days > div {
+/* Days in the visible month are buttons, days outside it are inert cells, so
+   both share one box and only the button carries interaction. */
+.month-calendar-days > div,
+.month-calendar-days > button {
   min-height: 112px;
   padding: 10px;
+  border: 0;
   border-top: 1px solid var(--line);
   border-right: 1px solid var(--line);
   background: var(--surface);
+  color: inherit;
+  text-align: left;
 }
 
+.month-calendar-days > button {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+
+.month-calendar-days > button:hover { background: var(--paper); }
 .month-calendar-days > div.outside { background: var(--paper); }
+
+/* The selected day flips to the navy/lime signature pair: readable across the
+   whole grid, and distinct from the today ring it can sit on top of. */
+.month-calendar-days > button.selected { background: var(--navy); }
+.month-calendar-days > button.selected:hover { background: var(--navy); }
+.month-calendar-days > button.selected time { color: var(--surface); }
+
+.month-calendar-days > button.selected.today time {
+  background: var(--lime);
+  color: var(--navy);
+}
+
+.month-calendar-days > button.selected .day-event { border-left-color: var(--lime); }
 
 .month-calendar-days time {
   width: 28px;
@@ -1522,7 +1897,7 @@ td { font-weight: 800; }
   color: white;
 }
 
-.month-calendar-days button {
+.day-event {
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -1530,17 +1905,15 @@ td { font-weight: 800; }
   gap: 2px;
   margin-top: 5px;
   padding: 7px 8px;
-  border: 0;
   border-left: 3px solid var(--green);
   background: var(--lime);
   color: var(--navy);
   text-align: left;
-  cursor: pointer;
 }
 
-.month-calendar-days button b { font-size: 10px; }
+.day-event b { font-size: 10px; }
 
-.month-calendar-days button span {
+.day-event span {
   max-width: 100%;
   overflow: hidden;
   font-size: 11px;
@@ -1549,10 +1922,38 @@ td { font-weight: 800; }
   white-space: nowrap;
 }
 
-.event-list {
+/* One selected day, summarised. The calendar above is the only index, so this
+   panel never grows into a second list. */
+.event-focus {
   display: grid;
-  gap: 20px;
+  gap: 18px;
 }
+
+.event-focus-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.event-focus-head h2 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -.03em;
+}
+
+.event-focus-head span {
+  padding: 6px 9px;
+  background: var(--lime);
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.event-focus .empty { padding: 50px 20px; }
 
 .event-card {
   position: relative;
@@ -1655,6 +2056,36 @@ td { font-weight: 800; }
   align-items: flex-end;
   gap: 14px;
   padding-right: 22px;
+}
+
+/* Officer-only actions: outlined and icon-led so they read as an admin menu,
+   never as a second member CTA beside the filled 참석하기 button. */
+.officer-menu {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.officer-menu-item {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--navy);
+  background: var(--surface);
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.officer-menu-item svg { color: var(--green-text); }
+
+.officer-menu-item:hover {
+  background: var(--lime);
+  box-shadow: 3px 3px 0 var(--navy);
 }
 
 .guest-roster {
@@ -3902,6 +4333,37 @@ td { font-weight: 800; }
   .member-grid { grid-template-columns: 1fr 1fr; }
   .page-management-actions { justify-content: flex-start; }
 
+  .unpaid-callout {
+    flex-wrap: wrap;
+    padding: 16px 18px;
+  }
+
+  .fee-standing { grid-template-columns: 1fr; }
+  .fee-standing-figure { padding: 22px 20px; }
+  .fee-standing-figure b { font-size: 34px; }
+
+  .fee-ledger-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .fee-ledger-summary { grid-template-columns: 1fr 1fr; }
+  .fee-filter button { flex: 1; }
+  .fee-month-head { padding: 15px 18px; }
+  .fee-month-head span { margin-left: 0; }
+
+  /* The badge drops to its own line so the amount keeps its column. */
+  .fee-entry {
+    grid-template-columns: 66px minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 13px 18px 13px 13px;
+  }
+
+  .fee-entry .status { grid-column: 2 / -1; }
+  .fee-ledger td,
+  .fee-ledger tbody th[scope="row"] { padding: 13px 16px; }
+  .fee-ledger .fee-member-row th > div { padding: 12px 16px; }
+
   .month-calendar > header {
     align-items: flex-start;
     flex-direction: column;
@@ -3941,6 +4403,14 @@ td { font-weight: 800; }
   }
 
   .event-action .cta { width: 100%; }
+  .event-focus-head h2 { font-size: 22px; }
+  .officer-menu { justify-content: stretch; }
+
+  .officer-menu-item {
+    flex: 1 1 140px;
+    justify-content: center;
+  }
+
   .event-teams { grid-template-columns: 1fr; }
   .mom-candidates { grid-template-columns: 1fr; }
   .notice-list article { grid-template-columns: 55px minmax(0, 1fr); }
@@ -4002,6 +4472,9 @@ td { font-weight: 800; }
   .video-banner .play { width: 45px; height: 45px; }
   .video-banner > svg { display: none; }
   .confirm-actions { grid-template-columns: 1fr; }
+  .fee-standing-facts { grid-template-columns: 1fr; }
+  .fee-standing-figure b { font-size: 30px; }
+  .unpaid-callout .cta { width: 100%; }
 }
 
 /* --------------------------------------------------------------------------
