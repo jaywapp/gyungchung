@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
-import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission } from "@/lib/types";
+import { CalendarPlus, ExternalLink, Github, Minus, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import type { AccountRole, Attendance, Event, EventTeam, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { editorScopes, tableScopes, toErrorMessage, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
@@ -333,17 +333,121 @@ export function AdminEditor({ config, profiles, guestPlayers, events, attendance
     }
     setSaving(false); if (error) return onError(toErrorMessage(error)); onSaved();
   };
-  return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
+  /** Check-in and result entry are roster screens; they need more than a form column. */
+  const matchDay = config.type === "attendance" || config.type === "teams";
+  return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className={matchDay ? "editor match-day" : "editor"} onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
     {config.type === "members" && <><label>이름<input name="name" required defaultValue={String(application?.name ?? row.name ?? "")} /></label>{application ? <div className="application-review"><b>{applicationRejected ? "반려된 가입 신청 정보" : "가입 신청 정보"}</b><dl><div><dt>전화번호</dt><dd>{application.phone}</dd></div><div><dt>생년월일</dt><dd>{new Date(`${application.birth_date}T00:00:00`).toLocaleDateString("ko-KR")}</dd></div><div><dt>거주지역</dt><dd>{application.residence}</dd></div><div><dt>선호 포지션</dt><dd>{application.preferred_position}</dd></div><div><dt>신청일</dt><dd>{new Date(application.submitted_at).toLocaleDateString("ko-KR")}</dd></div></dl>{applicationRejected && <p>반려 사유: {application.rejection_reason}</p>}</div> : row.status === "pending" && <div className="read-box"><b>가입 신청서 미작성</b><p>신청서가 제출되기 전에는 회원 승인을 할 수 없습니다.</p></div>}{row.status === "pending" && application && !applicationRejected && <><label>반려 사유<textarea name="rejection_reason" rows={3} minLength={2} maxLength={500} placeholder="신청자에게 안내할 수정 사항을 입력하세요" /></label><button className="cta secondary" name="action" value="reject" disabled={saving}>{saving ? "처리 중…" : "가입 신청 반려"}</button></>}<div className="field-row"><label>등록 포지션<input name="position" defaultValue={String(application?.preferred_position ?? row.position ?? "")} /></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "pending")}><option value="pending" disabled={Boolean(row.is_system_admin)}>승인 대기</option><option value="active" disabled={!canApprove}>활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 10,000원</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "notices" && <><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>내용<textarea name="body" required rows={6} defaultValue={String(row.body ?? "")} /></label><label className="check"><input name="is_pinned" type="checkbox" defaultChecked={Boolean(row.is_pinned)} /> 상단 고정</label></>}
     {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>이전에 사용한 장소</b><div>{venueOptions.map((option) => <button type="button" key={JSON.stringify([option.venue, option.address])} onClick={() => { setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{option.address && <small>{option.address}</small>}</button>)}</div></div>}<div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => setVenue(event.target.value)} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => setAddress(event.target.value)} /></label><label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
-    {config.type === "attendance" && <><div className="read-box"><b>{String(row.title)}</b><p>{new Date(String(row.starts_at)).toLocaleString("ko-KR")} · {String(row.venue)}</p></div><fieldset className="check-grid"><legend>실제 출석 회원</legend>{profiles.filter((profile) => profile.status === "active").map((profile) => { const record = attendance.find((item) => item.event_id === row.id && item.member_id === profile.id); return <label className="check" key={profile.id}><input name="checked_member_ids" value={profile.id} type="checkbox" defaultChecked={Boolean(record?.checked_in_at)} /> {profile.name} · {profile.position ?? "PLAYER"}{record?.status === "going" ? " · 참석 예정" : ""}</label>; })}</fieldset></>}
-    {config.type === "teams" && <><div className="read-box"><b>{String(row.title)}</b><p>참석 예정 또는 실제 출석 회원과 지정 용병을 대상으로 팀을 구성합니다.</p></div><div className="field-row"><label>편성 방식<select name="team_mode" defaultValue={String(row.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, rowTeams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div><button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : rowTeams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>{rowTeams.map((team) => <section className="team-admin-card" key={team.id}><div className="field-row"><h3>{team.team_name}</h3>{Boolean(row.is_competitive) && <label>팀 스코어<input name={`team_score_${team.id}`} type="number" min="0" defaultValue={String(team.score ?? 0)} /></label>}</div>{team.event_team_members.map((member) => <div className="team-member-stat" key={member.id}><b>{member.participant_name}</b><span>{member.participant_position ?? "ANY"}</span>{Boolean(row.is_competitive) && <><label>골<input name={`goals_${member.id}`} type="number" min="0" defaultValue={String(member.goals)} /></label><label>평점<input name={`rating_${member.id}`} type="number" min="0" max="10" step="0.5" defaultValue={String(member.rating ?? "")} /></label></>}</div>)}</section>)}{Boolean(row.is_competitive) && rowTeams.length > 0 && <button className="cta secondary" name="action" value="stats" disabled={saving}>경기 기록 저장</button>}</>}
+    {config.type === "attendance" && <><div className="read-box"><b>{String(row.title)}</b><p>{new Date(String(row.starts_at)).toLocaleString("ko-KR")} · {String(row.venue)}</p></div><AttendanceRoster event={eventRow} profiles={profiles} attendance={attendance} /></>}
+    {config.type === "teams" && <><div className="read-box"><b>{String(row.title)}</b><p>참석 예정 또는 실제 출석 회원과 지정 용병을 대상으로 팀을 구성합니다.</p></div><div className="field-row"><label>편성 방식<select name="team_mode" defaultValue={String(row.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, rowTeams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div><button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : rowTeams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>{rowTeams.length > 0 && <TeamScoreboard event={eventRow} teams={rowTeams} />}{Boolean(row.is_competitive) && rowTeams.length > 0 && <button className="cta secondary" name="action" value="stats" disabled={saving}>경기 기록 저장</button>}</>}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
     {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
     {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : "저장하기"}</button>}
   </form></div>;
+}
+
+/**
+ * Check-in reads as a roster, not a checkbox column. 참석 예정 comes first because
+ * that is the group an officer actually scans, and the meter answers "몇 명 남았나"
+ * without counting. The selection posts through hidden inputs, so the editor's
+ * existing save path is untouched.
+ */
+function AttendanceRoster({ event, profiles, attendance }: { event: Event; profiles: Profile[]; attendance: Attendance[] }) {
+  const roster = useMemo(() => profiles.filter((profile) => profile.status === "active").map((profile) => {
+    const record = attendance.find((item) => item.event_id === event.id && item.member_id === profile.id);
+    return { profile, rsvp: record?.status ?? null, checkedIn: Boolean(record?.checked_in_at) };
+  }), [attendance, event.id, profiles]);
+  const [checkedIds, setCheckedIds] = useState(() => new Set(roster.filter((row) => row.checkedIn).map((row) => row.profile.id)));
+  const [query, setQuery] = useState("");
+  const term = query.trim().toLowerCase();
+  const visible = roster.filter((row) => !term || row.profile.name.toLowerCase().includes(term) || (row.profile.position ?? "").toLowerCase().includes(term));
+  const groups: [string, typeof visible][] = [["참석 예정", visible.filter((row) => row.rsvp === "going")], ["미응답 · 불참", visible.filter((row) => row.rsvp !== "going")]];
+  const toggle = (id: string) => setCheckedIds((previous) => { const next = new Set(previous); if (!next.delete(id)) next.add(id); return next; });
+  const percent = roster.length === 0 ? 0 : Math.round((checkedIds.size / roster.length) * 100);
+  return <section className="checkin-panel">
+    <div className="checkin-head"><b>실제 출석 회원</b><span>{checkedIds.size} / {roster.length}명 확인</span></div>
+    <span className="attendee-meter-track" aria-hidden="true"><span style={{ width: `${percent}%` }} /></span>
+    <label className="checkin-search">회원 검색<input type="search" value={query} onChange={(changed) => setQuery(changed.target.value)} placeholder="이름 또는 포지션 검색" /></label>
+    {roster.length === 0 && <p className="form-description">활동 중인 회원이 없습니다.</p>}
+    {roster.length > 0 && visible.length === 0 && <p className="form-description">검색 결과가 없습니다.</p>}
+    {groups.map(([label, rows]) => rows.length > 0 && <div key={label}>
+      <p className="checkin-group">{label} · {rows.length}명</p>
+      <ul className="attendee-roster checkin-roster">{rows.map(({ profile, rsvp }) => {
+        const checked = checkedIds.has(profile.id);
+        return <li key={profile.id} className={checked ? "checked" : ""}>
+          <span className="attendee-mark" aria-hidden="true">{profile.name.slice(0, 1)}</span>
+          <span className="attendee-name"><b>{profile.name}</b><small>{profile.position ?? "PLAYER"}{rsvp === "not_going" ? " · 불참" : rsvp === "going" ? "" : " · 미응답"}</small></span>
+          <button type="button" className={checked ? "checkin-toggle on" : "checkin-toggle"} aria-pressed={checked} onClick={() => toggle(profile.id)}>{checked ? "출석 확인됨" : "미확인"}</button>
+          {checked && <input type="hidden" name="checked_member_ids" value={profile.id} />}
+        </li>;
+      })}</ul>
+    </div>)}
+  </section>;
+}
+
+/** Five dots stand in for the 0~10 rating column, so one dot is worth two points. */
+const ratingSteps = [1, 2, 3, 4, 5];
+
+/**
+ * Results are entered the way the match was watched: a scoreboard first, then a
+ * roster with steppers. The values still post as the same hidden number fields,
+ * so the save payload is byte-for-byte what the old grid produced.
+ */
+function TeamScoreboard({ event, teams }: { event: Event; teams: EventTeam[] }) {
+  const members = teams.flatMap((team) => team.event_team_members);
+  const [scores, setScores] = useState<Record<string, number>>(() => Object.fromEntries(teams.map((team) => [team.id, team.score ?? 0])));
+  const [goals, setGoals] = useState<Record<string, number>>(() => Object.fromEntries(members.map((member) => [member.id, member.goals])));
+  const [ratings, setRatings] = useState<Record<string, number | null>>(() => Object.fromEntries(members.map((member) => [member.id, member.rating])));
+  const topScore = Math.max(0, ...teams.map((team) => scores[team.id] ?? 0));
+  const leaderCount = teams.filter((team) => (scores[team.id] ?? 0) === topScore).length;
+  const step = (id: string, delta: number, setter: typeof setScores) => setter((previous) => ({ ...previous, [id]: Math.max(0, (previous[id] ?? 0) + delta) }));
+  return <>
+    {event.is_competitive && teams.length > 0 && <div className="scoreboard">{teams.map((team) => {
+      const score = scores[team.id] ?? 0;
+      const leading = score === topScore && leaderCount === 1;
+      return <div className={leading ? "scoreboard-team lead" : "scoreboard-team"} key={team.id}>
+        <small>{team.team_name}{leading ? " · 리드" : ""}</small>
+        <b>{score}</b>
+        <div className="stepper">
+          <button type="button" aria-label={`${team.team_name} 점수 내리기`} onClick={() => step(team.id, -1, setScores)}><Minus size={16} /></button>
+          <button type="button" aria-label={`${team.team_name} 점수 올리기`} onClick={() => step(team.id, 1, setScores)}><Plus size={16} /></button>
+        </div>
+        <input type="hidden" name={`team_score_${team.id}`} value={score} />
+      </div>;
+    })}</div>}
+    {teams.map((team) => <section className="roster-stat-card" key={team.id}>
+      <h3>{team.team_name}{event.is_competitive ? " 선수 기록" : " 명단"}</h3>
+      <ul>{team.event_team_members.map((member) => {
+        const rating = ratings[member.id] ?? null;
+        return <li key={member.id}>
+          <span className="roster-person">
+            <span className="attendee-mark" aria-hidden="true">{member.participant_name.slice(0, 1)}</span>
+            <span className="attendee-name"><b>{member.participant_name}</b><small>{member.participant_position ?? "ANY"}</small></span>
+          </span>
+          {event.is_competitive && <>
+            <span className="stepper inline">
+              <button type="button" aria-label={`${member.participant_name} 골 내리기`} onClick={() => step(member.id, -1, setGoals)}><Minus size={15} /></button>
+              <b>{goals[member.id] ?? 0}골</b>
+              <button type="button" aria-label={`${member.participant_name} 골 올리기`} onClick={() => step(member.id, 1, setGoals)}><Plus size={15} /></button>
+            </span>
+            <span className="rating-dots" role="group" aria-label={`${member.participant_name} 평점`}>
+              {ratingSteps.map((dot) => {
+                const value = dot * 2;
+                const filled = rating !== null && Math.round(rating / 2) >= dot;
+                return <button type="button" key={dot} className={filled ? "on" : ""} aria-pressed={filled} aria-label={`${value}점`} onClick={() => setRatings((previous) => ({ ...previous, [member.id]: previous[member.id] === value ? null : value }))} />;
+              })}
+              <small>{rating === null ? "평점 없음" : `${rating}점`}</small>
+            </span>
+            <input type="hidden" name={`goals_${member.id}`} value={goals[member.id] ?? 0} />
+            <input type="hidden" name={`rating_${member.id}`} value={rating ?? ""} />
+          </>}
+        </li>;
+      })}</ul>
+      {team.event_team_members.length === 0 && <p className="form-description">배정된 선수가 없습니다.</p>}
+    </section>)}
+  </>;
 }
