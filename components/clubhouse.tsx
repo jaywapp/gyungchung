@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, UserMinus, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
 import type { EditorConfig } from "@/components/admin-console";
 import { editorScopes, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus } from "@/lib/attendance";
-import { eventDatePath } from "@/lib/event-date";
+import { eventDatePath, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { Empty, FormError, LoadError, LoginGate, SectionSkeleton } from "@/components/section-states";
 
@@ -382,48 +382,77 @@ function Notices({ notices, loading, loadError, canManage, onCreate, onEdit, onD
   return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 공지 등록</button></div>}{notices.length === 0 ? <Empty icon={<Megaphone />} title="등록된 공지가 없습니다" description="운영진이 공지를 올리면 이곳에 표시됩니다." /> : <div className="notice-list">{notices.map((notice, index) => <article key={notice.id}><span className="notice-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">고정</small>}{isRecent(notice.created_at) && <small className="badge-new">새 공지</small>}<h2>{notice.title}</h2><p>{notice.body}</p><time dateTime={notice.created_at}>{formatDate(notice.created_at)}</time></div>{canManage && <div className="resource-actions"><button aria-label={`${notice.title} 수정`} onClick={() => onEdit(notice)}><Pencil size={16} /></button><button aria-label={`${notice.title} 삭제`} onClick={() => onDelete(notice.id, notice.title)}><Trash2 size={16} /></button></div>}</article>)}</div>}</section>;
 }
 
-function MonthCalendar({ events }: { events: Event[] }) {
-  const initialDate = new Date(events.find((event) => new Date(event.starts_at) >= new Date())?.starts_at ?? events[0]?.starts_at ?? Date.now());
+/** The calendar owns day selection: each in-month day is one button, and the
+    chips inside it are labels, so a day holding two events is still one pick. */
+function MonthCalendar({ events, selectedKey, onSelect }: { events: Event[]; selectedKey: string | null; onSelect: (key: string) => void }) {
+  const initialDate = (selectedKey ? parseEventDateKey(selectedKey) : null) ?? new Date();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
   const days = useMemo(() => {
     const first = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
     const start = new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
     const eventsByDate = new Map<string, Event[]>();
     events.forEach((event) => {
-      const date = new Date(event.starts_at);
-      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      const key = toEventDateKey(event.starts_at);
       eventsByDate.set(key, [...(eventsByDate.get(key) ?? []), event]);
     });
     return Array.from({ length: 42 }, (_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
-      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      return { date, events: eventsByDate.get(key) ?? [] };
+      const key = toDateKey(date);
+      return { date, key, events: eventsByDate.get(key) ?? [] };
     });
   }, [events, visibleMonth]);
   const moveMonth = (offset: number) => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
   const today = new Date();
   return <section className="month-calendar" aria-labelledby="month-calendar-title">
     <header><div><small>MONTHLY SCHEDULE</small><h2 id="month-calendar-title">{visibleMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" })}</h2></div><div className="month-calendar-controls"><button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft /></button><button type="button" onClick={() => setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1))}>이번 달</button><button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight /></button></div></header>
-    <div className="month-calendar-scroll scroll-region" tabIndex={0} role="region" aria-label={`${visibleMonth.getFullYear()}년 ${visibleMonth.getMonth() + 1}월 일정 달력`}><div className="month-calendar-grid"><div className="month-calendar-weekdays" aria-hidden="true">{["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-calendar-days">{days.map(({ date, events: dayEvents }) => { const isCurrentMonth = date.getMonth() === visibleMonth.getMonth(); const isToday = date.toDateString() === today.toDateString(); return <div key={date.toISOString()} className={`${isCurrentMonth ? "" : "outside"}${isToday ? " today" : ""}`}><time dateTime={date.toISOString().slice(0, 10)}>{date.getDate()}</time>{dayEvents.map((event) => <button key={event.id} type="button" aria-label={`${date.toLocaleDateString("ko-KR")} ${formatTime(event.starts_at)} ${event.title} 상세 일정으로 이동`} onClick={() => document.getElementById(`event-${event.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}><b>{formatTime(event.starts_at)}</b><span>{event.title}</span></button>)}</div>; })}</div></div></div>
+    <div className="month-calendar-scroll scroll-region" tabIndex={0} role="region" aria-label={`${visibleMonth.getFullYear()}년 ${visibleMonth.getMonth() + 1}월 일정 달력`}><div className="month-calendar-grid"><div className="month-calendar-weekdays" aria-hidden="true">{["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-calendar-days">{days.map(({ date, key, events: dayEvents }) => {
+      const isToday = date.toDateString() === today.toDateString();
+      const marks = <><time dateTime={`${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6, 8)}`}>{date.getDate()}</time>{dayEvents.map((event) => <span key={event.id} className="day-event"><b>{formatTime(event.starts_at)}</b><span>{event.title}</span></span>)}</>;
+      if (date.getMonth() !== visibleMonth.getMonth()) return <div key={key} className="outside">{marks}</div>;
+      const isSelected = selectedKey === key;
+      return <button key={key} type="button" className={`${isToday ? "today " : ""}${isSelected ? "selected" : ""}`.trim() || undefined} aria-pressed={isSelected} aria-controls={events.length > 0 ? "event-focus" : undefined} aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${date.toLocaleDateString("ko-KR", { weekday: "long" })}${isToday ? " 오늘" : ""} · ${dayEvents.length > 0 ? `일정 ${dayEvents.length}개` : "일정 없음"}`} onClick={() => onSelect(key)}>{marks}</button>;
+    })}</div></div></div>
   </section>;
 }
 
 function Events({ events, attendance, user, loading, loadError, canManage, onCreate, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onManageMatch: (event: Event) => void; onManageAttendance: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
-  const intro = <PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="월간 달력에서 매주 풋살 일정을 한눈에 확인하고, 날짜를 열면 참석 명단과 경기 기록을 볼 수 있습니다." />;
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const focusRef = useRef<HTMLElement>(null);
+  /** Events arrive after this component mounts, so the default day is derived
+      instead of seeded into state: the next upcoming day, or — once the season
+      has no dates left — the most recent past one. The summary is never blank. */
+  const defaultKey = useMemo(() => {
+    const now = Date.now();
+    const fallback = events.find((event) => new Date(event.starts_at).getTime() >= now) ?? events[events.length - 1];
+    return fallback ? toEventDateKey(fallback.starts_at) : null;
+  }, [events]);
+  const selectedKey = pickedKey ?? defaultKey;
+  const selectedDate = selectedKey ? parseEventDateKey(selectedKey) : null;
+  /** Events load ordered by start time, so a day holding two of them keeps that order. */
+  const selectedEvents = useMemo(() => (selectedKey ? events.filter((event) => toEventDateKey(event.starts_at) === selectedKey) : []), [events, selectedKey]);
+  /** `block: "nearest"` only scrolls when the summary is off screen — the common
+      case on a phone, where the grid fills the viewport — and it inherits the
+      reduced-motion scroll behaviour declared on `html`. */
+  const selectDay = (key: string) => { setPickedKey(key); focusRef.current?.scrollIntoView({ block: "nearest" }); };
+  const intro = <PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="월간 달력에서 날짜를 선택하면 그날의 일정을 바로 확인하고, 상세 화면에서 참석 명단과 경기 기록을 볼 수 있습니다." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="일정을 불러오는 중" /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
-  /* The list stays an index of dates. Roster, teams, match results and MOM are
-     read on the day page at /events/YYYYMMDD so one row stays legible. */
-  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<MonthCalendar events={events} />{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <div className="event-list">{events.map((event) => {
-    const eventAttendance = attendance.filter((item) => item.event_id === event.id);
-    const goingCount = eventAttendance.filter((item) => item.status === "going").length;
-    const presentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "present").length;
-    const guestCount = event.event_guest_players?.length ?? 0;
-    const isPast = new Date(event.starts_at) < new Date();
-    const eventDate = new Date(event.starts_at);
-    return <article id={`event-${event.id}`} key={event.id} className={`event-card${isPast ? " past" : ""}`}><time className="event-date" dateTime={event.starts_at}><small>{eventDate.getFullYear()} · {eventDate.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{String(eventDate.getDate()).padStart(2, "0")}</b><span>{eventDate.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="event-info"><small>{isPast ? "지난 일정" : "WEEKLY FUTSAL"}{event.is_competitive ? " · 커피 내기" : ""}</small><h2><Link className="event-card-link" href={eventDatePath(event.starts_at)}>{event.title}</Link></h2><p><MapPin size={16} /> {event.venue}<span className="event-meta-time">· {formatTime(event.starts_at)}</span></p></div><div className="event-action"><b>{isPast ? `출석 ${presentCount}명` : `참석 예정 ${goingCount}명`} · 용병 {guestCount}명</b>{canManage && <div className="resource-actions"><button aria-label={`${event.title} 수정`} onClick={() => onEdit(event)}><Pencil size={16} /></button><button aria-label={`${event.title} 삭제`} onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={16} /></button></div>}<button className="cta small" disabled={isPast} onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{isPast ? "지난 일정" : "참석하기"}</button>{canManage && <><button className="text-link" onClick={() => onManageAttendance(event)}>출석 체크</button><button className="text-link" onClick={() => onManageMatch(event)}>팀·경기 기록</button></>}</div><ChevronRight className="event-open-cue" size={20} aria-hidden="true" /></article>;
-  })}</div>}</section>;
+  /* The calendar is the only index of dates; below it exactly one day is
+     summarised. Roster, teams, match results and MOM stay on the day page at
+     /events/YYYYMMDD so this panel keeps to what fits in a glance. */
+  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<MonthCalendar events={events} selectedKey={selectedKey} onSelect={selectDay} />{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <section ref={focusRef} id="event-focus" className="event-focus" aria-labelledby="event-focus-title">
+    <header className="event-focus-head" aria-live="polite"><h2 id="event-focus-title">{selectedDate ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 ${selectedDate.toLocaleDateString("ko-KR", { weekday: "long" })}` : "날짜를 선택해 주세요"}</h2><span>{selectedEvents.length > 0 ? `일정 ${selectedEvents.length}개` : "일정 없음"}</span></header>
+    {selectedEvents.length === 0 ? <Empty icon={<CalendarDays />} title="이 날짜에는 일정이 없습니다" description="달력에서 초록색 일정 표시가 있는 날짜를 선택해 주세요." /> : selectedEvents.map((event) => {
+      const eventAttendance = attendance.filter((item) => item.event_id === event.id);
+      const goingCount = eventAttendance.filter((item) => item.status === "going").length;
+      const presentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "present").length;
+      const guestCount = event.event_guest_players?.length ?? 0;
+      const isPast = new Date(event.starts_at) < new Date();
+      const eventDate = new Date(event.starts_at);
+      return <article key={event.id} className={`event-card${isPast ? " past" : ""}`}><time className="event-date" dateTime={event.starts_at}><small>{eventDate.getFullYear()} · {eventDate.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{String(eventDate.getDate()).padStart(2, "0")}</b><span>{eventDate.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="event-info"><small>{isPast ? "지난 일정" : "WEEKLY FUTSAL"}{event.is_competitive ? " · 커피 내기" : ""}</small><h2><Link className="event-card-link" href={eventDatePath(event.starts_at)}>{event.title}</Link></h2><p><MapPin size={16} /> {event.venue}<span className="event-meta-time">· {formatTime(event.starts_at)}</span></p></div><div className="event-action"><b>{isPast ? `출석 ${presentCount}명` : `참석 예정 ${goingCount}명`} · 용병 {guestCount}명</b>{canManage && <div className="resource-actions"><button aria-label={`${event.title} 수정`} onClick={() => onEdit(event)}><Pencil size={16} /></button><button aria-label={`${event.title} 삭제`} onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={16} /></button></div>}<button className="cta small" disabled={isPast} onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{isPast ? "지난 일정" : "참석하기"}</button>{canManage && <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className="officer-menu-item" aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className="officer-menu-item" aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>}</div><ChevronRight className="event-open-cue" size={20} aria-hidden="true" /></article>;
+    })}
+  </section>}</section>;
 }
 
 function Rankings({ rankings, goalEvents, momLeaderboard, user, profile, loading, loadError, onLogin, onRetry }: { rankings: MemberRanking[]; goalEvents: Event[]; momLeaderboard: MomLeaderboardEntry[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
