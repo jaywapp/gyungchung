@@ -30,6 +30,7 @@ const feedbackStatusLabels: Record<Feedback["status"], string> = { received: "�
 const formKindLabels: Record<ParticipationForm["kind"], string> = { election: "회장단 선거", poll: "의사 결정 투표", survey: "회원 설문" };
 const formStatusLabels: Record<ParticipationForm["status"], string> = { draft: "초안", open: "진행 중", closed: "마감", archived: "보관" };
 const checkInStatusLabels: Record<NonNullable<Attendance["check_in_status"]>, string> = { present: "출석", late: "지각", absent: "결석" };
+const checkInStatusOrder: Array<NonNullable<Attendance["check_in_status"]>> = ["absent", "late", "present"];
 
 const permissionLabels: Record<string, string> = {
   "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
@@ -87,7 +88,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
       {section === "venues" && venues.map((row) => <AdminRow key={row.id} title={row.name} meta={row.address || "주소 미등록"} onEdit={() => setEditor({ type: "venues", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "venues", id: row.id, label })} />)}
       {section === "events" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "events", id: row.id, label })} />)}
       {section === "attendance" && events.map((row) => { const eventAttendance = attendance.filter((item) => item.event_id === row.id); const presentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "present").length; const lateCount = eventAttendance.filter((item) => getCheckInStatus(item) === "late").length; const absentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "absent").length; return <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · 출석 ${presentCount}명 · 지각 ${lateCount}명 · 결석 ${absentCount}명`} onEdit={() => setEditor({ type: "attendance", row: row as unknown as Record<string, unknown> })} />; })}
-      {section === "teams" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "포지션 균형" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
+      {section === "teams" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "균형 편성" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
       {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "feedback", id: row.id, label })} />)}
       {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
     </div>}
@@ -225,24 +226,35 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const eventAttendance = attendance.filter((item) => item.event_id === eventId);
   const scheduledProfiles = activeProfiles.filter((profile) => eventAttendance.find((item) => item.member_id === profile.id)?.status === "going");
   const walkInProfiles = activeProfiles.filter((profile) => !scheduledProfiles.some((scheduled) => scheduled.id === profile.id));
-  const hasRecordedWalkIns = walkInProfiles.some((profile) => isCheckedIn(eventAttendance.find((item) => item.member_id === profile.id)) || getCheckInStatus(eventAttendance.find((item) => item.member_id === profile.id)) === "absent");
   const [attendanceQuery, setAttendanceQuery] = useState("");
   const attendanceSearch = attendanceQuery.trim().toLocaleLowerCase();
   const attendanceRecordFor = (profile: Profile) => eventAttendance.find((item) => item.member_id === profile.id);
-  const attendanceScope = activeProfiles.filter((profile) => scheduledProfiles.some((scheduled) => scheduled.id === profile.id) || getCheckInStatus(attendanceRecordFor(profile)) !== null);
-  const attendanceCheckedCount = attendanceScope.filter((profile) => isCheckedIn(attendanceRecordFor(profile))).length;
-  const attendancePresentCount = attendanceScope.filter((profile) => getCheckInStatus(attendanceRecordFor(profile)) === "present").length;
-  const attendanceLateCount = attendanceScope.filter((profile) => getCheckInStatus(attendanceRecordFor(profile)) === "late").length;
-  const attendanceAbsentCount = attendanceScope.filter((profile) => getCheckInStatus(attendanceRecordFor(profile)) === "absent").length;
+  const [attendanceStatuses, setAttendanceStatuses] = useState<Record<string, Attendance["check_in_status"]>>(() => Object.fromEntries(activeProfiles.map((profile) => [profile.id, getCheckInStatus(attendanceRecordFor(profile))])) as Record<string, Attendance["check_in_status"]>);
+  const attendanceStatusFor = (profile: Profile) => attendanceStatuses[profile.id] ?? null;
+  const cycleAttendanceStatus = (profileId: string) => setAttendanceStatuses((current) => {
+    const currentStatus = current[profileId] ?? null;
+    const currentIndex = currentStatus ? checkInStatusOrder.indexOf(currentStatus) : -1;
+    const nextStatus = checkInStatusOrder[(currentIndex + 1) % checkInStatusOrder.length];
+    return { ...current, [profileId]: nextStatus };
+  });
+  const hasRecordedWalkIns = walkInProfiles.some((profile) => attendanceStatusFor(profile) !== null);
+  const attendanceScope = activeProfiles.filter((profile) => scheduledProfiles.some((scheduled) => scheduled.id === profile.id) || attendanceStatusFor(profile) !== null);
+  const attendanceCheckedCount = attendanceScope.filter((profile) => ["present", "late"].includes(attendanceStatusFor(profile) ?? "")).length;
+  const attendancePresentCount = attendanceScope.filter((profile) => attendanceStatusFor(profile) === "present").length;
+  const attendanceLateCount = attendanceScope.filter((profile) => attendanceStatusFor(profile) === "late").length;
+  const attendanceAbsentCount = attendanceScope.filter((profile) => attendanceStatusFor(profile) === "absent").length;
   const attendanceProgress = attendanceScope.length > 0 ? Math.round((attendanceCheckedCount / attendanceScope.length) * 100) : 0;
   const matchesAttendanceSearch = (profile: Profile) => !attendanceSearch || profile.name.toLocaleLowerCase().includes(attendanceSearch);
   const filteredScheduledProfiles = scheduledProfiles.filter(matchesAttendanceSearch);
   const filteredWalkInProfiles = walkInProfiles.filter(matchesAttendanceSearch);
   const renderAttendanceRow = (profile: Profile) => {
     const record = attendanceRecordFor(profile);
-    const status = getCheckInStatus(record);
+    const status = attendanceStatusFor(profile);
+    const currentIndex = status ? checkInStatusOrder.indexOf(status) : -1;
+    const nextStatus = checkInStatusOrder[(currentIndex + 1) % checkInStatusOrder.length];
+    const statusLabel = status ? checkInStatusLabels[status] : "미체크";
     const responseLabel = record?.status === "going" ? "참석 예정" : record?.status === "not_going" ? "불참 응답" : record?.status === "undecided" ? "미응답" : "현장 추가 가능";
-    return <label className={`attendance-row attendance-row-${status ?? "pending"}`} key={profile.id}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{responseLabel}</small></span><select className="attendance-status-select" name={`check_in_status_${profile.id}`} defaultValue={status ?? ""} aria-label={`${profile.name} 출석 상태`}><option value="">미체크</option>{(Object.keys(checkInStatusLabels) as Array<NonNullable<Attendance["check_in_status"]>>).map((option) => <option key={option} value={option}>{checkInStatusLabels[option]}</option>)}</select></label>;
+    return <div className={`attendance-row attendance-row-${status ?? "pending"}`} key={profile.id} role="group" aria-label={`${profile.name} 출석 상태`}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{responseLabel}</small></span><input type="hidden" name={`check_in_status_${profile.id}`} value={status ?? ""} readOnly /><button type="button" className="attendance-status-toggle" onClick={() => cycleAttendanceStatus(profile.id)} aria-label={`${profile.name} 상태 ${statusLabel}. 클릭하면 ${checkInStatusLabels[nextStatus]}으로 변경`}>{statusLabel}</button></div>;
   };
   const [venue, setVenue] = useState(String(row.venue ?? ""));
   const [address, setAddress] = useState(String(row.address ?? ""));
@@ -449,6 +461,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         <div className="attendance-summary-stats"><span className="attendance-stat-present">{attendancePresentCount} 출석</span><span className="attendance-stat-late">{attendanceLateCount} 지각</span><span className="attendance-stat-absent">{attendanceAbsentCount} 결석</span></div>
       </section>
       <label className="attendance-search"><span className="sr-only">회원 검색</span><input type="search" value={attendanceQuery} onChange={(event) => setAttendanceQuery(event.target.value)} placeholder="이름 검색" /></label>
+      <p className="form-description attendance-toggle-help">상태 버튼을 누를 때마다 결석 → 지각 → 출석 순서로 바뀝니다.</p>
       <section className="attendance-group">
         <div className="attendance-group-heading"><b>참석 예정</b><span>{scheduledProfiles.length}명</span></div>
         <div className="attendance-status-grid">{filteredScheduledProfiles.length > 0 ? filteredScheduledProfiles.map(renderAttendanceRow) : <p className="form-description">{attendanceSearch ? "검색 결과가 없습니다." : "참석 예정으로 답한 회원이 없습니다."}</p>}</div>
@@ -496,20 +509,26 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
   const updateRating = (memberId: string, value: number) => setRatings((current) => ({ ...current, [memberId]: value }));
 
   return <>
-    <div className="read-box team-editor-intro"><b>{String(event.title)}</b><p>참여 회원을 먼저 확인하고, 팀 스코어와 선수별 골·평점을 한 화면에서 기록합니다.</p><small>팀을 다시 나누면 기존 팀 기록이 새 편성으로 교체됩니다.</small></div>
+    <div className="read-box team-editor-intro"><b>{String(event.title)}</b><p>1. 회원을 고르고 → 2. 팀 방식과 수를 정한 뒤 → 3. 팀 만들기를 누르세요.</p><small>팀을 다시 만들면 기존 팀 편성과 기록이 새 결과로 교체됩니다.</small></div>
     <fieldset className="check-grid team-roster-picker">
-      <legend>참여 회원 · {selectedCount}명</legend>
+      <legend>1. 참여 회원 선택 · {selectedCount}명</legend>
+      <p className="form-description team-step-description">이번 일정에 뛸 회원만 체크하세요. 참석·편성 상태는 오른쪽에서 확인할 수 있습니다.</p>
       <div className="team-roster-list">{activeProfiles.length > 0 ? activeProfiles.map((profile) => {
         const attended = hasAttendance(profile);
         const assigned = assignedMemberIds.has(profile.id);
-        return <label className="team-roster-row" key={profile.id}><input name="member_ids" value={profile.id} type="checkbox" checked={selectedMemberIds.has(profile.id)} onChange={(changeEvent) => setSelectedMemberIds((current) => { const next = new Set(current); if (changeEvent.target.checked) next.add(profile.id); else next.delete(profile.id); return next; })} /><span className="team-roster-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="team-roster-copy"><b>{profile.name}</b><small>{profile.position ?? "ANY"} · {assigned ? "편성됨" : attended ? "참석" : "선택 가능"}</small></span><span className={`team-roster-state ${assigned ? "is-assigned" : attended ? "is-attended" : ""}`}>{assigned ? "편성됨" : attended ? "참석" : "선택"}</span></label>;
+        return <label className="team-roster-row" key={profile.id}><input name="member_ids" value={profile.id} type="checkbox" checked={selectedMemberIds.has(profile.id)} onChange={(changeEvent) => setSelectedMemberIds((current) => { const next = new Set(current); if (changeEvent.target.checked) next.add(profile.id); else next.delete(profile.id); return next; })} /><span className="team-roster-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="team-roster-copy"><b>{profile.name}</b></span><span className={`team-roster-state ${assigned ? "is-assigned" : attended ? "is-attended" : ""}`}>{assigned ? "편성됨" : attended ? "참석" : "선택 가능"}</span></label>;
       }) : <p className="form-description">활동 중인 회원이 없습니다.</p>}</div>
     </fieldset>
-    <div className="field-row team-generation-controls"><label>편성 방식<select name="team_mode" defaultValue={String(event.team_mode ?? "balanced")}><option value="balanced">포지션 균형</option><option value="random">완전 랜덤</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, teams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div>
-    <button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : teams.length > 0 ? "팀 다시 나누기" : "팀 나누기"}</button>
+    <section className="team-generation-panel">
+      <div className="team-step-heading"><h3>2. 팀 나누기</h3><p className="form-description">선택한 회원을 몇 팀으로 나눌지 정한 뒤 팀 만들기를 누르세요.</p></div>
+      <div className="field-row team-generation-controls"><label>편성 방식<select name="team_mode" defaultValue={String(event.team_mode ?? "balanced")}><option value="balanced">균형 편성</option><option value="random">무작위 편성</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, teams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div>
+      <p className="team-generation-hint">처음이라면 균형 편성을 권장합니다. 선택한 회원을 팀마다 고르게 나눕니다.</p>
+      <button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : teams.length > 0 ? "팀 다시 만들기" : "팀 만들기"}</button>
+    </section>
     {teams.length > 0 && <div className="team-record-content">
+      <header className="team-results-heading"><h3>3. 팀 편성 결과</h3><span>{teams.length}개 팀 · {selectedCount}명</span></header>
       {Boolean(event.is_competitive) && <section className="team-scoreboard" aria-label="팀 스코어보드">{teams.map((team) => { const score = teamScores[team.id] ?? 0; const isLeading = highestScore > 0 && score === highestScore; return <article className={`team-score-card ${isLeading ? "is-leading" : ""}`} key={team.id}><div className="team-score-card-label"><b>{team.team_name}</b>{isLeading && <em>리드</em>}</div><output>{score}</output><div className="team-score-stepper"><button type="button" onClick={() => updateTeamScore(team.id, -1)} aria-label={`${team.team_name} 점수 감소`}>−</button><span>팀 스코어</span><button type="button" onClick={() => updateTeamScore(team.id, 1)} aria-label={`${team.team_name} 점수 증가`}>+</button></div><input type="hidden" name={`team_score_${team.id}`} value={score} readOnly /></article>; })}</section>}
-      <div className="team-record-grid">{teams.map((team) => <section className="team-admin-card team-record-card" key={team.id}><header className="team-record-heading"><div><span className="eyebrow">ROSTER {String(team.team_number).padStart(2, "0")}</span><h3>{team.team_name}</h3></div>{Boolean(event.is_competitive) && <strong>{teamScores[team.id] ?? 0}점</strong>}</header><div className="team-record-member-list">{team.event_team_members.map((member) => { const goals = goalCounts[member.id] ?? 0; const rating = ratings[member.id] ?? null; return <div className="team-member-stat" key={member.id}><span className="team-member-avatar" aria-hidden="true">{member.participant_name.slice(0, 1)}</span><span className="team-member-copy"><b>{member.participant_name}</b><small>{member.participant_position ?? "ANY"}</small></span>{Boolean(event.is_competitive) && <><input type="hidden" name={`goals_${member.id}`} value={goals} readOnly /><div className="team-goal-stepper" aria-label={`${member.participant_name} 골`}><button type="button" onClick={() => updateGoals(member.id, -1)} aria-label={`${member.participant_name} 골 감소`}>−</button><output>{goals}골</output><button type="button" onClick={() => updateGoals(member.id, 1)} aria-label={`${member.participant_name} 골 증가`}>+</button></div><input type="hidden" name={`rating_${member.id}`} value={rating ?? ""} readOnly /><div className="team-rating-control" role="group" aria-label={`${member.participant_name} 평점`}>{ratingSteps.map((value) => <button type="button" key={value} className={rating !== null && rating >= value ? "is-selected" : ""} aria-label={`${value}점`} aria-pressed={rating !== null && rating >= value} onClick={() => updateRating(member.id, value)}><span /></button>)}<b>{rating === null ? "미평가" : `${rating}/10`}</b></div></>}</div>; })}</div></section>)}</div>
+      <div className="team-record-grid">{teams.map((team) => <section className="team-admin-card team-record-card" key={team.id}><header className="team-record-heading"><div><span className="eyebrow">ROSTER {String(team.team_number).padStart(2, "0")}</span><h3>{team.team_name}</h3></div>{Boolean(event.is_competitive) && <strong>{teamScores[team.id] ?? 0}점</strong>}</header><div className="team-record-member-list">{team.event_team_members.map((member) => { const goals = goalCounts[member.id] ?? 0; const rating = ratings[member.id] ?? null; return <div className="team-member-stat" key={member.id}><span className="team-member-avatar" aria-hidden="true">{member.participant_name.slice(0, 1)}</span><span className="team-member-copy"><b>{member.participant_name}</b></span>{Boolean(event.is_competitive) && <><input type="hidden" name={`goals_${member.id}`} value={goals} readOnly /><div className="team-goal-stepper" aria-label={`${member.participant_name} 골`}><button type="button" onClick={() => updateGoals(member.id, -1)} aria-label={`${member.participant_name} 골 감소`}>−</button><output>{goals}골</output><button type="button" onClick={() => updateGoals(member.id, 1)} aria-label={`${member.participant_name} 골 증가`}>+</button></div><input type="hidden" name={`rating_${member.id}`} value={rating ?? ""} readOnly /><div className="team-rating-control" role="group" aria-label={`${member.participant_name} 평점`}>{ratingSteps.map((value) => <button type="button" key={value} className={rating !== null && rating >= value ? "is-selected" : ""} aria-label={`${value}점`} aria-pressed={rating !== null && rating >= value} onClick={() => updateRating(member.id, value)}><span /></button>)}<b>{rating === null ? "미평가" : `${rating}/10`}</b></div></>}</div>; })}</div></section>)}</div>
       {Boolean(event.is_competitive) && <button className="cta secondary" name="action" value="stats" disabled={saving}>팀 집계 저장</button>}
       <MatchHistoryEditor teams={teams} matches={matchDrafts} onChange={onMatchDraftsChange} />
       <button className="cta secondary" name="action" value="matches" disabled={saving}>{saving ? "저장 중…" : "경기별 기록 저장"}</button>
