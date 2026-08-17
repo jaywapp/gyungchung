@@ -144,11 +144,11 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
                 const status = getCheckInStatus(row);
                 return <li key={member.id} className={status ? `checked ${status}` : ""}>
                   <span className="attendee-mark" aria-hidden="true">{member.name.slice(0, 1)}</span>
-                  <span className="attendee-name"><b>{member.name}</b><small>{member.position ?? "PLAYER"}</small></span>
+                  <span className="attendee-name"><b>{member.name}</b></span>
                   <span className="attendee-state">{status ? checkInLabels[status] : row.status === "going" ? "참석 예정" : "미확인"}</span>
                 </li>;
               })}</ul>}
-              {guests.length > 0 && <div className="guest-roster"><b>참여 용병</b>{guests.map((guest) => <span key={guest.guest_player_id}>{guest.guest_name}{guest.guest_position ? ` · ${guest.guest_position}` : ""}</span>)}</div>}
+              {guests.length > 0 && <div className="guest-roster"><b>참여 용병</b>{guests.map((guest) => <span key={guest.guest_player_id}>{guest.guest_name}</span>)}</div>}
             </>}
         </section>
 
