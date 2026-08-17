@@ -34,7 +34,16 @@ export const editorScopes: Record<string, ReloadScope> = {
   forms: "public",
 };
 
-type ErrorLike = { code?: string | null; message?: string | null };
+type ErrorLike = { code?: string | null; message?: string | null; userFacing?: boolean };
+
+/**
+ * A refusal we decided on ourselves, worded for the member reading it. Driver
+ * errors get translated below; these are already the final copy, so wrapping them
+ * in the generic retry line would throw away the only useful part.
+ */
+export function userError(message: string) {
+  return { message, userFacing: true as const };
+}
 
 export function toErrorMessage(error: unknown): string {
   console.error(error);
@@ -42,7 +51,9 @@ export function toErrorMessage(error: unknown): string {
   const code = value.code ?? "";
   const message = value.message?.toLowerCase() ?? "";
 
+  if (value.userFacing && value.message) return value.message;
   if (code === "42501" || message.includes("row-level security") || message.includes("permission denied")) return "이 작업을 수행할 권한이 없습니다.";
+  if (code === "23514") return "입력한 값 중에 허용되지 않는 항목이 있습니다. 포지션·점수 같은 선택 항목을 확인한 뒤 다시 시도해 주세요.";
   if (code === "23505" || message.includes("duplicate")) return "이미 등록된 내용입니다.";
   if (code === "23503" || message.includes("foreign key")) return "연결된 정보가 있어 처리할 수 없습니다.";
   if (message.includes("failed to fetch") || message.includes("network")) return "서버에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.";

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
-import { editorScopes, tableScopes, toErrorMessage, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
+import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
 import { getCheckInStatus, isCheckedIn } from "@/lib/attendance";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import ConfirmDialog from "@/components/confirm-dialog";
@@ -280,14 +280,14 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     const fd = new FormData(event.currentTarget);
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const submitAction = submitter?.name === "action" ? submitter.value : null;
-    let error: { message: string } | null = null;
+    let error: { message: string; userFacing?: boolean } | null = null;
     const addQuestion = async (formId: string, position: number) => {
       const prompt = String(fd.get("prompt") ?? "").trim();
       if (!prompt) return null;
       const questionType = String(fd.get("question_type"));
       const labels = String(fd.get("options") || "").split(",").map((item) => item.trim()).filter(Boolean);
       const optionLabels = questionType === "yes_no" && labels.length === 0 ? ["찬성", "반대"] : labels;
-      if (["single_choice", "multiple_choice", "yes_no"].includes(questionType) && optionLabels.length < 2) return { message: "선택형 질문에는 쉼표로 구분한 선택지를 2개 이상 입력하세요." };
+      if (["single_choice", "multiple_choice", "yes_no"].includes(questionType) && optionLabels.length < 2) return userError("선택형 질문에는 쉼표로 구분한 선택지를 2개 이상 입력하세요.");
       const questionResult = await supabase.from("participation_questions").insert({ form_id: formId, prompt, type: questionType, is_required: true, position, min_value: questionType === "rating" ? 1 : null, max_value: questionType === "rating" ? 5 : null }).select("id").single();
       if (questionResult.error || !questionResult.data) return questionResult.error;
       if (optionLabels.length > 0) {
@@ -329,7 +329,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       const startsAt = new Date(String(fd.get("starts_at")));
       const recurring = fd.get("recurring") === "on";
       const currentYear = new Date().getFullYear();
-      if (recurring && startsAt.getFullYear() !== currentYear) error = { message: `정기 일정 시작일은 ${currentYear}년 안에서 선택해 주세요.` };
+      if (recurring && startsAt.getFullYear() !== currentYear) error = userError(`정기 일정 시작일은 ${currentYear}년 안에서 선택해 주세요.`);
       let selectedVenueId = String(fd.get("venue_id") ?? "");
       if (!error && !selectedVenueId && fd.get("save_venue") === "on") {
         const venueResult = await supabase.from("venues").upsert({ name: fd.get("venue"), address: fd.get("address") || "" }, { onConflict: "name,address" }).select("id").single();
@@ -348,7 +348,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         for (const date = new Date(startsAt); !error && date.getFullYear() === currentYear; date.setDate(date.getDate() + 7)) {
           if (!existingStarts.has(date.getTime())) recurringPayloads.push({ ...eventPayload, starts_at: date.toISOString() });
         }
-        if (!error && recurringPayloads.length === 0) error = { message: "올해 생성할 새 정기 일정이 없습니다." };
+        if (!error && recurringPayloads.length === 0) error = userError("올해 생성할 새 정기 일정이 없습니다.");
         if (!error) {
           const eventResult = await supabase.from("events").insert(recurringPayloads).select("id");
           error = eventResult.error;
@@ -388,7 +388,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         const memberParticipants: TeamParticipant[] = profiles.filter((profile) => profile.status === "active" && selectedMemberIds.has(profile.id)).map((profile) => ({ kind: "member", id: profile.id, name: profile.name, position: profile.position }));
         const guestParticipants: TeamParticipant[] = (eventRow.event_guest_players ?? []).map((guest) => ({ kind: "guest", id: guest.guest_player_id, name: guest.guest_name, position: guest.guest_position }));
         const participants = [...memberParticipants, ...guestParticipants];
-        if (participants.length < teamCount) error = { message: "참가 인원이 팀 수보다 적습니다." };
+        if (participants.length < teamCount) error = userError("참가 인원이 팀 수보다 적습니다.");
         if (!error) {
           const ordered = mode === "balanced" ? ["GK", "DF", "MF", "FW", "ANY"].flatMap((position) => shuffled(participants.filter((participant) => (participant.position ?? "ANY") === position))) : shuffled(participants);
           const teams = Array.from({ length: teamCount }, (_, index) => ({ team_number: index + 1, team_name: `${String.fromCharCode(65 + index)}팀`, participants: [] as TeamParticipant[] }));
@@ -406,22 +406,22 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         const targetMatches: Array<Record<string, unknown>> = [];
         for (const match of matchDrafts) {
           if (!match.team_a_id || !match.team_b_id || match.team_a_id === match.team_b_id) {
-            error = { message: "각 경기에 서로 다른 두 팀을 선택해 주세요." };
+            error = userError("각 경기에 서로 다른 두 팀을 선택해 주세요.");
             break;
           }
           if (match.team_a_score < 0 || match.team_b_score < 0) {
-            error = { message: "스코어는 0 이상이어야 합니다." };
+            error = userError("스코어는 0 이상이어야 합니다.");
             break;
           }
           const scorers: Array<Record<string, unknown>> = [];
           for (const scorer of match.scorers) {
             if (!scorer.member_id) {
-              error = { message: `${match.match_number}경기의 득점자를 선택해 주세요.` };
+              error = userError(`${match.match_number}경기의 득점자를 선택해 주세요.`);
               break;
             }
             const member = members.find((item) => item.id === scorer.member_id);
             if (!member || scorer.team_id !== member.event_team_id) {
-              error = { message: `${match.match_number}경기의 득점자 팀을 확인해 주세요.` };
+              error = userError(`${match.match_number}경기의 득점자 팀을 확인해 주세요.`);
               break;
             }
             scorers.push({ team_id: scorer.team_id, profile_id: member.profile_id, guest_player_id: member.guest_player_id, scorer_name: member.participant_name, goals: Math.max(1, Number(scorer.goals) || 1) });
@@ -446,7 +446,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     setSaving(false); if (error) return onError(toErrorMessage(error)); onSaved();
   };
   return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
-    {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button className="cta secondary" name="action" value="password" disabled={saving}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<input name="position" defaultValue={String(row.position ?? "")} /></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label></>}
+    {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button className="cta secondary" name="action" value="password" disabled={saving}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 10,000원</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
