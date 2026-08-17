@@ -2105,13 +2105,6 @@ td { font-weight: 800; }
 
 .attendee-name b { font-size: 15px; }
 
-.attendee-name small {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: .08em;
-}
-
 .attendee-state {
   flex: none;
   color: var(--muted);
