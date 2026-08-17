@@ -1225,14 +1225,14 @@ footer a {
   cursor: pointer;
 }
 
-/* Member cards carry more than one action, so the overlay is a container. */
+/* Member cards carry more than one action, so the row is a container.
+   `margin-left: auto` keeps management on the right edge even after the badges
+   wrap it onto its own line in a narrow card. */
 .member-management-actions {
-  position: absolute;
-  left: 18px;
-  top: 18px;
-  z-index: 1;
+  flex: none;
   display: flex;
   gap: 6px;
+  margin-left: auto;
 }
 
 .venue-history { margin: 0 0 18px; }
@@ -1273,6 +1273,9 @@ footer a {
 
 .member-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   min-height: 290px;
   padding: 25px;
   border-top: var(--accent-bar) solid var(--navy);
@@ -1311,6 +1314,19 @@ footer a {
 }
 
 .member-card p { color: var(--muted); }
+
+/* Badges read left, management sits right, and `margin-top: auto` keeps the row
+   pinned to the bottom edge however tall the name and position run. */
+.member-card-foot {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+}
 
 .member-badges {
   display: flex;
