@@ -138,6 +138,7 @@ textarea:focus-visible,
 .video-banner small,
 .mom-candidates span,
 .auth-divider,
+.event-team-badge,
 footer {
   font-family: var(--font-display), var(--font-sans), sans-serif;
   font-size: 12px;
@@ -2063,6 +2064,24 @@ td { font-weight: 800; }
 
 .event-meta-time { white-space: nowrap; }
 
+/* The badge lives in .event-info, not .event-action: only this column sits
+   below the stretched card link, so tapping the badge opens the day page
+   instead of landing on dead space. */
+.event-info .event-team-badge {
+  display: inline-flex;
+  width: max-content;
+  margin-top: 9px;
+  padding: 6px 9px;
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+  font-size: 12px;
+}
+
+.event-info .event-team-badge.unassigned {
+  background: var(--neutral-bg);
+  color: var(--neutral-ink);
+}
+
 /* Everything actionable sits above the stretched card link. */
 .event-action {
   position: relative;
@@ -2633,6 +2652,46 @@ td { font-weight: 800; }
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+/* Own team is marked three ways — border, header label, row flag — so the
+   cue never rests on colour alone. */
+.detail-team.is-mine {
+  border-color: var(--green);
+  box-shadow: 4px 4px 0 rgba(53, 168, 83, .22);
+}
+
+.detail-team.is-mine .detail-team-head { background: var(--note-bg); }
+
+.detail-team-head .mine-flag {
+  display: inline-flex;
+  margin-right: auto;
+  padding: 5px 7px;
+  background: var(--green);
+  color: var(--navy);
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.detail-team li.is-me {
+  margin: 0 -16px;
+  padding-right: 16px;
+  padding-left: 16px;
+  background: var(--note-bg);
+}
+
+.detail-team li.is-me b::after {
+  content: "나";
+  display: inline-flex;
+  margin-left: 7px;
+  padding: 2px 6px;
+  background: var(--navy);
+  color: var(--surface);
+  font-size: 10px;
+  letter-spacing: .1em;
 }
 
 .detail-match-list {
