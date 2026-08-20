@@ -30,6 +30,11 @@ const feedbackStatusLabels: Record<Feedback["status"], string> = { received: "�
 const formKindLabels: Record<ParticipationForm["kind"], string> = { election: "회장단 선거", poll: "의사 결정 투표", survey: "회원 설문" };
 const formStatusLabels: Record<ParticipationForm["status"], string> = { draft: "초안", open: "진행 중", closed: "마감", archived: "보관" };
 const checkInStatusLabels: Record<NonNullable<Attendance["check_in_status"]>, string> = { present: "출석", late: "지각", absent: "결석" };
+/* The five roster codes every position column in the schema is limited to.
+   profiles.position is the one that can still hold free text until the
+   constraint migration lands, so read it through rosterPosition. */
+const rosterPositions = ["GK", "DF", "MF", "FW", "ANY"] as const;
+const rosterPosition = (position: string | null | undefined) => rosterPositions.find((code) => code === position) ?? "ANY";
 const checkInStatusOrder: Array<NonNullable<Attendance["check_in_status"]>> = ["absent", "late", "present"];
 
 const permissionLabels: Record<string, string> = {
@@ -390,10 +395,17 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         const participants = [...memberParticipants, ...guestParticipants];
         if (participants.length < teamCount) error = userError("참가 인원이 팀 수보다 적습니다.");
         if (!error) {
-          const ordered = mode === "balanced" ? ["GK", "DF", "MF", "FW", "ANY"].flatMap((position) => shuffled(participants.filter((participant) => (participant.position ?? "ANY") === position))) : shuffled(participants);
+          /* Balanced mode buckets by roster code, so a position the roster
+             cannot express must fall back to ANY rather than drop out of the
+             bucketing — a dropped participant silently produced empty teams
+             while save_event_teams had already deleted the previous ones. */
+          const ordered = mode === "balanced" ? rosterPositions.flatMap((code) => shuffled(participants.filter((participant) => rosterPosition(participant.position) === code))) : shuffled(participants);
           const teams = Array.from({ length: teamCount }, (_, index) => ({ team_number: index + 1, team_name: `${String.fromCharCode(65 + index)}팀`, participants: [] as TeamParticipant[] }));
           ordered.forEach((participant, index) => { const round = Math.floor(index / teamCount); const offset = index % teamCount; const teamIndex = round % 2 === 0 ? offset : teamCount - 1 - offset; teams[teamIndex].participants.push(participant); });
-          ({ error } = await supabase.rpc("save_event_teams", { target_event_id: eventRow.id, target_mode: mode, target_teams: teams }));
+          /* Never hand the RPC a formation that lost people on the way: it
+             deletes the existing teams before inserting the new ones. */
+          if (ordered.length !== participants.length || teams.some((team) => team.participants.length === 0)) error = userError("팀 분배에 실패했습니다. 참가자 포지션을 확인해 주세요.");
+          else ({ error } = await supabase.rpc("save_event_teams", { target_event_id: eventRow.id, target_mode: mode, target_teams: teams }));
         }
       } else if (action === "stats") {
         const teams = eventRow.event_teams ?? [];
@@ -498,10 +510,13 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
     const record = attendance.find((item) => item.event_id === event.id && item.member_id === profile.id);
     return isCheckedIn(record) || (record?.status === "going" && getCheckInStatus(record) !== "absent");
   };
+  /* Only the members who turned up can be put on a team, so attendance is the
+     roster rather than a hint beside every active member. */
+  const eligibleProfiles = activeProfiles.filter(hasAttendance);
   const [teamScores, setTeamScores] = useState<Record<string, number>>(() => Object.fromEntries(teams.map((team) => [team.id, team.score ?? 0])));
   const [goalCounts, setGoalCounts] = useState<Record<string, number>>(() => Object.fromEntries(teams.flatMap((team) => team.event_team_members.map((member) => [member.id, member.goals]))));
   const [ratings, setRatings] = useState<Record<string, number | null>>(() => Object.fromEntries(teams.flatMap((team) => team.event_team_members.map((member) => [member.id, member.rating]))));
-  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(() => new Set(activeProfiles.filter((profile) => assignedMemberIds.has(profile.id) || hasAttendance(profile)).map((profile) => profile.id)));
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(() => new Set(eligibleProfiles.map((profile) => profile.id)));
   const highestScore = Math.max(0, ...teams.map((team) => teamScores[team.id] ?? 0));
   const selectedCount = selectedMemberIds.size;
   const updateTeamScore = (teamId: string, delta: number) => setTeamScores((current) => ({ ...current, [teamId]: Math.max(0, (current[teamId] ?? 0) + delta) }));
@@ -512,12 +527,12 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
     <div className="read-box team-editor-intro"><b>{String(event.title)}</b><p>1. 회원을 고르고 → 2. 팀 방식과 수를 정한 뒤 → 3. 팀 만들기를 누르세요.</p><small>팀을 다시 만들면 기존 팀 편성과 기록이 새 결과로 교체됩니다.</small></div>
     <fieldset className="check-grid team-roster-picker">
       <legend>1. 참여 회원 선택 · {selectedCount}명</legend>
-      <p className="form-description team-step-description">이번 일정에 뛸 회원만 체크하세요. 참석·편성 상태는 오른쪽에서 확인할 수 있습니다.</p>
-      <div className="team-roster-list">{activeProfiles.length > 0 ? activeProfiles.map((profile) => {
+      <p className="form-description team-step-description">이 일정에 출석한 회원만 나옵니다. 기본으로 모두 선택되며, 빠질 회원만 체크를 해제하세요.</p>
+      <div className="team-roster-list">{eligibleProfiles.length > 0 ? eligibleProfiles.map((profile) => {
         const attended = hasAttendance(profile);
         const assigned = assignedMemberIds.has(profile.id);
         return <label className="team-roster-row" key={profile.id}><input name="member_ids" value={profile.id} type="checkbox" checked={selectedMemberIds.has(profile.id)} onChange={(changeEvent) => setSelectedMemberIds((current) => { const next = new Set(current); if (changeEvent.target.checked) next.add(profile.id); else next.delete(profile.id); return next; })} /><span className="team-roster-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="team-roster-copy"><b>{profile.name}</b></span><span className={`team-roster-state ${assigned ? "is-assigned" : attended ? "is-attended" : ""}`}>{assigned ? "편성됨" : attended ? "참석" : "선택 가능"}</span></label>;
-      }) : <p className="form-description">활동 중인 회원이 없습니다.</p>}</div>
+      }) : <p className="form-description">이 일정에 출석한 회원이 없습니다. 출석 체크에서 출석을 먼저 기록해 주세요.</p>}</div>
     </fieldset>
     <section className="team-generation-panel">
       <div className="team-step-heading"><h3>2. 팀 나누기</h3><p className="form-description">선택한 회원을 몇 팀으로 나눌지 정한 뒤 팀 만들기를 누르세요.</p></div>
