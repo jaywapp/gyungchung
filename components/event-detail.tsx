@@ -153,12 +153,15 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
         </section>
 
         {teams.length > 0 && <section className="event-detail-block">
-          <h3>팀 구성{event.is_competitive ? " 및 결과" : ""}</h3>
+          <h3>팀 구성{event.is_competitive ? " 및 결과" : ""}<span className="detail-block-count">{teams.length}개 팀 · {teams.reduce((sum, team) => sum + team.event_team_members.length, 0)}명</span></h3>
           <div className="detail-team-grid">{teams.map((team) => {
             const result = team.score === null || maxScore === null ? null : team.score === maxScore ? winnerCount > 1 ? "무승부" : "승리" : "패배";
-            return <div className="detail-team" key={team.id}>
-              <div className="detail-team-head"><b>{team.team_name}</b>{event.is_competitive && (team.score === null ? <small>점수 기록 전</small> : <span>{team.score}<small>{result}</small></span>)}</div>
-              <ul>{team.event_team_members.map((member) => <li key={member.id}>
+            /* Own team is marked with a border, a label and a row flag rather
+               than colour alone, so the cue survives colour vision deficiency. */
+            const isMine = Boolean(profile && team.event_team_members.some((member) => member.profile_id === profile.id));
+            return <div className={`detail-team${isMine ? " is-mine" : ""}`} key={team.id}>
+              <div className="detail-team-head"><b>{team.team_name}</b>{isMine && <em className="mine-flag">내 팀</em>}{event.is_competitive && (team.score === null ? <small>점수 기록 전</small> : <span>{team.score}<small>{result}</small></span>)}</div>
+              <ul>{team.event_team_members.map((member) => <li className={profile && member.profile_id === profile.id ? "is-me" : undefined} key={member.id}>
                 <b>{member.participant_name}</b>
                 <span>{member.participant_position ?? "ANY"}</span>
                 <small>{[member.goals ? `${member.goals}골` : null, member.rating !== null ? `${member.rating}점` : null].filter(Boolean).join(" · ") || "기록 없음"}</small>
