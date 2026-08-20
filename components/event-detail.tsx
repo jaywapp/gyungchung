@@ -187,6 +187,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
             const teamAName = teamNameById.get(match.team_a_id) ?? "팀 A";
             const teamBName = teamNameById.get(match.team_b_id) ?? "팀 B";
             const scorersFor = (teamId: string) => match.event_match_scorers.filter((scorer) => scorer.team_id === teamId);
+            const playersFor = (teamId: string) => (match.event_match_players ?? []).filter((player) => player.team_id === teamId);
             return <li key={match.id}>
               <div className="detail-match-score">
                 <small>{match.match_number}경기</small>
@@ -194,8 +195,11 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
               </div>
               {[[match.team_a_id, teamAName] as const, [match.team_b_id, teamBName] as const].map(([teamId, teamName]) => {
                 const scorers = scorersFor(teamId);
-                if (scorers.length === 0) return null;
-                return <p className="detail-match-scorers" key={teamId}><b>{teamName}</b>{scorers.map((scorer) => <span key={scorer.id}>{scorer.scorer_name}<em role="img" aria-label={`${scorer.goals}골`}>{"⚽️".repeat(scorer.goals)}</em></span>)}</p>;
+                const players = playersFor(teamId);
+                return <div className="detail-match-team" key={teamId}>
+                  {players.length > 0 && <p className="detail-match-lineup"><b>{teamName} 출전</b><span>{players.map((player) => player.player_name).join(" · ")}</span></p>}
+                  {scorers.length > 0 && <p className="detail-match-scorers"><b>{teamName} 득점</b>{scorers.map((scorer) => <span key={scorer.id}>{scorer.scorer_name}<em role="img" aria-label={`${scorer.goals}골`}>{"⚽️".repeat(scorer.goals)}</em></span>)}</p>}
+                </div>;
               })}
             </li>;
           })}</ol>
