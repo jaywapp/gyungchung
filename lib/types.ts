@@ -121,6 +121,16 @@ export interface EventMatchScorer {
   goals: number;
 }
 
+export interface EventMatchPlayer {
+  id: string;
+  event_id: string;
+  match_id: string;
+  team_id: string;
+  profile_id: string | null;
+  guest_player_id: string | null;
+  player_name: string;
+}
+
 export interface EventMatch {
   id: string;
   event_id: string;
@@ -129,6 +139,7 @@ export interface EventMatch {
   team_b_id: string;
   team_a_score: number;
   team_b_score: number;
+  event_match_players: EventMatchPlayer[];
   event_match_scorers: EventMatchScorer[];
 }
 

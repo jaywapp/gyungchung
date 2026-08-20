@@ -182,30 +182,47 @@ function nextSundayMorning() {
 type TeamParticipant = { kind: "member" | "guest"; id: string; name: string; position: string | null };
 
 type MatchScorerDraft = { id: string; team_id: string; member_id: string; goals: number };
-type MatchDraft = { id: string; match_number: number; team_a_id: string; team_b_id: string; team_a_score: number; team_b_score: number; scorers: MatchScorerDraft[] };
+type MatchLineupDraft = { member_id: string; team_id: string };
+type MatchDraft = { id: string; match_number: number; team_a_id: string; team_b_id: string; team_a_other_goals: number; team_b_other_goals: number; lineups: MatchLineupDraft[]; scorers: MatchScorerDraft[] };
+
+function matchScoreFor(match: MatchDraft, teamId: string) {
+  const scorerGoals = match.scorers.filter((scorer) => scorer.team_id === teamId && scorer.member_id).reduce((sum, scorer) => sum + scorer.goals, 0);
+  const otherGoals = teamId === match.team_a_id ? match.team_a_other_goals : teamId === match.team_b_id ? match.team_b_other_goals : 0;
+  return scorerGoals + otherGoals;
+}
 
 function buildMatchDrafts(event: Event): MatchDraft[] {
   const teams = event.event_teams ?? [];
   const members = teams.flatMap((team) => team.event_team_members);
-  return (event.event_matches ?? []).map((match) => ({
-    id: match.id,
-    match_number: match.match_number,
-    team_a_id: match.team_a_id,
-    team_b_id: match.team_b_id,
-    team_a_score: match.team_a_score,
-    team_b_score: match.team_b_score,
-    scorers: (match.event_match_scorers ?? []).map((scorer) => ({
+  const memberIdFor = (profileId: string | null, guestPlayerId: string | null) => members.find((member) => (profileId !== null && member.profile_id === profileId) || (guestPlayerId !== null && member.guest_player_id === guestPlayerId))?.id ?? "";
+  return (event.event_matches ?? []).map((match) => {
+    const savedLineups = match.event_match_players ?? [];
+    const lineups = savedLineups.length > 0
+      ? savedLineups.map((player) => ({ member_id: memberIdFor(player.profile_id, player.guest_player_id), team_id: player.team_id })).filter((lineup) => lineup.member_id)
+      : teams.filter((team) => team.id === match.team_a_id || team.id === match.team_b_id).flatMap((team) => team.event_team_members.map((member) => ({ member_id: member.id, team_id: team.id })));
+    const scorers = (match.event_match_scorers ?? []).map((scorer) => ({
       id: scorer.id,
       team_id: scorer.team_id,
-      member_id: members.find((member) => (scorer.profile_id !== null && member.profile_id === scorer.profile_id) || (scorer.guest_player_id !== null && member.guest_player_id === scorer.guest_player_id))?.id ?? "",
+      member_id: memberIdFor(scorer.profile_id, scorer.guest_player_id),
       goals: scorer.goals,
-    })),
-  }));
+    }));
+    return {
+      id: match.id,
+      match_number: match.match_number,
+      team_a_id: match.team_a_id,
+      team_b_id: match.team_b_id,
+      team_a_other_goals: Math.max(0, match.team_a_score - scorers.filter((scorer) => scorer.team_id === match.team_a_id).reduce((sum, scorer) => sum + scorer.goals, 0)),
+      team_b_other_goals: Math.max(0, match.team_b_score - scorers.filter((scorer) => scorer.team_id === match.team_b_id).reduce((sum, scorer) => sum + scorer.goals, 0)),
+      lineups,
+      scorers,
+    };
+  });
 }
 
 function createMatchDraft(teams: Event["event_teams"], matchNumber: number): MatchDraft {
   const [teamA, teamB] = teams ?? [];
-  return { id: `draft-${Date.now()}-${matchNumber}`, match_number: matchNumber, team_a_id: teamA?.id ?? "", team_b_id: teamB?.id ?? "", team_a_score: 0, team_b_score: 0, scorers: [] };
+  const selectedTeams = [teamA, teamB].filter((team): team is NonNullable<Event["event_teams"]>[number] => Boolean(team));
+  return { id: `draft-${Date.now()}-${matchNumber}`, match_number: matchNumber, team_a_id: teamA?.id ?? "", team_b_id: teamB?.id ?? "", team_a_other_goals: 0, team_b_other_goals: 0, lineups: selectedTeams.flatMap((team) => team.event_team_members.map((member) => ({ member_id: member.id, team_id: team.id }))), scorers: [] };
 }
 
 function shuffled<T>(items: T[]) {
@@ -436,10 +453,26 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
             error = userError("각 경기에 서로 다른 두 팀을 선택해 주세요.");
             break;
           }
-          if (match.team_a_score < 0 || match.team_b_score < 0) {
-            error = userError("스코어는 0 이상이어야 합니다.");
-            break;
+          const teamAScore = matchScoreFor(match, match.team_a_id);
+          const teamBScore = matchScoreFor(match, match.team_b_id);
+          const lineups: Array<Record<string, unknown>> = [];
+          for (const teamId of [match.team_a_id, match.team_b_id]) {
+            if (!match.lineups.some((lineup) => lineup.team_id === teamId)) {
+              const teamName = teams.find((team) => team.id === teamId)?.team_name ?? "선택한 팀";
+              error = userError(`${match.match_number}경기의 ${teamName} 출전 선수를 한 명 이상 선택해 주세요.`);
+              break;
+            }
           }
+          if (error) break;
+          for (const lineup of match.lineups) {
+            const member = members.find((item) => item.id === lineup.member_id);
+            if (!member || (lineup.team_id !== match.team_a_id && lineup.team_id !== match.team_b_id)) {
+              error = userError(`${match.match_number}경기의 출전 명단을 확인해 주세요.`);
+              break;
+            }
+            lineups.push({ team_id: lineup.team_id, profile_id: member.profile_id, guest_player_id: member.guest_player_id, player_name: member.participant_name });
+          }
+          if (error) break;
           const scorers: Array<Record<string, unknown>> = [];
           for (const scorer of match.scorers) {
             if (!scorer.member_id) {
@@ -447,14 +480,15 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
               break;
             }
             const member = members.find((item) => item.id === scorer.member_id);
-            if (!member || scorer.team_id !== member.event_team_id) {
-              error = userError(`${match.match_number}경기의 득점자 팀을 확인해 주세요.`);
+            const lineup = match.lineups.find((item) => item.member_id === scorer.member_id && item.team_id === scorer.team_id);
+            if (!member || !lineup) {
+              error = userError(`${match.match_number}경기의 득점자가 출전 명단에 있는지 확인해 주세요.`);
               break;
             }
             scorers.push({ team_id: scorer.team_id, profile_id: member.profile_id, guest_player_id: member.guest_player_id, scorer_name: member.participant_name, goals: Math.max(1, Number(scorer.goals) || 1) });
           }
           if (error) break;
-          targetMatches.push({ match_number: match.match_number, team_a_id: match.team_a_id, team_b_id: match.team_b_id, team_a_score: match.team_a_score, team_b_score: match.team_b_score, scorers });
+          targetMatches.push({ match_number: match.match_number, team_a_id: match.team_a_id, team_b_id: match.team_b_id, team_a_score: teamAScore, team_b_score: teamBScore, lineups, scorers });
         }
         if (!error) ({ error } = await supabase.rpc("save_event_match_history", { target_event_id: eventRow.id, target_matches: targetMatches }));
       }
@@ -580,12 +614,64 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
 
 function MatchHistoryEditor({ teams, matches, onChange }: { teams: Event["event_teams"]; matches: MatchDraft[]; onChange: (matches: MatchDraft[]) => void }) {
   const availableTeams = teams ?? [];
-  const updateMatch = (matchId: string, patch: Partial<MatchDraft>) => onChange(matches.map((match) => match.id === matchId ? { ...match, ...patch } : match));
+  const allMembers = availableTeams.flatMap((team) => team.event_team_members.map((member) => ({ ...member, baseTeamName: team.team_name })));
   const removeMatch = (matchId: string) => onChange(matches.filter((match) => match.id !== matchId));
   const addMatch = () => onChange([...matches, createMatchDraft(availableTeams, Math.max(0, ...matches.map((match) => match.match_number)) + 1)]);
   const addScorer = (matchId: string) => onChange(matches.map((match) => match.id === matchId ? { ...match, scorers: [...match.scorers, { id: `draft-scorer-${Date.now()}`, team_id: match.team_a_id, member_id: "", goals: 1 }] } : match));
   const updateScorer = (matchId: string, scorerId: string, patch: Partial<MatchScorerDraft>) => onChange(matches.map((match) => match.id === matchId ? { ...match, scorers: match.scorers.map((scorer) => scorer.id === scorerId ? { ...scorer, ...patch } : scorer) } : match));
   const removeScorer = (matchId: string, scorerId: string) => onChange(matches.map((match) => match.id === matchId ? { ...match, scorers: match.scorers.filter((scorer) => scorer.id !== scorerId) } : match));
+  const changeMatchTeam = (matchId: string, side: "a" | "b", teamId: string) => onChange(matches.map((match) => {
+    if (match.id !== matchId) return match;
+    const previousTeamId = side === "a" ? match.team_a_id : match.team_b_id;
+    const newTeam = availableTeams.find((team) => team.id === teamId);
+    const retainedLineups = match.lineups.filter((lineup) => lineup.team_id !== previousTeamId);
+    const retainedMemberIds = new Set(retainedLineups.map((lineup) => lineup.member_id));
+    const defaultLineups = (newTeam?.event_team_members ?? []).filter((member) => !retainedMemberIds.has(member.id)).map((member) => ({ member_id: member.id, team_id: teamId }));
+    return {
+      ...match,
+      [side === "a" ? "team_a_id" : "team_b_id"]: teamId,
+      [side === "a" ? "team_a_other_goals" : "team_b_other_goals"]: 0,
+      lineups: [...retainedLineups, ...defaultLineups],
+      scorers: match.scorers.filter((scorer) => scorer.team_id !== previousTeamId),
+    };
+  }));
+  const assignPlayer = (matchId: string, memberId: string, teamId: string) => onChange(matches.map((match) => {
+    if (match.id !== matchId) return match;
+    const lineups = match.lineups.filter((lineup) => lineup.member_id !== memberId);
+    if (teamId) lineups.push({ member_id: memberId, team_id: teamId });
+    return { ...match, lineups, scorers: match.scorers.filter((scorer) => scorer.member_id !== memberId || scorer.team_id === teamId) };
+  }));
+  const adjustOtherGoals = (matchId: string, side: "a" | "b", delta: number) => onChange(matches.map((match) => match.id === matchId ? { ...match, [side === "a" ? "team_a_other_goals" : "team_b_other_goals"]: Math.max(0, (side === "a" ? match.team_a_other_goals : match.team_b_other_goals) + delta) } : match));
 
-  return <section className="match-history-editor"><header><div><h3>경기별 기록</h3><p className="form-description">한 일정에 여러 경기를 추가하고, 경기마다 스코어와 득점자를 남깁니다.</p></div><span>{matches.length}경기</span></header>{matches.map((match) => { const teamOptions = availableTeams.filter((team) => team.id === match.team_a_id || team.id === match.team_b_id); return <div className="match-history-row" key={match.id}><header><b>{match.match_number}경기</b><button type="button" onClick={() => removeMatch(match.id)}>삭제</button></header><div className="match-history-score"><label>팀 A<select value={match.team_a_id} onChange={(event) => updateMatch(match.id, { team_a_id: event.target.value })}>{availableTeams.filter((team) => team.id !== match.team_b_id).map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label><label>점수<input type="number" min="0" value={match.team_a_score} onChange={(event) => updateMatch(match.id, { team_a_score: Math.max(0, Number(event.target.value) || 0) })} /></label><span>:</span><label>점수<input type="number" min="0" value={match.team_b_score} onChange={(event) => updateMatch(match.id, { team_b_score: Math.max(0, Number(event.target.value) || 0) })} /></label><label>팀 B<select value={match.team_b_id} onChange={(event) => updateMatch(match.id, { team_b_id: event.target.value })}>{availableTeams.filter((team) => team.id !== match.team_a_id).map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label></div><div className="match-history-scorers"><header><span>득점자</span><button type="button" className="text-link" onClick={() => addScorer(match.id)}>득점자 추가</button></header>{match.scorers.map((scorer) => { const scorerTeam = teamOptions.find((team) => team.id === scorer.team_id); const memberOptions = scorerTeam?.event_team_members ?? []; return <div className="match-scorer-row" key={scorer.id}><label>팀<select value={scorer.team_id} onChange={(event) => updateScorer(match.id, scorer.id, { team_id: event.target.value, member_id: "" })}>{teamOptions.map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label><label>선수<select value={scorer.member_id} onChange={(event) => updateScorer(match.id, scorer.id, { member_id: event.target.value })}><option value="">선수 선택</option>{memberOptions.map((member) => <option key={member.id} value={member.id}>{member.participant_name}</option>)}</select></label><label>골<input type="number" min="1" value={scorer.goals} onChange={(event) => updateScorer(match.id, scorer.id, { goals: Math.max(1, Number(event.target.value) || 1) })} /></label><button type="button" aria-label="득점자 삭제" onClick={() => removeScorer(match.id, scorer.id)}>×</button></div>; })}</div></div>; })}<button type="button" className="cta secondary" onClick={addMatch} disabled={availableTeams.length < 2}>경기 추가</button></section>;
+  return <section className="match-history-editor">
+    <header><div><h3>경기별 기록</h3><p className="form-description">한 일정에 여러 경기를 추가하고, 경기마다 대진·출전 명단·결과를 따로 남깁니다.</p></div><span>{matches.length}경기</span></header>
+    {matches.map((match) => {
+      const teamOptions = availableTeams.filter((team) => team.id === match.team_a_id || team.id === match.team_b_id);
+      const teamA = teamOptions.find((team) => team.id === match.team_a_id);
+      const teamB = teamOptions.find((team) => team.id === match.team_b_id);
+      const lineupTeamFor = (memberId: string) => match.lineups.find((lineup) => lineup.member_id === memberId)?.team_id ?? "";
+      return <div className="match-history-row" key={match.id}>
+        <header><b>{match.match_number}경기</b><button type="button" onClick={() => removeMatch(match.id)}>삭제</button></header>
+        <div className="match-history-score">
+          <label>팀 A<select value={match.team_a_id} onChange={(event) => changeMatchTeam(match.id, "a", event.target.value)}>{availableTeams.filter((team) => team.id !== match.team_b_id).map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label>
+          <div className="match-score-total"><small>점수</small><output>{matchScoreFor(match, match.team_a_id)}</output><span><button type="button" aria-label={`${teamA?.team_name ?? "팀 A"} 기타 득점 감소`} onClick={() => adjustOtherGoals(match.id, "a", -1)}>−</button><em>기타 {match.team_a_other_goals}</em><button type="button" aria-label={`${teamA?.team_name ?? "팀 A"} 기타 득점 증가`} onClick={() => adjustOtherGoals(match.id, "a", 1)}>+</button></span></div>
+          <span>:</span>
+          <div className="match-score-total"><small>점수</small><output>{matchScoreFor(match, match.team_b_id)}</output><span><button type="button" aria-label={`${teamB?.team_name ?? "팀 B"} 기타 득점 감소`} onClick={() => adjustOtherGoals(match.id, "b", -1)}>−</button><em>기타 {match.team_b_other_goals}</em><button type="button" aria-label={`${teamB?.team_name ?? "팀 B"} 기타 득점 증가`} onClick={() => adjustOtherGoals(match.id, "b", 1)}>+</button></span></div>
+          <label>팀 B<select value={match.team_b_id} onChange={(event) => changeMatchTeam(match.id, "b", event.target.value)}>{availableTeams.filter((team) => team.id !== match.team_a_id).map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label>
+        </div>
+        <div className="match-lineup-editor">
+          <header><div><b>출전 명단</b><small>기본 편성을 불러왔습니다. 이 경기에서만 빠지거나 팀이 바뀐 선수를 조정하세요.</small></div><span>{teamA?.team_name ?? "팀 A"} {match.lineups.filter((lineup) => lineup.team_id === match.team_a_id).length}명 · {teamB?.team_name ?? "팀 B"} {match.lineups.filter((lineup) => lineup.team_id === match.team_b_id).length}명</span></header>
+          <div className="match-lineup-list">{allMembers.map((member) => <label className="match-lineup-player" key={member.id}><span><b>{member.participant_name}</b><small>기본 {member.baseTeamName}</small></span><select aria-label={`${member.participant_name} 출전 팀`} value={lineupTeamFor(member.id)} onChange={(event) => assignPlayer(match.id, member.id, event.target.value)}><option value="">미출전</option>{teamOptions.map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label>)}</div>
+        </div>
+        <div className="match-history-scorers">
+          <header><span>득점자</span><button type="button" className="text-link" onClick={() => addScorer(match.id)}>득점자 추가</button></header>
+          {match.scorers.map((scorer) => {
+            const memberOptions = match.lineups.filter((lineup) => lineup.team_id === scorer.team_id).map((lineup) => allMembers.find((member) => member.id === lineup.member_id)).filter((member): member is (typeof allMembers)[number] => Boolean(member));
+            return <div className="match-scorer-row" key={scorer.id}><label>팀<select value={scorer.team_id} onChange={(event) => updateScorer(match.id, scorer.id, { team_id: event.target.value, member_id: "" })}>{teamOptions.map((team) => <option key={team.id} value={team.id}>{team.team_name}</option>)}</select></label><label>선수<select value={scorer.member_id} onChange={(event) => updateScorer(match.id, scorer.id, { member_id: event.target.value })}><option value="">선수 선택</option>{memberOptions.map((member) => <option key={member.id} value={member.id}>{member.participant_name}</option>)}</select></label><label>골<input type="number" min="1" value={scorer.goals} onChange={(event) => updateScorer(match.id, scorer.id, { goals: Math.max(1, Number(event.target.value) || 1) })} /></label><button type="button" aria-label="득점자 삭제" onClick={() => removeScorer(match.id, scorer.id)}>×</button></div>;
+          })}
+        </div>
+      </div>;
+    })}
+    <button type="button" className="cta secondary" onClick={addMatch} disabled={availableTeams.length < 2}>경기 추가</button>
+  </section>;
 }
