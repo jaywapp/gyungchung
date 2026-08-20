@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, ChevronLeft, ClipboardCheck, MapPin, Pencil, Shield, Trash2, Trophy, X } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -52,6 +52,12 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
     () => events.filter((event) => toEventDateKey(event.starts_at) === dateKey).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
     [dateKey, events],
   );
+
+  useEffect(() => {
+    if (loading || dayEvents.length === 0 || new URLSearchParams(window.location.search).get("section") !== "teams") return;
+    const frame = window.requestAnimationFrame(() => document.getElementById("teams")?.scrollIntoView({ block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [dateKey, dayEvents.length, loading]);
 
   const submitMomVote = async (candidateProfileId: string) => {
     if (!user || !profile || !votingEvent || !supabase) return;
@@ -105,6 +111,8 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
       const scoredTeams = teams.filter((team) => team.score !== null);
       const maxScore = scoredTeams.length ? Math.max(...scoredTeams.map((team) => team.score ?? 0)) : null;
       const winnerCount = maxScore === null ? 0 : scoredTeams.filter((team) => team.score === maxScore).length;
+      const rosterVisible = Boolean(user && profile?.status === "active");
+      const teamMemberCount = teams.reduce((sum, team) => sum + team.event_team_members.length, 0);
 
       return <article key={event.id} className={`event-detail${isPast ? " past" : ""}`}>
         <div className="event-detail-head">
@@ -152,9 +160,12 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
             </>}
         </section>
 
-        {teams.length > 0 && <section className="event-detail-block">
-          <h3>팀 구성{event.is_competitive ? " 및 결과" : ""}<span className="detail-block-count">{teams.length}개 팀 · {teams.reduce((sum, team) => sum + team.event_team_members.length, 0)}명</span></h3>
-          <div className="detail-team-grid">{teams.map((team) => {
+        {teams.length > 0 && <section id="teams" className="event-detail-block event-team-roster-block">
+          <h3>팀 구성{event.is_competitive ? " 및 결과" : ""}<span className="detail-block-count">{teams.length}개 팀{rosterVisible && teamMemberCount > 0 ? ` · ${teamMemberCount}명` : ""}</span></h3>
+          {!rosterVisible ? <p className="event-detail-gate"><Shield size={15} /> 팀 명단은 활동 회원에게만 공개합니다. {!user && <button type="button" className="text-link" onClick={onLogin}>로그인</button>}</p>
+            : sessionPending ? <SectionSkeleton label="팀 명단을 불러오는 중" />
+            : teamMemberCount === 0 ? <p className="event-detail-gate">팀은 편성됐지만 명단을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</p>
+            : <div className="detail-team-grid">{teams.map((team) => {
             const result = team.score === null || maxScore === null ? null : team.score === maxScore ? winnerCount > 1 ? "무승부" : "승리" : "패배";
             /* Own team is marked with a border, a label and a row flag rather
                than colour alone, so the cue survives colour vision deficiency. */
@@ -167,7 +178,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
                 <small>{[member.goals ? `${member.goals}골` : null, member.rating !== null ? `${member.rating}점` : null].filter(Boolean).join(" · ") || "기록 없음"}</small>
               </li>)}</ul>
             </div>;
-          })}</div>
+          })}</div>}
         </section>}
 
         {matches.length > 0 && <section className="event-detail-block">

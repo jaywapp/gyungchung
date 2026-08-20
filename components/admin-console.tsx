@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
 import { getCheckInStatus, isCheckedIn } from "@/lib/attendance";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { eventDatePath } from "@/lib/event-date";
 import ConfirmDialog from "@/components/confirm-dialog";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
@@ -97,7 +98,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
       {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "feedback", id: row.id, label })} />)}
       {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
     </div>}
-    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={() => { const scope = editorScopes[editor.type] ?? "all"; setEditor(null); toast("저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
+    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
   </section>;
@@ -219,11 +220,13 @@ function shuffled<T>(items: T[]) {
   return result;
 }
 
-export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: () => void; onError: (message: string) => void }) {
+export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: (result?: { close?: boolean; message?: string }) => void; onError: (message: string) => void }) {
   const dialogRef = useDialogFocus<HTMLFormElement>(onClose);
   const row = config.row ?? {};
   const eventRow = row as unknown as Event;
-  const rowTeams = eventRow.event_teams ?? [];
+  const [teamEvent, setTeamEvent] = useState(eventRow);
+  const teamResultsRef = useRef<HTMLDivElement>(null);
+  const rowTeams = teamEvent.event_teams ?? [];
   const assignedMemberIds = new Set(rowTeams.flatMap((team) => team.event_team_members.map((member) => member.profile_id).filter((id): id is string => Boolean(id))));
   const scheduledGuests = eventRow.event_guest_players ?? [];
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
@@ -391,7 +394,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         const mode = String(fd.get("team_mode"));
         const selectedMemberIds = new Set(fd.getAll("member_ids").map(String));
         const memberParticipants: TeamParticipant[] = profiles.filter((profile) => profile.status === "active" && selectedMemberIds.has(profile.id)).map((profile) => ({ kind: "member", id: profile.id, name: profile.name, position: profile.position }));
-        const guestParticipants: TeamParticipant[] = (eventRow.event_guest_players ?? []).map((guest) => ({ kind: "guest", id: guest.guest_player_id, name: guest.guest_name, position: guest.guest_position }));
+        const guestParticipants: TeamParticipant[] = (teamEvent.event_guest_players ?? []).map((guest) => ({ kind: "guest", id: guest.guest_player_id, name: guest.guest_name, position: guest.guest_position }));
         const participants = [...memberParticipants, ...guestParticipants];
         if (participants.length < teamCount) error = userError("참가 인원이 팀 수보다 적습니다.");
         if (!error) {
@@ -405,15 +408,27 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
           /* Never hand the RPC a formation that lost people on the way: it
              deletes the existing teams before inserting the new ones. */
           if (ordered.length !== participants.length || teams.some((team) => team.participants.length === 0)) error = userError("팀 분배에 실패했습니다. 참가자 포지션을 확인해 주세요.");
-          else ({ error } = await supabase.rpc("save_event_teams", { target_event_id: eventRow.id, target_mode: mode, target_teams: teams }));
+          else {
+            ({ error } = await supabase.rpc("save_event_teams", { target_event_id: teamEvent.id, target_mode: mode, target_teams: teams }));
+            if (!error) {
+              const refreshed = await supabase.from("event_teams").select("id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)").eq("event_id", teamEvent.id).order("team_number");
+              error = refreshed.error;
+              if (!error) {
+                const nextEvent = { ...teamEvent, team_mode: mode as Event["team_mode"], event_teams: (refreshed.data ?? []) as Event["event_teams"] };
+                setTeamEvent(nextEvent);
+                setMatchDrafts(buildMatchDrafts(nextEvent));
+                window.setTimeout(() => teamResultsRef.current?.focus(), 0);
+              }
+            }
+          }
         }
       } else if (action === "stats") {
-        const teams = eventRow.event_teams ?? [];
+        const teams = teamEvent.event_teams ?? [];
         const teamStats = teams.map((team) => ({ id: team.id, score: Number(fd.get(`team_score_${team.id}`) ?? 0) }));
         const playerStats = teams.flatMap((team) => team.event_team_members.map((member) => ({ id: member.id, goals: Number(fd.get(`goals_${member.id}`) ?? 0), rating: String(fd.get(`rating_${member.id}`) ?? "") })));
         ({ error } = await supabase.rpc("save_competitive_event_stats", { target_event_id: eventRow.id, target_team_stats: teamStats, target_player_stats: playerStats }));
       } else if (action === "matches") {
-        const teams = eventRow.event_teams ?? [];
+        const teams = teamEvent.event_teams ?? [];
         const members = teams.flatMap((team) => team.event_team_members);
         const targetMatches: Array<Record<string, unknown>> = [];
         for (const match of matchDrafts) {
@@ -455,7 +470,9 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       error = formResult.error;
       if (!error && formResult.data) error = await addQuestion(formResult.data.id, 0);
     }
-    setSaving(false); if (error) return onError(toErrorMessage(error)); onSaved();
+    setSaving(false); if (error) return onError(toErrorMessage(error));
+    if (config.type === "teams" && submitAction === "generate") return onSaved({ close: false, message: "팀 편성을 완료했습니다." });
+    onSaved();
   };
   return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
     {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button className="cta secondary" name="action" value="password" disabled={saving}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label></>}
@@ -484,7 +501,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         <div className="attendance-status-grid">{filteredWalkInProfiles.length > 0 ? filteredWalkInProfiles.map(renderAttendanceRow) : <p className="form-description">{attendanceSearch ? "검색 결과가 없습니다." : "추가할 활동 회원이 없습니다."}</p>}</div>
       </details>
     </div>}
-     {config.type === "teams" && <TeamEditor event={eventRow} profiles={profiles} attendance={attendance} assignedMemberIds={assignedMemberIds} saving={saving} matchDrafts={matchDrafts} onMatchDraftsChange={setMatchDrafts} />}
+     {config.type === "teams" && <TeamEditor event={teamEvent} profiles={profiles} attendance={attendance} assignedMemberIds={assignedMemberIds} saving={saving} matchDrafts={matchDrafts} resultRef={teamResultsRef} onMatchDraftsChange={setMatchDrafts} />}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
     {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
     {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : "저장하기"}</button>}
@@ -498,12 +515,13 @@ type TeamEditorProps = {
   assignedMemberIds: Set<string>;
   saving: boolean;
   matchDrafts: MatchDraft[];
+  resultRef: React.RefObject<HTMLDivElement | null>;
   onMatchDraftsChange: (matches: MatchDraft[]) => void;
 };
 
 const ratingSteps = [2, 4, 6, 8, 10];
 
-function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, matchDrafts, onMatchDraftsChange }: TeamEditorProps) {
+function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, matchDrafts, resultRef, onMatchDraftsChange }: TeamEditorProps) {
   const teams = event.event_teams ?? [];
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const hasAttendance = (profile: Profile) => {
@@ -527,7 +545,7 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
     <div className="read-box team-editor-intro"><b>{String(event.title)}</b><p>1. 회원을 고르고 → 2. 팀 방식과 수를 정한 뒤 → 3. 팀 만들기를 누르세요.</p><small>팀을 다시 만들면 기존 팀 편성과 기록이 새 결과로 교체됩니다.</small></div>
     <fieldset className="check-grid team-roster-picker">
       <legend>1. 참여 회원 선택 · {selectedCount}명</legend>
-      <p className="form-description team-step-description">이 일정에 출석한 회원만 나옵니다. 기본으로 모두 선택되며, 빠질 회원만 체크를 해제하세요.</p>
+      <p className="form-description team-step-description">참석 예정이거나 출석 확인된 회원만 나옵니다. 기본으로 모두 선택되며, 빠질 회원만 체크를 해제하세요.</p>
       <div className="team-roster-list">{eligibleProfiles.length > 0 ? eligibleProfiles.map((profile) => {
         const attended = hasAttendance(profile);
         const assigned = assignedMemberIds.has(profile.id);
@@ -540,13 +558,14 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
       <p className="team-generation-hint">처음이라면 균형 편성을 권장합니다. 선택한 회원을 팀마다 고르게 나눕니다.</p>
       <button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : teams.length > 0 ? "팀 다시 만들기" : "팀 만들기"}</button>
     </section>
-    {teams.length > 0 && <div className="team-record-content">
-      <header className="team-results-heading"><h3>3. 팀 편성 결과</h3><span>{teams.length}개 팀 · {selectedCount}명</span></header>
+    {teams.length > 0 && <div ref={resultRef} tabIndex={-1} className="team-record-content" aria-live="polite">
+      <header className="team-results-heading"><h3>3. 팀 편성 결과</h3><span>{teams.length}개 팀 · {teams.reduce((sum, team) => sum + team.event_team_members.length, 0)}명</span></header>
       {Boolean(event.is_competitive) && <section className="team-scoreboard" aria-label="팀 스코어보드">{teams.map((team) => { const score = teamScores[team.id] ?? 0; const isLeading = highestScore > 0 && score === highestScore; return <article className={`team-score-card ${isLeading ? "is-leading" : ""}`} key={team.id}><div className="team-score-card-label"><b>{team.team_name}</b>{isLeading && <em>리드</em>}</div><output>{score}</output><div className="team-score-stepper"><button type="button" onClick={() => updateTeamScore(team.id, -1)} aria-label={`${team.team_name} 점수 감소`}>−</button><span>팀 스코어</span><button type="button" onClick={() => updateTeamScore(team.id, 1)} aria-label={`${team.team_name} 점수 증가`}>+</button></div><input type="hidden" name={`team_score_${team.id}`} value={score} readOnly /></article>; })}</section>}
       <div className="team-record-grid">{teams.map((team) => <section className="team-admin-card team-record-card" key={team.id}><header className="team-record-heading"><div><span className="eyebrow">ROSTER {String(team.team_number).padStart(2, "0")}</span><h3>{team.team_name}</h3></div>{Boolean(event.is_competitive) && <strong>{teamScores[team.id] ?? 0}점</strong>}</header><div className="team-record-member-list">{team.event_team_members.map((member) => { const goals = goalCounts[member.id] ?? 0; const rating = ratings[member.id] ?? null; return <div className="team-member-stat" key={member.id}><span className="team-member-avatar" aria-hidden="true">{member.participant_name.slice(0, 1)}</span><span className="team-member-copy"><b>{member.participant_name}</b></span>{Boolean(event.is_competitive) && <><input type="hidden" name={`goals_${member.id}`} value={goals} readOnly /><div className="team-goal-stepper" aria-label={`${member.participant_name} 골`}><button type="button" onClick={() => updateGoals(member.id, -1)} aria-label={`${member.participant_name} 골 감소`}>−</button><output>{goals}골</output><button type="button" onClick={() => updateGoals(member.id, 1)} aria-label={`${member.participant_name} 골 증가`}>+</button></div><input type="hidden" name={`rating_${member.id}`} value={rating ?? ""} readOnly /><div className="team-rating-control" role="group" aria-label={`${member.participant_name} 평점`}>{ratingSteps.map((value) => <button type="button" key={value} className={rating !== null && rating >= value ? "is-selected" : ""} aria-label={`${value}점`} aria-pressed={rating !== null && rating >= value} onClick={() => updateRating(member.id, value)}><span /></button>)}<b>{rating === null ? "미평가" : `${rating}/10`}</b></div></>}</div>; })}</div></section>)}</div>
       {Boolean(event.is_competitive) && <button className="cta secondary" name="action" value="stats" disabled={saving}>팀 집계 저장</button>}
       <MatchHistoryEditor teams={teams} matches={matchDrafts} onChange={onMatchDraftsChange} />
       <button className="cta secondary" name="action" value="matches" disabled={saving}>{saving ? "저장 중…" : "경기별 기록 저장"}</button>
+      <a className="cta team-roster-link" href={`${eventDatePath(event.starts_at)}?section=teams`}>일정에서 팀 명단 보기</a>
     </div>}
   </>;
 }
