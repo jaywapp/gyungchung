@@ -26,7 +26,8 @@ export interface Profile {
   officer_title: OfficerTitle | null;
   is_system_admin: boolean;
   fee_plan: MemberFeePlan | null;
-  position: string | null;
+  position: "GK" | "DF" | "MF" | "FW" | "ANY" | null;
+  position_detail: string | null;
   jersey_number: number | null;
   joined_at: string;
   status: "active" | "inactive" | "pending";
