@@ -83,8 +83,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [publicLoading, setPublicLoading] = useState(true);
   const [eventLoadError, setEventLoadError] = useState(false);
   const [noticeLoadError, setNoticeLoadError] = useState(false);
+  const [participationFormLoadError, setParticipationFormLoadError] = useState(false);
   const [memberLoading, setMemberLoading] = useState(true);
   const [memberLoadError, setMemberLoadError] = useState(false);
+  const [participationSubmissionLoadError, setParticipationSubmissionLoadError] = useState(false);
   const [quickEditor, setQuickEditor] = useState<EditorConfig | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ table: string; id: string; label: string } | null>(null);
   const [pendingKick, setPendingKick] = useState<Profile | null>(null);
@@ -118,7 +120,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     setEvents(resolvedEventRes.error ? [] : ((resolvedEventRes.data as Event[] | null) ?? []).map((event) => ({ ...event, venue_id: event.venue_id ?? null })));
     setVenues(venueRes.error ? [] : (venueRes.data as Venue[] | null) ?? []);
     setNotices(noticeRes.error ? [] : (noticeRes.data as Notice[] | null) ?? []);
-    setEventLoadError(Boolean(resolvedEventRes.error)); setNoticeLoadError(Boolean(noticeRes.error));
+    setEventLoadError(Boolean(resolvedEventRes.error)); setNoticeLoadError(Boolean(noticeRes.error)); setParticipationFormLoadError(Boolean(formRes.error));
     if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
     setPublicLoading(false);
   }, [supabase]);
@@ -127,7 +129,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (!supabase) return;
     if (!currentUser) {
       setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setRawGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]);
-      setMemberLoadError(false); setMemberLoading(false); return;
+      setMemberLoadError(false); setParticipationSubmissionLoadError(false); setMemberLoading(false); return;
     }
     if (showSkeleton) setMemberLoading(true);
     const [profileRes, allProfileRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, officerPermissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
@@ -137,7 +139,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       supabase.from("event_guest_fees").select("*, guest_players(name), events(title, starts_at)").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*"),
       supabase.from("feedback").select("*").order("created_at", { ascending: false }),
-      supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at"),
+      supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at, participation_answers(question_id, answer), profiles!inner(auth_user_id)").eq("profiles.auth_user_id", currentUser.id),
       supabase.from("role_permissions").select("role, permission"),
       supabase.from("officer_permissions").select("officer_title, permission"),
       supabase.from("guest_players").select("*"),
@@ -154,7 +156,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     setProfiles(enrichedProfiles);
     setMe(ownProfile);
     setFees((feeRes.data as unknown as Fee[]) ?? []); setGuestFees((guestFeeRes.data as unknown as GuestFee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setOfficerPermissions((officerPermissionRes.data as OfficerPermission[]) ?? []); setRawGuestPlayers((guestRes.data as RawGuestPlayer[]) ?? []); setRankings((rankingRes.data as MemberRanking[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []); setMomLeaderboard((momLeaderboardRes.data as MomLeaderboardEntry[]) ?? []);
-    setMemberLoadError(Boolean(allProfileRes.error || feeRes.error || rankingRes.error || feedbackRes.error));
+    setMemberLoadError(Boolean(allProfileRes.error || feeRes.error || rankingRes.error || feedbackRes.error)); setParticipationSubmissionLoadError(Boolean(submissionRes.error));
     setMemberLoading(false);
   }, [supabase]);
 
@@ -323,7 +325,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
       {view === "rankings" && <Rankings rankings={rankings} goalEvents={events} momLeaderboard={momLeaderboard} user={user} profile={me} loading={sessionPending || publicLoading} loadError={memberLoadError || eventLoadError} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
       {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} supabase={supabase} loading={sessionPending} loadError={memberLoadError} canManage={permissions.has("feedback.manage")} onEdit={(item) => setQuickEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
-      {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={publicLoading} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} toast={showToast} />}
+      {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={participationFormLoadError || participationSubmissionLoadError} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
       {view === "admin" && sessionPending && <SectionSkeleton />}
       {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} permissions={permissions} supabase={supabase} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}

@@ -27,6 +27,11 @@ const statusLabels: Record<Feedback["status"], string> = {
   closed: "종결",
 };
 
+const githubStateLabels = {
+  open: "GitHub · 처리 중",
+  closed: "GitHub · 처리 완료",
+} as const;
+
 export default function FeedbackHub({ user, profile, feedback, supabase, loading, loadError, canManage, onEdit, onDelete, reload, onLogin, onRetry, toast }: {
   user: User | null;
   profile: Profile | null;
@@ -45,7 +50,6 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
   const [saving, setSaving] = useState(false);
   const [titleLength, setTitleLength] = useState(0);
   const [bodyLength, setBodyLength] = useState(0);
-  const [syncedIssuesKey, setSyncedIssuesKey] = useState("");
   const syncedIssuesRef = useRef("");
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
@@ -56,8 +60,6 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
     .map((item) => `${item.github_issue_number}:${item.github_issue_state ?? "unknown"}`)
     .join(",");
   const issueSyncKey = user && linkedIssuesKey ? `${user.id}|${linkedIssuesKey}` : "";
-  const linkedIssuesReady = !issueSyncKey || syncedIssuesKey === issueSyncKey;
-  const visibleFeedback = feedback.filter((item) => item.github_issue_state !== "closed" && (!item.github_issue_number || linkedIssuesReady));
 
   useEffect(() => {
     if (!supabase || !issueSyncKey || syncedIssuesRef.current === issueSyncKey) return;
@@ -65,7 +67,6 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
     void supabase.functions.invoke("github-feedback", { body: { action: "sync" } }).then(({ data, error }) => {
       if (syncedIssuesRef.current !== issueSyncKey) return;
       if (!error && Number(data?.changed) > 0) reloadRef.current();
-      else setSyncedIssuesKey(issueSyncKey);
     });
   }, [issueSyncKey, supabase]);
 
@@ -145,10 +146,10 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
           </fieldset>
         </form>
         <div className="voice-history">
-          <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div>{!loading && !loadError && <span>{visibleFeedback.length}건</span>}</div>
-          {loading ? <SectionSkeleton label="접수 내역을 불러오는 중" /> : loadError ? <LoadError onRetry={onRetry} /> : visibleFeedback.length === 0 ? <Empty icon={<MessageSquareText />} title="아직 접수한 의견이 없습니다" description="작은 아이디어도 팀을 더 좋게 만듭니다." /> : visibleFeedback.map((item) => (
+          <div className="section-heading compact"><div><span className="eyebrow">MY REPORTS</span><h2>접수 내역</h2></div>{!loading && !loadError && <span>{feedback.length}건</span>}</div>
+          {loading ? <SectionSkeleton label="접수 내역을 불러오는 중" /> : loadError ? <LoadError onRetry={onRetry} /> : feedback.length === 0 ? <Empty icon={<MessageSquareText />} title="아직 접수한 의견이 없습니다" description="왼쪽 양식에서 첫 의견을 보내 보세요." /> : feedback.map((item) => (
             <article className="feedback-card" key={item.id}>
-              <div><span className={`status ${item.status}`}>{statusLabels[item.status]}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id, item.title)}><Trash2 size={16} /></button></span>}</div>
+              <div><span className="feedback-statuses"><span className={`status ${item.status}`}>내부 · {statusLabels[item.status]}</span>{item.github_issue_state && <span className={`status ${item.github_issue_state === "closed" ? "resolved" : "reviewing"}`}>{githubStateLabels[item.github_issue_state]}</span>}</span><small>{categoryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString("ko-KR")}</small>{canManage && <span className="resource-actions"><button type="button" aria-label={`${item.title} 처리 상태 수정`} onClick={() => onEdit(item)}><Pencil size={16} /></button><button type="button" aria-label={`${item.title} 삭제`} onClick={() => onDelete(item.id, item.title)}><Trash2 size={16} /></button></span>}</div>
               <h3>{item.title}</h3><p>{item.body}</p>
               {item.github_issue_url && <a className="github-issue-link" href={item.github_issue_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub Issue #{item.github_issue_number} <ExternalLink size={14} /></a>}
               {item.publish_to_github && !item.github_issue_url && item.author_id === profile?.id && <button className="github-retry" disabled={saving} onClick={() => void retryGithubPublish(item.id)}><Github size={16} /> GitHub 연결 다시 시도</button>}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { BarChart3, Check, ClipboardList, LockKeyhole, Pencil, Plus, Trash2, Vote, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BarChart3, Check, CheckCircle2, ClipboardList, LockKeyhole, Pencil, Plus, Trash2, Vote, X } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { ParticipationForm, ParticipationKind, ParticipationQuestion, ParticipationSubmission, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
@@ -11,7 +11,9 @@ import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { createSubmittedAnswers, findFirstMissingRequiredQuestion, getRequiredQuestionIdFromRpcError, type ParticipationAnswerValue } from "@/lib/participation-validation";
-import { Empty, SectionSkeleton } from "@/components/section-states";
+import { canReviewParticipationAnswers, formatParticipationAnswer, indexOwnSubmissions } from "@/lib/submission-history";
+import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
+
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
@@ -21,29 +23,39 @@ const kindMeta = {
   survey: { label: "회원 설문", icon: ClipboardList },
 } as const;
 
-export default function ParticipationHub({ user, profile, forms, submissions, supabase, loading, manageableKinds, onCreate, onEdit, onDelete, reload, onLogin, toast }: {
+export default function ParticipationHub({ user, profile, forms, submissions, supabase, loading, loadError, manageableKinds, onCreate, onEdit, onDelete, reload, onLogin, onRetry, toast }: {
   user: User | null;
   profile: Profile | null;
   forms: ParticipationForm[];
   submissions: ParticipationSubmission[];
   supabase: SupabaseClient | null;
   loading: boolean;
+  loadError: boolean;
   manageableKinds: ParticipationKind[];
   onCreate: () => void;
   onEdit: (form: ParticipationForm) => void;
   onDelete: (id: string, label: string) => void;
   reload: () => void;
   onLogin: () => void;
+  onRetry: () => void;
   toast: ToastHandler;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [reviewId, setReviewId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, ParticipationAnswerValue>>({});
   const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const active = forms.find((form) => form.id === activeId);
   const isDirty = hasMeaningfulDraft(answers);
-  const close = () => setActiveId(null);
+  const reviewForm = forms.find((form) => form.id === reviewId);
+  const ownSubmissions = useMemo(() => indexOwnSubmissions(submissions, profile?.id), [profile?.id, submissions]);
+  const reviewSubmission = reviewForm ? ownSubmissions.get(reviewForm.id) : undefined;
+  const close = () => {
+    setActiveId(null);
+    setAnswers({});
+    setQuestionErrors({});
+  };
   const requestClose = () => dirtyDialogAction(isDirty, "request") === "confirm" ? setDiscardOpen(true) : close();
   const handleBackdrop = () => {
     if (dirtyDialogAction(isDirty, "backdrop") === "close") close();
@@ -54,7 +66,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
     close();
   };
   const dialogRef = useDialogFocus<HTMLFormElement>({ onRequestClose: requestClose, active: Boolean(active) });
-  const completed = new Set(submissions.map((item) => item.form_id));
+  const reviewDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setReviewId(null), active: Boolean(reviewForm && reviewSubmission) });
   const canManage = manageableKinds.length > 0;
   const membershipRestriction = getMembershipRestriction(profile);
 
@@ -103,21 +115,24 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
     <section className="content">
       <div className="page-intro"><span className="eyebrow">TEAM DECISIONS</span><h1>참여</h1><p>매년 진행하는 회장단 선거부터 팀의 중요한 의사 결정, 운영 개선 설문까지 한곳에서 참여하세요.</p></div>
       {canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 참여 항목 등록</button></div>}
-      {loading ? <SectionSkeleton label="참여 항목을 불러오는 중" /> : <div className="participation-grid">
+      {loading ? <SectionSkeleton label="참여 항목과 내 응답을 불러오는 중" /> : loadError ? <LoadError onRetry={onRetry} /> : <div className="participation-grid">
         {forms.map((form) => {
           const Icon = kindMeta[form.kind].icon;
-          const isDone = completed.has(form.id);
+          const submission = ownSubmissions.get(form.id);
+          const isDone = Boolean(submission);
           const canManageForm = manageableKinds.includes(form.kind);
           return <article className="participation-card" key={form.id}>
             <div className="participation-icon"><Icon /></div>
             <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
-            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}<button className={isDone ? "done-button" : "cta small"} disabled={isDone || form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); setQuestionErrors({}); setDiscardOpen(false); }}>{isDone ? <><Check size={16} /> 참여 완료</> : form.status === "open" ? "참여하기" : "마감됨"}</button>{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
+            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}{isDone ? <button type="button" className="done-button" onClick={() => setReviewId(form.id)}><Check size={16} /> 내 응답 보기</button> : <button className="cta small" disabled={form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); setQuestionErrors({}); setDiscardOpen(false); }}>{form.status === "open" ? "참여하기" : "마감됨"}</button>}{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
           </article>;
         })}
         {forms.length === 0 && <Empty icon={<Vote />} title="현재 공개된 참여 항목이 없습니다" description="새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다." />}
       </div>}
       {active && <div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} noValidate className="editor participation-editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${active.title} 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">{kindMeta[active.kind].label}</span><h2>{active.title}</h2><p>{active.description}</p>{active.participation_questions.map((question, index) => <QuestionField key={question.id} question={question} index={index} value={answers[question.id]} error={questionErrors[question.id]} onChange={(value, checked) => setAnswer(question, value, checked)} />)}<button className="cta" disabled={saving}>{saving ? "제출 중…" : "응답 제출"}</button></form></div>}
       {discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target="아직 제출하지 않은 참여 답변이 있습니다." description="버리면 입력한 답변을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={discard} onCancel={() => setDiscardOpen(false)} />}
+      {reviewForm && reviewSubmission && <div className="modal-backdrop" onClick={() => setReviewId(null)}><div ref={reviewDialogRef} tabIndex={-1} className="editor participation-editor submission-review" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${reviewForm.title} 내 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={() => setReviewId(null)}><X /></button><span className="eyebrow">MY SUBMISSION</span><h2>{reviewForm.title}</h2><div className="submission-receipt"><CheckCircle2 /><span><b>제출 완료</b><time dateTime={reviewSubmission.submitted_at}>{formatSubmittedAt(reviewSubmission.submitted_at)}</time></span></div>{canReviewParticipationAnswers(reviewForm.secret_ballot) ? <div className="submission-answers">{reviewForm.participation_questions.map((question, index) => { const savedAnswer = reviewSubmission.participation_answers.find((answer) => answer.question_id === question.id); return <article key={question.id}><small>{index + 1}. {question.prompt}</small><p>{formatParticipationAnswer(question, savedAnswer?.answer)}</p></article>; })}</div> : <div className="secret-ballot-notice"><LockKeyhole /><span><b>비밀투표 제출 내역</b><p>비밀 보장을 위해 선택 내용은 다시 표시하지 않습니다. 제출 완료 여부와 시각만 확인할 수 있습니다.</p></span></div>}<button type="button" className="cta secondary" onClick={() => setReviewId(null)}>확인</button></div></div>}
+      {reviewForm && reviewSubmission && <div className="modal-backdrop" onClick={() => setReviewId(null)}><div ref={reviewDialogRef} tabIndex={-1} className="editor participation-editor submission-review" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${reviewForm.title} 내 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={() => setReviewId(null)}><X /></button><span className="eyebrow">MY SUBMISSION</span><h2>{reviewForm.title}</h2><div className="submission-receipt"><CheckCircle2 /><span><b>제출 완료</b><time dateTime={reviewSubmission.submitted_at}>{formatSubmittedAt(reviewSubmission.submitted_at)}</time></span></div>{canReviewParticipationAnswers(reviewForm.secret_ballot) ? <div className="submission-answers">{reviewForm.participation_questions.map((question, index) => { const savedAnswer = reviewSubmission.participation_answers.find((answer) => answer.question_id === question.id); return <article key={question.id}><small>{index + 1}. {question.prompt}</small><p>{formatParticipationAnswer(question, savedAnswer?.answer)}</p></article>; })}</div> : <div className="secret-ballot-notice"><LockKeyhole /><span><b>비밀투표 제출 내역</b><p>비밀 보장을 위해 선택 내용은 다시 표시하지 않습니다. 제출 완료 여부와 시각만 확인할 수 있습니다.</p></span></div>}<button type="button" className="cta secondary" onClick={() => setReviewId(null)}>확인</button></div></div>}
     </section>
   );
 }
@@ -140,4 +155,8 @@ function formatDeadline(value: string) {
   const remainingDays = Math.ceil((deadline.getTime() - Date.now()) / 86_400_000);
   const relative = remainingDays < 0 ? "마감" : remainingDays === 0 ? "오늘 마감" : `D-${remainingDays}`;
   return `${deadline.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", weekday: "short" })} ${deadline.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })} 마감 · ${relative}`;
+}
+
+function formatSubmittedAt(value: string) {
+  return new Date(value).toLocaleString("ko-KR", { dateStyle: "long", timeStyle: "short" });
 }
