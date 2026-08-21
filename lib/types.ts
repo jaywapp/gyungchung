@@ -216,6 +216,10 @@ export interface Feedback {
   status: "received" | "reviewing" | "resolved" | "closed";
   officer_response: string | null;
   publish_to_github: boolean;
+  github_publication_consented_at: string | null;
+  github_publication_status: "not_requested" | "pending" | "published" | "failed";
+  github_publication_error: string | null;
+  github_publication_attempted_at: string | null;
   github_issue_number: number | null;
   github_issue_url: string | null;
   github_issue_state: "open" | "closed" | null;
