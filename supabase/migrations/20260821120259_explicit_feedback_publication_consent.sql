@@ -24,9 +24,11 @@ set
     else null
   end;
 
+-- Keep already-public legacy issues linked even if their old category was not
+-- `system`; the insert trigger still limits every new publication to `system`.
 alter table public.feedback
   add constraint feedback_github_publication_scope
-    check (not publish_to_github or category = 'system'),
+    check (not publish_to_github or category = 'system' or github_issue_url is not null),
   add constraint feedback_github_consent_required
     check (not publish_to_github or github_publication_consented_at is not null or github_issue_url is not null),
   add constraint feedback_github_consent_scope
