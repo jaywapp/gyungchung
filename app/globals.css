@@ -3167,6 +3167,18 @@ td { font-weight: 800; }
 
 .question-field legend small { color: var(--green-text); }
 
+.question-field.has-error {
+  border-color: var(--danger-ink);
+  outline: 2px solid var(--danger-ink);
+  outline-offset: 4px;
+}
+
+.question-error {
+  margin: 10px 0 0;
+  color: var(--danger-ink);
+  font-weight: 800;
+}
+
 .question-field > input,
 .question-field > textarea {
   width: 100%;

@@ -10,10 +10,10 @@ import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback"
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import ConfirmDialog from "@/components/confirm-dialog";
+import { createSubmittedAnswers, findFirstMissingRequiredQuestion, getRequiredQuestionIdFromRpcError, type ParticipationAnswerValue } from "@/lib/participation-validation";
 import { Empty, SectionSkeleton } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
-type AnswerValue = string | string[] | number;
 
 const kindMeta = {
   election: { label: "회장단 선거", icon: Vote },
@@ -37,7 +37,8 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   toast: ToastHandler;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+  const [answers, setAnswers] = useState<Record<string, ParticipationAnswerValue>>({});
+  const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const active = forms.find((form) => form.id === activeId);
@@ -57,10 +58,27 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   const canManage = manageableKinds.length > 0;
   const membershipRestriction = getMembershipRestriction(profile);
 
+  const showQuestionError = (questionId: string) => {
+    setQuestionErrors({ [questionId]: "필수 문항입니다. 답변을 입력하거나 선택해 주세요." });
+    requestAnimationFrame(() => {
+      const field = document.getElementById(`participation-question-${questionId}`);
+      field?.scrollIntoView({ behavior: "smooth", block: "center" });
+      field?.focus({ preventScroll: true });
+    });
+  };
+
   const setAnswer = (question: ParticipationQuestion, value: string, checked?: boolean) => {
+    setQuestionErrors((current) => {
+      if (!(question.id in current)) return current;
+      const remaining = { ...current };
+      delete remaining[question.id];
+      return remaining;
+    });
     if (question.type !== "multiple_choice") return setAnswers((current) => ({ ...current, [question.id]: question.type === "rating" ? Number(value) : value }));
-    const current = Array.isArray(answers[question.id]) ? answers[question.id] as string[] : [];
-    setAnswers((all) => ({ ...all, [question.id]: checked ? [...current, value] : current.filter((item) => item !== value) }));
+    setAnswers((all) => {
+      const current: string[] = Array.isArray(all[question.id]) ? all[question.id] as string[] : [];
+      return { ...all, [question.id]: checked ? [...current, value] : current.filter((item) => item !== value) };
+    });
   };
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -68,12 +86,14 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
     if (!user || !supabase) return onLogin();
     if (profile?.status !== "active") return showError(toast, "회원 승인 후 참여할 수 있습니다.");
     if (!active) return;
+    const missingQuestion = findFirstMissingRequiredQuestion(active.participation_questions, answers);
+    if (missingQuestion) return showQuestionError(missingQuestion.id);
     setSaving(true);
-    const submittedAnswers = active.participation_questions
-      .filter((question) => answers[question.id] !== undefined && answers[question.id] !== "" && (!Array.isArray(answers[question.id]) || (answers[question.id] as string[]).length > 0))
-      .map((question) => ({ question_id: question.id, answer: answers[question.id] }));
+    const submittedAnswers = createSubmittedAnswers(active.participation_questions, answers);
     const { error } = await supabase.rpc("submit_participation", { target_form_id: active.id, submitted_answers: submittedAnswers });
     setSaving(false);
+    const questionId = getRequiredQuestionIdFromRpcError(error);
+    if (error && questionId && active.participation_questions.some((question) => question.id === questionId)) return showQuestionError(questionId);
     if (error) return toast(toErrorMessage(error), "error");
     toast("소중한 응답을 제출했습니다.");
     setActiveId(null); setAnswers({}); reload();
@@ -91,25 +111,27 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
           return <article className="participation-card" key={form.id}>
             <div className="participation-icon"><Icon /></div>
             <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
-            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}<button className={isDone ? "done-button" : "cta small"} disabled={isDone || form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); setDiscardOpen(false); }}>{isDone ? <><Check size={16} /> 참여 완료</> : form.status === "open" ? "참여하기" : "마감됨"}</button>{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
+            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}<button className={isDone ? "done-button" : "cta small"} disabled={isDone || form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); setQuestionErrors({}); setDiscardOpen(false); }}>{isDone ? <><Check size={16} /> 참여 완료</> : form.status === "open" ? "참여하기" : "마감됨"}</button>{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
           </article>;
         })}
         {forms.length === 0 && <Empty icon={<Vote />} title="현재 공개된 참여 항목이 없습니다" description="새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다." />}
       </div>}
-      {active && <div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} className="editor participation-editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${active.title} 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">{kindMeta[active.kind].label}</span><h2>{active.title}</h2><p>{active.description}</p>{active.participation_questions.map((question, index) => <QuestionField key={question.id} question={question} index={index} value={answers[question.id]} onChange={(value, checked) => setAnswer(question, value, checked)} />)}<button className="cta" disabled={saving}>{saving ? "제출 중…" : "응답 제출"}</button></form></div>}
+      {active && <div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} noValidate className="editor participation-editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${active.title} 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">{kindMeta[active.kind].label}</span><h2>{active.title}</h2><p>{active.description}</p>{active.participation_questions.map((question, index) => <QuestionField key={question.id} question={question} index={index} value={answers[question.id]} error={questionErrors[question.id]} onChange={(value, checked) => setAnswer(question, value, checked)} />)}<button className="cta" disabled={saving}>{saving ? "제출 중…" : "응답 제출"}</button></form></div>}
       {discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target="아직 제출하지 않은 참여 답변이 있습니다." description="버리면 입력한 답변을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={discard} onCancel={() => setDiscardOpen(false)} />}
     </section>
   );
 }
 
-function QuestionField({ question, index, value, onChange }: { question: ParticipationQuestion; index: number; value?: AnswerValue; onChange: (value: string, checked?: boolean) => void }) {
+function QuestionField({ question, index, value, error, onChange }: { question: ParticipationQuestion; index: number; value?: ParticipationAnswerValue; error?: string; onChange: (value: string, checked?: boolean) => void }) {
   const required = question.is_required;
-  return <fieldset className="question-field"><legend><b>{index + 1}. {question.prompt}</b>{required && <small>필수</small>}</legend>
+  const errorId = `participation-question-error-${question.id}`;
+  return <fieldset id={`participation-question-${question.id}`} className={`question-field${error ? " has-error" : ""}`} tabIndex={-1} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} aria-required={required}><legend><b>{index + 1}. {question.prompt}</b>{required && <small>필수</small>}</legend>
     {(question.type === "single_choice" || question.type === "yes_no") && question.participation_options.map((option) => <label className="choice" key={option.id}><input type="radio" name={question.id} value={option.id} required={required} checked={value === option.id} onChange={(event) => onChange(event.target.value)} /><span>{option.label}</span></label>)}
     {question.type === "multiple_choice" && question.participation_options.map((option) => <label className="choice" key={option.id}><input type="checkbox" value={option.id} checked={Array.isArray(value) && value.includes(option.id)} onChange={(event) => onChange(event.target.value, event.target.checked)} /><span>{option.label}</span></label>)}
     {question.type === "short_text" && <input required={required} maxLength={500} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} />}
     {question.type === "long_text" && <textarea required={required} maxLength={5000} rows={5} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} />}
     {question.type === "rating" && <div className="rating-row">{Array.from({ length: (question.max_value ?? 5) - (question.min_value ?? 1) + 1 }, (_, i) => i + (question.min_value ?? 1)).map((score) => <label key={score}><input type="radio" name={question.id} required={required} value={score} checked={value === score} onChange={(event) => onChange(event.target.value)} /><span>{score}</span></label>)}</div>}
+    {error && <p id={errorId} className="question-error" role="alert">{error}</p>}
   </fieldset>;
 }
 
