@@ -265,6 +265,12 @@ export interface ParticipationSubmission {
   form_id: string;
   participant_id: string;
   submitted_at: string;
+  participation_answers: ParticipationAnswer[];
+}
+
+export interface ParticipationAnswer {
+  question_id: string;
+  answer: string | string[] | number | boolean | null;
 }
 
 export interface RolePermission {

@@ -3043,6 +3043,12 @@ td { font-weight: 800; }
   gap: 10px;
 }
 
+.feedback-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .feedback-card small { color: var(--muted); }
 
 .feedback-card h3 { margin: 14px 0 6px; }
@@ -3149,6 +3155,55 @@ td { font-weight: 800; }
 .participation-editor > p {
   color: var(--muted);
   line-height: 1.55;
+}
+
+.submission-receipt,
+.secret-ballot-notice {
+  display: flex;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 16px;
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+}
+
+.submission-receipt span,
+.secret-ballot-notice span {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.submission-receipt time,
+.secret-ballot-notice p {
+  margin: 0;
+  color: inherit;
+  line-height: 1.5;
+}
+
+.submission-answers {
+  margin-bottom: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.submission-answers article {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.submission-answers small {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.submission-answers p {
+  margin: 0;
+  color: var(--navy);
+  font-weight: 900;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .question-field {
