@@ -277,6 +277,21 @@ export interface ParticipationAnswer {
   answer: string | string[] | number | boolean | null;
 }
 
+export interface ParticipationResultOption {
+  option_id: string;
+  label: string;
+  count: number;
+}
+
+export interface ParticipationQuestionResult {
+  question_id: string;
+  prompt: string;
+  type: QuestionType;
+  response_count: number;
+  average: number | null;
+  options: ParticipationResultOption[];
+}
+
 export interface RolePermission {
   role: AccountRole | "admin";
   permission: string;
