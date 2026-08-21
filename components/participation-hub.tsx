@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Check, CheckCircle2, ClipboardList, LockKeyhole, Pencil, Plus, Trash2, Vote, X } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { ParticipationForm, ParticipationKind, ParticipationQuestion, ParticipationQuestionResult, ParticipationSubmission, Profile } from "@/lib/types";
@@ -9,6 +9,7 @@ import { dirtyDialogAction, hasMeaningfulDraft } from "@/lib/dirty-state";
 import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
+import { clearParticipationDraft, loadParticipationDraft, saveParticipationDraft } from "@/lib/participation-draft";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { createSubmittedAnswers, findFirstMissingRequiredQuestion, getRequiredQuestionIdFromRpcError, type ParticipationAnswerValue } from "@/lib/participation-validation";
 import { canReviewParticipationAnswers, formatParticipationAnswer, indexOwnSubmissions } from "@/lib/submission-history";
@@ -66,6 +67,8 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   };
   const discard = () => {
     setDiscardOpen(false);
+    const storage = getDraftStorage();
+    if (active && user && storage) clearParticipationDraft(storage, getDraftScope(active, user.id));
     setAnswers({});
     close();
   };
@@ -99,6 +102,41 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
     setResultsByForm((current) => ({ ...current, [form.id]: parseParticipationResults(data) }));
   };
 
+  useEffect(() => {
+    if (!active || !user) return;
+    const storage = getDraftStorage();
+    if (storage) saveParticipationDraft(storage, getDraftScope(active, user.id), answers);
+  }, [active, answers, user]);
+
+  useEffect(() => {
+    if (!active || !isDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [active, isDirty]);
+
+  useEffect(() => {
+    if (!user) return;
+    const storage = getDraftStorage();
+    if (!storage) return;
+    const completedIds = new Set(submissions.map((submission) => submission.form_id));
+    for (const form of forms) {
+      if (form.status !== "open" || completedIds.has(form.id)) clearParticipationDraft(storage, getDraftScope(form, user.id));
+    }
+  }, [forms, submissions, user]);
+
+  const openForm = (form: ParticipationForm) => {
+    if (!user) return onLogin();
+    const storage = getDraftStorage();
+    setAnswers(storage ? loadParticipationDraft(storage, getDraftScope(form, user.id)) : {});
+    setActiveId(form.id);
+    setQuestionErrors({});
+    setDiscardOpen(false);
+  };
+
   const setAnswer = (question: ParticipationQuestion, value: string, checked?: boolean) => {
     setQuestionErrors((current) => {
       if (!(question.id in current)) return current;
@@ -127,6 +165,8 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
     const questionId = getRequiredQuestionIdFromRpcError(error);
     if (error && questionId && active.participation_questions.some((question) => question.id === questionId)) return showQuestionError(questionId);
     if (error) return toast(toErrorMessage(error), "error");
+    const storage = getDraftStorage();
+    if (storage) clearParticipationDraft(storage, getDraftScope(active, user.id));
     toast("소중한 응답을 제출했습니다.");
     setActiveId(null); setAnswers({}); reload();
   };
@@ -144,13 +184,13 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
           return <article className="participation-card" key={form.id}>
             <div className="participation-icon"><Icon /></div>
             <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
-            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}{form.status === "closed" && form.show_results && <button type="button" className="text-link" onClick={() => void openResults(form)} disabled={resultsLoadingId === form.id}>{resultsLoadingId === form.id ? "결과 불러오는 중…" : "결과 보기"}</button>}{isDone ? <button type="button" className="done-button" onClick={() => setReviewId(form.id)}><Check size={16} /> 내 응답 보기</button> : <button className="cta small" disabled={form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); setQuestionErrors({}); setDiscardOpen(false); }}>{form.status === "open" ? "참여하기" : "마감됨"}</button>}{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
+            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}{form.status === "closed" && form.show_results && <button type="button" className="text-link" onClick={() => void openResults(form)} disabled={resultsLoadingId === form.id}>{resultsLoadingId === form.id ? "결과 불러오는 중…" : "결과 보기"}</button>}{isDone ? <button type="button" className="done-button" onClick={() => setReviewId(form.id)}><Check size={16} /> 내 응답 보기</button> : <button className="cta small" disabled={form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => openForm(form)}>{form.status === "open" ? "참여하기" : "마감됨"}</button>}{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
           </article>;
         })}
         {forms.length === 0 && <Empty icon={<Vote />} title="현재 공개된 참여 항목이 없습니다" description="새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다." />}
       </div>}
       {resultsFormId && <ParticipationResultsPanel form={forms.find((form) => form.id === resultsFormId)} results={resultsByForm[resultsFormId]} loading={resultsLoadingId === resultsFormId} error={resultsError} onRetry={() => { const form = forms.find((item) => item.id === resultsFormId); if (form) void openResults(form); }} onClose={() => { setResultsFormId(null); setResultsError(null); }} />}
-      {active && <div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} noValidate className="editor participation-editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${active.title} 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">{kindMeta[active.kind].label}</span><h2>{active.title}</h2><p>{active.description}</p>{active.participation_questions.map((question, index) => <QuestionField key={question.id} question={question} index={index} value={answers[question.id]} error={questionErrors[question.id]} onChange={(value, checked) => setAnswer(question, value, checked)} />)}<button className="cta" disabled={saving}>{saving ? "제출 중…" : "응답 제출"}</button></form></div>}
+      {active && <div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} noValidate className="editor participation-editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${active.title} 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">{kindMeta[active.kind].label}</span><h2>{active.title}</h2><p>{active.description}</p><p>{active.secret_ballot ? "비밀 투표 답변은 브라우저에 저장하지 않습니다. 화면을 벗어나기 전에 제출해 주세요." : "작성 중인 답변은 이 탭에 최대 24시간 임시 저장되며 제출하거나 직접 버리면 삭제됩니다."}</p>{active.participation_questions.map((question, index) => <QuestionField key={question.id} question={question} index={index} value={answers[question.id]} error={questionErrors[question.id]} onChange={(value, checked) => setAnswer(question, value, checked)} />)}<button className="cta" disabled={saving}>{saving ? "제출 중…" : "응답 제출"}</button></form></div>}
       {discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target="아직 제출하지 않은 참여 답변이 있습니다." description="버리면 입력한 답변을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={discard} onCancel={() => setDiscardOpen(false)} />}
       {reviewForm && reviewSubmission && <div className="modal-backdrop" onClick={() => setReviewId(null)}><div ref={reviewDialogRef} tabIndex={-1} className="editor participation-editor submission-review" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${reviewForm.title} 내 응답`}><button type="button" className="modal-close" aria-label="닫기" onClick={() => setReviewId(null)}><X /></button><span className="eyebrow">MY SUBMISSION</span><h2>{reviewForm.title}</h2><div className="submission-receipt"><CheckCircle2 /><span><b>제출 완료</b><time dateTime={reviewSubmission.submitted_at}>{formatSubmittedAt(reviewSubmission.submitted_at)}</time></span></div>{canReviewParticipationAnswers(reviewForm.secret_ballot) ? <div className="submission-answers">{reviewForm.participation_questions.map((question, index) => { const savedAnswer = reviewSubmission.participation_answers.find((answer) => answer.question_id === question.id); return <article key={question.id}><small>{index + 1}. {question.prompt}</small><p>{formatParticipationAnswer(question, savedAnswer?.answer)}</p></article>; })}</div> : <div className="secret-ballot-notice"><LockKeyhole /><span><b>비밀투표 제출 내역</b><p>비밀 보장을 위해 선택 내용은 다시 표시하지 않습니다. 제출 완료 여부와 시각만 확인할 수 있습니다.</p></span></div>}<button type="button" className="cta secondary" onClick={() => setReviewId(null)}>확인</button></div></div>}
     </section>
@@ -160,6 +200,24 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
 function ParticipationResultsPanel({ form, results, loading, error, onRetry, onClose }: { form?: ParticipationForm; results?: ParticipationQuestionResult[]; loading: boolean; error: string | null; onRetry: () => void; onClose: () => void }) {
   if (!form) return null;
   return <section className="participation-results" aria-live="polite"><header><div><span className="eyebrow">PUBLISHED RESULTS</span><h2>{form.title}</h2><p>개인 응답은 공개하지 않고 문항별 집계만 표시합니다.</p></div><button type="button" className="text-link" onClick={onClose}>결과 닫기</button></header>{loading ? <SectionSkeleton label="결과를 불러오는 중" /> : error ? <LoadError onRetry={onRetry} /> : !results || results.length === 0 ? <Empty icon={<BarChart3 />} title="표시할 결과가 없습니다" description="아직 집계된 응답이 없거나 결과를 불러오지 못했습니다." /> : <div className="participation-result-list">{results.map((result) => <article className="participation-result-card" key={result.question_id}><div className="participation-result-heading"><span>{result.prompt}</span><small>{result.response_count}명 응답{result.average !== null ? ` · 평균 ${result.average.toFixed(1)}점` : ""}</small></div>{result.options.length > 0 ? <div className="participation-result-options">{result.options.map((option) => <div className="participation-result-option" key={option.option_id}><div><span>{option.label}</span><b>{option.count}표</b></div><meter min="0" max={Math.max(result.response_count, 1)} value={option.count} aria-label={`${option.label} ${option.count}표`} /></div>)}</div> : <p className="form-description">서술형 응답은 개인정보 보호를 위해 응답 수만 표시합니다.</p>}</article>)}</div>}</section>;
+}
+
+function getDraftScope(form: ParticipationForm, userId: string) {
+  return {
+    userId,
+    formId: form.id,
+    secretBallot: form.secret_ballot,
+    endsAt: form.ends_at,
+    questions: form.participation_questions,
+  };
+}
+
+function getDraftStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 function QuestionField({ question, index, value, error, onChange }: { question: ParticipationQuestion; index: number; value?: ParticipationAnswerValue; error?: string; onChange: (value: string, checked?: boolean) => void }) {
