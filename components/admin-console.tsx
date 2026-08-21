@@ -294,6 +294,8 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   }, [events, venues]);
   const [saving, setSaving] = useState(false);
   const [pendingMemberUpdate, setPendingMemberUpdate] = useState<{ formData: FormData; submitAction: string | null } | null>(null);
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
+  const pendingTeamAction = useRef<TeamAction | null>(null);
   const [matchDrafts, setMatchDrafts] = useState<MatchDraft[]>(() => buildMatchDrafts(eventRow));
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
@@ -302,6 +304,19 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const selectedFeeType = row.id ? String(row.fee_type ?? "monthly") : selectedFeeMember?.role === "member" && selectedFeeMember.fee_plan === "per_event" ? "participation" : "monthly";
   const standardFeeAmount = selectedFeeMember?.role === "manager" ? 15000 : selectedFeeMember?.role === "member" && selectedFeeMember.fee_plan === "per_event" ? 10000 : selectedFeeMember?.role === "member" ? 30000 : 0;
   const allowedKinds = (["election", "poll", "survey"] as const).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
+  const confirmPasswordReset = async () => {
+    if (!row.id) return;
+    setSaving(true);
+    const { error } = await supabase.functions.invoke("provision-member-account", { body: { member_id: row.id } });
+    setSaving(false);
+    if (error) return onError(toErrorMessage(error));
+    setPasswordResetOpen(false);
+    onSaved({ message: "비밀번호를 1234로 초기화했습니다." });
+  };
+  const requestTeamAction = (action: TeamAction) => {
+    pendingTeamAction.current = action;
+    dialogRef.current?.requestSubmit();
+  };
   const save = async (fd: FormData, submitAction: string | null) => {
     setSaving(true);
     let error: { message: string; userFacing?: boolean } | null = null;
@@ -321,19 +336,15 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       return null;
     };
     if (config.type === "members") {
-      if (submitAction === "password" && row.id) {
-        ({ error } = await supabase.functions.invoke("provision-member-account", { body: { member_id: row.id } }));
+      const canManageRoles = permissions.has("roles.manage");
+      const nextRole = canManageRoles ? fd.get("role") : row.role ?? "member";
+      const payload = { name: fd.get("name"), phone: fd.get("phone"), position: fd.get("position") || null, jersey_number: Number(fd.get("jersey_number")) || null, role: nextRole, officer_title: canManageRoles ? nextRole === "manager" ? fd.get("officer_title") : null : row.officer_title ?? null, fee_plan: canManageRoles ? nextRole === "member" ? fd.get("fee_plan") : null : row.fee_plan ?? "monthly", is_system_admin: canManageRoles ? fd.get("is_system_admin") === "on" : Boolean(row.is_system_admin), status: fd.get("status") ?? "active" };
+      if (row.id) {
+        ({ error } = await supabase.from("profiles").update(payload).eq("id", row.id));
       } else {
-        const canManageRoles = permissions.has("roles.manage");
-        const nextRole = canManageRoles ? fd.get("role") : row.role ?? "member";
-        const payload = { name: fd.get("name"), phone: fd.get("phone"), position: fd.get("position") || null, jersey_number: Number(fd.get("jersey_number")) || null, role: nextRole, officer_title: canManageRoles ? nextRole === "manager" ? fd.get("officer_title") : null : row.officer_title ?? null, fee_plan: canManageRoles ? nextRole === "member" ? fd.get("fee_plan") : null : row.fee_plan ?? "monthly", is_system_admin: canManageRoles ? fd.get("is_system_admin") === "on" : Boolean(row.is_system_admin), status: fd.get("status") ?? "active" };
-        if (row.id) {
-          ({ error } = await supabase.from("profiles").update(payload).eq("id", row.id));
-        } else {
-          const memberResult = await supabase.from("profiles").insert(payload).select("id").single();
-          error = memberResult.error;
-          if (!error && memberResult.data) ({ error } = await supabase.functions.invoke("provision-member-account", { body: { member_id: memberResult.data.id } }));
-        }
+        const memberResult = await supabase.from("profiles").insert(payload).select("id").single();
+        error = memberResult.error;
+        if (!error && memberResult.data) ({ error } = await supabase.functions.invoke("provision-member-account", { body: { member_id: memberResult.data.id } }));
       }
     }
     if (config.type === "guests") ({ error } = await supabase.from("guest_players").upsert({ ...(row.id ? { id: row.id } : {}), name: fd.get("name"), phone: fd.get("phone") || null, preferred_position: fd.get("preferred_position") || null, note: fd.get("note") || null, is_active: fd.get("is_active") === "on" }));
@@ -404,7 +415,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       }
     }
     if (config.type === "teams") {
-      const action = submitAction ?? "generate";
+      const action = submitAction;
       if (action === "generate") {
         const teamCount = Number(fd.get("team_count"));
         const mode = String(fd.get("team_mode"));
@@ -509,9 +520,18 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-    const submitAction = submitter?.name === "action" ? submitter.value : null;
+    let submitAction = submitter?.name === "action" ? submitter.value : pendingTeamAction.current;
+    pendingTeamAction.current = null;
+    if (config.type === "teams" && !submitAction) return;
+    const formData = new FormData(event.currentTarget);
+    if (config.type === "members" && submitAction === "password") {
+      if (document.activeElement === submitter) {
+        setPasswordResetOpen(true);
+        return;
+      }
+      submitAction = null;
+    }
     if (config.type === "members" && submitAction !== "password" && requiresMemberApprovalConfirmation(row.status as "pending" | "active" | "inactive" | undefined, formData.get("status"))) {
       setPendingMemberUpdate({ formData, submitAction });
       return;
@@ -520,7 +540,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   };
   const memberName = String(pendingMemberUpdate?.formData.get("name") ?? row.name ?? "회원");
   return <div className="modal-backdrop" onClick={onClose}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={onClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
-    {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button className="cta secondary" name="action" value="password" disabled={saving}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="pending">승인 대기</option><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label><p className="form-description">활동으로 변경하면 회원 기능 전체가 열리고, 승인 대기로 변경하면 회원 기능을 이용할 수 없습니다.</p></>}
+    {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button type="button" className="cta secondary" disabled={saving} onClick={() => setPasswordResetOpen(true)}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="pending">승인 대기</option><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label><p className="form-description">활동으로 변경하면 회원 기능 전체가 열리고, 승인 대기로 변경하면 회원 기능을 이용할 수 없습니다.</p></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 10,000원</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
@@ -546,11 +566,11 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         <div className="attendance-status-grid">{filteredWalkInProfiles.length > 0 ? filteredWalkInProfiles.map(renderAttendanceRow) : <p className="form-description">{attendanceSearch ? "검색 결과가 없습니다." : "추가할 활동 회원이 없습니다."}</p>}</div>
       </details>
     </div>}
-     {config.type === "teams" && <TeamEditor event={teamEvent} profiles={profiles} attendance={attendance} assignedMemberIds={assignedMemberIds} saving={saving} matchDrafts={matchDrafts} resultRef={teamResultsRef} onMatchDraftsChange={setMatchDrafts} />}
+     {config.type === "teams" && <TeamEditor event={teamEvent} profiles={profiles} attendance={attendance} assignedMemberIds={assignedMemberIds} saving={saving} matchDrafts={matchDrafts} resultRef={teamResultsRef} onMatchDraftsChange={setMatchDrafts} onAction={requestTeamAction} />}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
     {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
     {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : "저장하기"}</button>}
-  </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}</div>;
+  </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}{passwordResetOpen && <ConfirmDialog title="비밀번호를 초기화할까요?" target={String(row.name ?? "이 회원")} description="이 회원은 기존 비밀번호를 더 이상 사용할 수 없으며, 비밀번호가 1234로 변경됩니다." confirmLabel="비밀번호 초기화" busy={saving} onConfirm={() => void confirmPasswordReset()} onCancel={() => setPasswordResetOpen(false)} />}</div>;
 }
 
 type TeamEditorProps = {
@@ -562,11 +582,14 @@ type TeamEditorProps = {
   matchDrafts: MatchDraft[];
   resultRef: React.RefObject<HTMLDivElement | null>;
   onMatchDraftsChange: (matches: MatchDraft[]) => void;
+  onAction: (action: TeamAction) => void;
 };
+
+type TeamAction = "generate" | "stats" | "matches";
 
 const ratingSteps = [2, 4, 6, 8, 10];
 
-function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, matchDrafts, resultRef, onMatchDraftsChange }: TeamEditorProps) {
+function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, matchDrafts, resultRef, onMatchDraftsChange, onAction }: TeamEditorProps) {
   const teams = event.event_teams ?? [];
   const activeProfiles = profiles.filter((profile) => profile.status === "active");
   const hasAttendance = (profile: Profile) => {
@@ -608,15 +631,15 @@ function TeamEditor({ event, profiles, attendance, assignedMemberIds, saving, ma
       <div className="team-step-heading"><h3>2. 팀 나누기</h3><p className="form-description">선택한 회원을 몇 팀으로 나눌지 정한 뒤 팀 만들기를 누르세요.</p></div>
       <div className="field-row team-generation-controls"><label>편성 방식<select name="team_mode" defaultValue={String(event.team_mode ?? "balanced")}><option value="balanced">균형 편성</option><option value="random">무작위 편성</option></select></label><label>팀 수<select name="team_count" defaultValue={String(Math.max(2, teams.length))}><option value="2">2팀</option><option value="3">3팀</option><option value="4">4팀</option></select></label></div>
       <p className="team-generation-hint">처음이라면 균형 편성을 권장합니다. 선택한 회원을 팀마다 고르게 나눕니다.</p>
-      <button className="cta" name="action" value="generate" disabled={saving}>{saving ? "편성 중…" : teams.length > 0 ? "팀 다시 만들기" : "팀 만들기"}</button>
+      <button type="button" className="cta" onClick={() => onAction("generate")} disabled={saving}>{saving ? "편성 중…" : teams.length > 0 ? "팀 다시 만들기" : "팀 만들기"}</button>
     </section>
     {teams.length > 0 && <div ref={resultRef} tabIndex={-1} className="team-record-content" aria-live="polite">
       <header className="team-results-heading"><h3>3. 팀 편성 결과</h3><span>{teams.length}개 팀 · {teams.reduce((sum, team) => sum + team.event_team_members.length, 0)}명</span></header>
       {Boolean(event.is_competitive) && <><p className="form-description">선수 득점은 팀 점수에 자동 합산됩니다. 자책골·득점자 미상만 기타 득점으로 보정하세요.</p><section className="team-scoreboard" aria-label="팀 스코어보드">{teams.map((team) => { const score = teamScores[team.id] ?? 0; const isLeading = highestScore > 0 && score === highestScore; return <article className={`team-score-card ${isLeading ? "is-leading" : ""}`} key={team.id}><div className="team-score-card-label"><b>{team.team_name}</b>{isLeading && <em>리드</em>}</div><output>{score}</output><div className="team-score-stepper"><button type="button" onClick={() => updateScoreAdjustment(team.id, -1)} aria-label={`${team.team_name} 기타 득점 감소`}>−</button><span>기타 득점</span><button type="button" onClick={() => updateScoreAdjustment(team.id, 1)} aria-label={`${team.team_name} 기타 득점 증가`}>+</button></div><input type="hidden" name={`team_score_${team.id}`} value={score} readOnly /></article>; })}</section></>}
       <div className="team-record-grid">{teams.map((team) => <section className="team-admin-card team-record-card" key={team.id}><header className="team-record-heading"><div><span className="eyebrow">ROSTER {String(team.team_number).padStart(2, "0")}</span><h3>{team.team_name}</h3></div>{Boolean(event.is_competitive) && <strong>{teamScores[team.id] ?? 0}점</strong>}</header><div className="team-record-member-list">{team.event_team_members.map((member) => { const goals = goalCounts[member.id] ?? 0; const rating = ratings[member.id] ?? null; return <div className="team-member-stat" key={member.id}><span className="team-member-avatar" aria-hidden="true">{member.participant_name.slice(0, 1)}</span><span className="team-member-copy"><b>{member.participant_name}</b></span>{Boolean(event.is_competitive) && <><input type="hidden" name={`goals_${member.id}`} value={goals} readOnly /><div className="team-goal-stepper" aria-label={`${member.participant_name} 골`}><button type="button" onClick={() => updateGoals(member.id, -1)} aria-label={`${member.participant_name} 골 감소`}>−</button><output>{goals}골</output><button type="button" onClick={() => updateGoals(member.id, 1)} aria-label={`${member.participant_name} 골 증가`}>+</button></div><input type="hidden" name={`rating_${member.id}`} value={rating ?? ""} readOnly /><div className="team-rating-control" role="group" aria-label={`${member.participant_name} 평점`}>{ratingSteps.map((value) => <button type="button" key={value} className={rating !== null && rating >= value ? "is-selected" : ""} aria-label={`${value}점`} aria-pressed={rating !== null && rating >= value} onClick={() => updateRating(member.id, value)}><span /></button>)}<b>{rating === null ? "미평가" : `${rating}/10`}</b></div></>}</div>; })}</div></section>)}</div>
-      {Boolean(event.is_competitive) && <button className="cta secondary" name="action" value="stats" disabled={saving}>팀 집계 저장</button>}
+      {Boolean(event.is_competitive) && <button type="button" className="cta secondary" onClick={() => onAction("stats")} disabled={saving}>팀 집계 저장</button>}
       <MatchHistoryEditor teams={teams} matches={matchDrafts} onChange={onMatchDraftsChange} />
-      <button className="cta secondary" name="action" value="matches" disabled={saving}>{saving ? "저장 중…" : "경기별 기록 저장"}</button>
+      <button type="button" className="cta secondary" onClick={() => onAction("matches")} disabled={saving}>{saving ? "저장 중…" : "경기별 기록 저장"}</button>
       <a className="cta team-roster-link" href={`${eventDatePath(event.starts_at)}?section=teams`}>일정에서 팀 명단 보기</a>
     </div>}
   </>;
