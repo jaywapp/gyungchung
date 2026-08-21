@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPlus, ExternalLink, Github, Inbox, Pencil, Plus, SearchX, ShieldCheck, Trash2, X } from "lucide-react";
-import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
+import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationQuestion, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { countChangedFields, countChangedRecords, countSetChanges, dirtyDialogAction } from "@/lib/dirty-state";
 import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandler, type ToastHandler, type ToastKind } from "@/lib/ui-feedback";
@@ -14,6 +14,8 @@ import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
 import { filterAdminRows } from "@/lib/admin-list-filters";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { Empty } from "@/components/section-states";
+import ParticipationFormQuestionEditor from "@/components/participation-form-question-editor";
+import { answeredFormPolicyViolation, createQuestionDrafts, requiresResponseImpactConfirmation, serializeQuestionDrafts, validateQuestionDrafts } from "@/lib/participation-form-editor";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 type Section = "members" | "guests" | "fees" | "notices" | "venues" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions";
@@ -141,7 +143,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
       </>}
     </div>}
     {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다.", result?.kind); reload(scope); }} onError={(message) => toast(message, "error")} />}
-    {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
+    {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description={pendingDelete.table === "participation_forms" ? "이 작업은 되돌릴 수 없습니다. 이미 응답이 있는 참여 항목은 삭제되지 않으므로 편집기에서 상태를 보관으로 변경해 주세요." : "이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다."} busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
   </section>;
 }
@@ -370,6 +372,10 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const pendingTeamAction = useRef<TeamAction | null>(null);
   const savingRef = useRef(false);
   const teamRegenerationInFlight = useRef(false);
+  const originalFormQuestions = useMemo(() => [...((row.participation_questions as ParticipationQuestion[] | undefined) ?? [])].sort((left, right) => left.position - right.position), [row.participation_questions]);
+  const [formQuestions, setFormQuestions] = useState(() => createQuestionDrafts(originalFormQuestions));
+  const [formResponseState, setFormResponseState] = useState<"clear" | "loading" | "has-responses" | "error">(config.type === "forms" && row.id ? "loading" : "clear");
+  const [pendingFormSave, setPendingFormSave] = useState<{ formData: FormData; submitAction: string | null } | null>(null);
   const [matchDrafts, setMatchDrafts] = useState<MatchDraft[]>(() => buildMatchDrafts(eventRow));
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
@@ -408,27 +414,26 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     setPendingTeamRegeneration(null);
     void save(regeneration.formData, "generate").finally(() => { teamRegenerationInFlight.current = false; });
   };
-  const save = async (fd: FormData, submitAction: string | null) => {
+  useEffect(() => {
+    if (config.type !== "forms" || !row.id) {
+      setFormResponseState("clear");
+      return;
+    }
+    let active = true;
+    setFormResponseState("loading");
+    void supabase.rpc("participation_form_has_responses", { target_form_id: String(row.id) }).then(({ data, error: responseError }) => {
+      if (!active) return;
+      if (responseError) setFormResponseState("error");
+      else setFormResponseState(data ? "has-responses" : "clear");
+    });
+    return () => { active = false; };
+  }, [config.type, row.id, supabase]);
+  const save = async (fd: FormData, submitAction: string | null, acknowledgeResponseImpact = false) => {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     let error: { message: string; userFacing?: boolean } | null = null;
     let successMessage: string | null = null;
-    const addQuestion = async (formId: string, position: number) => {
-      const prompt = String(fd.get("prompt") ?? "").trim();
-      if (!prompt) return null;
-      const questionType = String(fd.get("question_type"));
-      const labels = String(fd.get("options") || "").split(",").map((item) => item.trim()).filter(Boolean);
-      const optionLabels = questionType === "yes_no" && labels.length === 0 ? ["찬성", "반대"] : labels;
-      if (["single_choice", "multiple_choice", "yes_no"].includes(questionType) && optionLabels.length < 2) return userError("선택형 질문에는 쉼표로 구분한 선택지를 2개 이상 입력하세요.");
-      const questionResult = await supabase.from("participation_questions").insert({ form_id: formId, prompt, type: questionType, is_required: true, position, min_value: questionType === "rating" ? 1 : null, max_value: questionType === "rating" ? 5 : null }).select("id").single();
-      if (questionResult.error || !questionResult.data) return questionResult.error;
-      if (optionLabels.length > 0) {
-        const optionResult = await supabase.from("participation_options").insert(optionLabels.map((label, optionPosition) => ({ question_id: questionResult.data.id, label, position: optionPosition })));
-        return optionResult.error;
-      }
-      return null;
-    };
     if (config.type === "members") {
       const canManageRoles = permissions.has("roles.manage");
       const nextRole = canManageRoles ? fd.get("role") : row.role ?? "member";
@@ -626,15 +631,23 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       }
     }
     if (config.type === "feedback") ({ error } = await supabase.from("feedback").update({ status: fd.get("status"), officer_response: fd.get("officer_response") || null }).eq("id", row.id));
-    if (config.type === "forms" && row.id) {
-      ({ error } = await supabase.from("participation_forms").update({ title: fd.get("title"), description: fd.get("description") || null, status: fd.get("status"), starts_at: fd.get("starts_at") ? new Date(String(fd.get("starts_at"))).toISOString() : null, ends_at: fd.get("ends_at") ? new Date(String(fd.get("ends_at"))).toISOString() : null, show_results: fd.get("show_results") === "on" }).eq("id", row.id));
-      if (!error) error = await addQuestion(String(row.id), Array.isArray(row.participation_questions) ? row.participation_questions.length : 0);
-    }
-    if (config.type === "forms" && !row.id) {
-      const kind = String(fd.get("kind"));
-      const formResult = await supabase.from("participation_forms").insert({ kind, title: fd.get("title"), description: fd.get("description") || null, status: fd.get("status"), starts_at: fd.get("starts_at") ? new Date(String(fd.get("starts_at"))).toISOString() : null, ends_at: fd.get("ends_at") ? new Date(String(fd.get("ends_at"))).toISOString() : null, secret_ballot: kind === "election" && fd.get("secret_ballot") === "on", show_results: fd.get("show_results") === "on" }).select("id").single();
-      error = formResult.error;
-      if (!error && formResult.data) error = await addQuestion(formResult.data.id, 0);
+    if (config.type === "forms") {
+      const kind = String(row.id ? row.kind : fd.get("kind"));
+      ({ error } = await supabase.rpc("save_participation_form", {
+        target_form_id: row.id ? String(row.id) : null,
+        form_payload: {
+          kind,
+          title: String(fd.get("title") ?? "").trim(),
+          description: String(fd.get("description") ?? "").trim() || null,
+          status: String(fd.get("status")),
+          starts_at: fd.get("starts_at") ? new Date(String(fd.get("starts_at"))).toISOString() : null,
+          ends_at: fd.get("ends_at") ? new Date(String(fd.get("ends_at"))).toISOString() : null,
+          secret_ballot: row.id ? Boolean(row.secret_ballot) : kind === "election" && fd.get("secret_ballot") === "on",
+          show_results: fd.get("show_results") === "on",
+        },
+        questions_payload: serializeQuestionDrafts(formQuestions),
+        acknowledge_response_impact: acknowledgeResponseImpact,
+      }));
     }
     savingRef.current = false;
     setSaving(false); if (error) return onError(toErrorMessage(error));
@@ -664,6 +677,19 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         return;
       }
       submitAction = null;
+    }
+    if (config.type === "forms") {
+      const validationError = validateQuestionDrafts(formQuestions);
+      if (validationError) return onError(validationError);
+      if (row.id && (formResponseState === "loading" || formResponseState === "error")) return onError("기존 응답 상태를 확인한 뒤 다시 저장해 주세요.");
+      if (formResponseState === "has-responses") {
+        const policyViolation = answeredFormPolicyViolation(originalFormQuestions, formQuestions);
+        if (policyViolation) return onError(policyViolation);
+        if (requiresResponseImpactConfirmation(originalFormQuestions, formQuestions)) {
+          setPendingFormSave({ formData, submitAction });
+          return;
+        }
+      }
     }
     if (config.type === "members" && submitAction !== "password" && requiresMemberApprovalConfirmation(row.status as "pending" | "active" | "inactive" | undefined, formData.get("status"))) {
       setPendingMemberUpdate({ formData, submitAction });
@@ -712,9 +738,9 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     </div>}
      {config.type === "teams" && <TeamEditor event={teamEvent} profiles={profiles} attendance={attendance} assignedMemberIds={assignedMemberIds} saving={saving} matchDrafts={matchDrafts} saveSignal={teamSaveSignal} resultRef={teamResultsRef} onMatchDraftsChange={setMatchDrafts} onDirtyCountChange={setTeamDirtyCount} onAction={requestTeamAction} />}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
-    {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
-    {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : config.type === "attendance" && attendanceSaveReport?.failures.length ? `실패 ${attendanceSaveReport.failures.length}명 재시도` : "저장하기"}</button>}
-  </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}{passwordResetOpen && <ConfirmDialog title="비밀번호를 초기화할까요?" target={String(row.name ?? "이 회원")} description="이 회원은 기존 비밀번호를 더 이상 사용할 수 없으며, 비밀번호가 1234로 변경됩니다." confirmLabel="비밀번호 초기화" busy={saving} onConfirm={() => void confirmPasswordReset()} onCancel={() => setPasswordResetOpen(false)} />}{pendingTeamRegeneration && <ConfirmDialog title="팀을 다시 만들까요?" target={teamRegenerationTarget} description={teamRegenerationDescription} confirmLabel="기록을 교체하고 다시 만들기" busyLabel="다시 만드는 중…" busy={saving} onConfirm={confirmTeamRegeneration} onCancel={() => setPendingTeamRegeneration(null)} />}</div>{discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target={config.type === "teams" ? `저장되지 않은 기록 ${teamDirtyCount}건이 있습니다.` : `저장하지 않은 ${editorTitles[config.type]} 변경이 있습니다.`} description="버리면 변경한 내용을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={onClose} onCancel={() => setDiscardOpen(false)} />}</>;
+    {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><ParticipationFormQuestionEditor questions={formQuestions} hasResponses={formResponseState === "has-responses"} responseState={formResponseState} onChange={(questions) => { setFormQuestions(questions); setFormDirty(true); }} />{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
+    {config.type !== "teams" && <button className="cta" disabled={saving || (config.type === "forms" && (formResponseState === "loading" || formResponseState === "error"))}>{saving ? "저장 중…" : config.type === "attendance" && attendanceSaveReport?.failures.length ? `실패 ${attendanceSaveReport.failures.length}명 재시도` : "저장하기"}</button>}
+  </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}{passwordResetOpen && <ConfirmDialog title="비밀번호를 초기화할까요?" target={String(row.name ?? "이 회원")} description="이 회원은 기존 비밀번호를 더 이상 사용할 수 없으며, 비밀번호가 1234로 변경됩니다." confirmLabel="비밀번호 초기화" busy={saving} onConfirm={() => void confirmPasswordReset()} onCancel={() => setPasswordResetOpen(false)} />}{pendingTeamRegeneration && <ConfirmDialog title="팀을 다시 만들까요?" target={teamRegenerationTarget} description={teamRegenerationDescription} confirmLabel="기록을 교체하고 다시 만들기" busyLabel="다시 만드는 중…" busy={saving} onConfirm={confirmTeamRegeneration} onCancel={() => setPendingTeamRegeneration(null)} />}{pendingFormSave && <ConfirmDialog title="기존 응답이 있는 문항을 수정할까요?" target={String(row.title ?? "참여 항목")} description="기존 응답은 그대로 보존되지만 문항 문구를 바꾸면 과거 응답의 의미가 달라질 수 있습니다. 변경 내용을 다시 확인한 뒤 저장해 주세요." confirmLabel="확인하고 저장" busy={saving} onConfirm={() => { void save(pendingFormSave.formData, pendingFormSave.submitAction, true); setPendingFormSave(null); }} onCancel={() => setPendingFormSave(null)} />}</div>{discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target={config.type === "teams" ? `저장되지 않은 기록 ${teamDirtyCount}건이 있습니다.` : `저장하지 않은 ${editorTitles[config.type]} 변경이 있습니다.`} description="버리면 변경한 내용을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={onClose} onCancel={() => setDiscardOpen(false)} />}</>;
 }
 
 type TeamEditorProps = {
