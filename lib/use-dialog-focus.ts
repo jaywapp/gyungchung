@@ -11,10 +11,15 @@ const focusableSelector = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-export function useDialogFocus<T extends HTMLElement>(onClose?: () => void, active = true) {
+type DialogFocusOptions = {
+  onRequestClose?: () => void;
+  active?: boolean;
+};
+
+export function useDialogFocus<T extends HTMLElement>({ onRequestClose, active = true }: DialogFocusOptions = {}) {
   const dialogRef = useRef<T>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const requestCloseRef = useRef(onRequestClose);
+  requestCloseRef.current = onRequestClose;
 
   useEffect(() => {
     if (!active) return;
@@ -30,9 +35,9 @@ export function useDialogFocus<T extends HTMLElement>(onClose?: () => void, acti
     (focusable()[0] ?? dialog).focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && closeRef.current) {
+      if (event.key === "Escape" && requestCloseRef.current) {
         event.preventDefault();
-        closeRef.current();
+        requestCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;

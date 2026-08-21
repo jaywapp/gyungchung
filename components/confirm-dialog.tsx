@@ -13,7 +13,7 @@ export default function ConfirmDialog({ title, target, description, confirmLabel
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const dialogRef = useDialogFocus<HTMLDivElement>(onCancel);
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onCancel });
   return <div className="modal-backdrop" onClick={onCancel}>
     <div ref={dialogRef} tabIndex={-1} className="editor confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-description" onClick={(event) => event.stopPropagation()}>
       <button type="button" className="modal-close" aria-label="닫기" onClick={onCancel}><X /></button>

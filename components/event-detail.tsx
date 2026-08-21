@@ -52,7 +52,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
   const [submittingMomCandidateId, setSubmittingMomCandidateId] = useState<string | null>(null);
   const submittingMomVoteRef = useRef(false);
   const membershipRestriction = getMembershipRestriction(profile);
-  const momDialogRef = useDialogFocus<HTMLDivElement>(() => setVotingEvent(null), Boolean(votingEvent));
+  const momDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setVotingEvent(null), active: Boolean(votingEvent) });
   const date = parseEventDateKey(dateKey);
   const dayEvents = useMemo(
     () => events.filter((event) => toEventDateKey(event.starts_at) === dateKey).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),

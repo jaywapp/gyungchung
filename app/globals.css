@@ -4086,6 +4086,22 @@ td { font-weight: 800; }
 
 .editor .cta { margin: 10px 0 8px; }
 
+.unsaved-records {
+  margin: 14px 0;
+  padding: 11px 13px;
+  border-left: var(--accent-bar) solid var(--green);
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.unsaved-records.is-dirty {
+  border-left-color: var(--danger-ink);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .editor .check {
   flex-direction: row;
   align-items: center;

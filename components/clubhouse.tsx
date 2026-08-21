@@ -220,7 +220,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const sessionPending = authLoading || memberLoading;
 
   const navigate = useCallback((next: Tab) => { setMenuOpen(false); router.push(tabPaths[next]); }, [router]);
-  const navRef = useDialogFocus<HTMLElement>(() => setMenuOpen(false), menuOpen);
+  const navRef = useDialogFocus<HTMLElement>({ onRequestClose: () => setMenuOpen(false), active: menuOpen });
   const confirmDelete = async () => {
     if (!supabase || !pendingDelete) return;
     setDeleting(true);
@@ -344,7 +344,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
 }
 
 function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null> }) {
-  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
   const [phone, setPhone] = useState("");
   const [legacyEmail, setLegacyEmail] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -358,13 +358,13 @@ function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean
 }
 
 function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { user: User; profile: Profile; busy: boolean; onClose: () => void; onLink: (provider: "google" | "kakao") => void; onSignOut: () => Promise<void> }) {
-  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
   const providers = new Set((user.identities ?? []).map((identity) => identity.provider));
   return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">간편 로그인 계정을 연결하면 다음부터 해당 계정으로도 로그인할 수 있습니다.</p><button type="button" className="social kakao" disabled={busy || providers.has("custom:kakao")} onClick={() => onLink("kakao")}><Link2 size={17} /> {providers.has("custom:kakao") ? "카카오 연결됨" : "카카오 계정 연결"}</button><button type="button" className="social google" disabled={busy || providers.has("google")} onClick={() => onLink("google")}><Link2 size={17} /> {providers.has("google") ? "Google 연결됨" : "Google 계정 연결"}</button><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
 }
 
 function UnlinkedAccountModal({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => Promise<void> }) {
-  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
   return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="계정 연결 필요"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">ACCOUNT NOTICE</span><h2>계정 연결이 필요합니다</h2><div className="read-box"><b>회원 프로필을 찾지 못했습니다</b><p>로그인은 완료됐지만 이 계정은 아직 경충FC 회원 프로필에 연결되지 않았습니다.</p></div><p className="form-description">운영진에게 계정 연결을 문의해 주세요. 다른 계정으로 로그인하려면 먼저 로그아웃할 수 있습니다.</p><Link href={tabPaths.feedback} className="cta secondary" onClick={onClose}>운영진에게 문의하기 <ChevronRight size={17} /></Link><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
 }
 
