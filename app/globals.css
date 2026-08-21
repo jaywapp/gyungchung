@@ -3255,12 +3255,49 @@ td { font-weight: 800; }
   color: var(--surface);
 }
 
+.admin-tab-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger-solid);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 1;
+}
+
 .admin-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 25px 0;
 }
+
+.admin-list-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -8px 0 20px;
+}
+
+.admin-list-filters label:first-child { flex: 1 1 260px; }
+
+.admin-list-filters input,
+.admin-list-filters select {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.admin-list-filters select { min-width: 130px; }
+.admin-list-filters .text-link { flex: 0 0 auto; }
 
 .admin-list {
   border-top: var(--accent-bar) solid var(--green);
@@ -3308,6 +3345,11 @@ td { font-weight: 800; }
 .admin-row a svg:last-child {
   align-self: flex-start;
   margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .admin-list-filters { flex-wrap: wrap; }
+  .admin-list-filters label:first-child { flex-basis: 100%; }
 }
 
 .permission-intro {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { CalendarPlus, ExternalLink, Github, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { CalendarPlus, ExternalLink, Github, Inbox, Pencil, Plus, SearchX, ShieldCheck, Trash2, X } from "lucide-react";
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
@@ -9,7 +9,9 @@ import { getCheckInStatus, isCheckedIn } from "@/lib/attendance";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { eventDatePath } from "@/lib/event-date";
 import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
+import { filterAdminRows } from "@/lib/admin-list-filters";
 import ConfirmDialog from "@/components/confirm-dialog";
+import { Empty } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 type Section = "members" | "guests" | "fees" | "notices" | "venues" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions";
@@ -43,6 +45,18 @@ const permissionLabels: Record<string, string> = {
   "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
 };
 
+const listStatusOptions: Partial<Record<Section, Array<{ value: string; label: string }>>> = {
+  members: [{ value: "pending", label: "승인 대기" }, { value: "active", label: "활동" }, { value: "inactive", label: "비활동" }],
+  guests: [{ value: "active", label: "활동" }, { value: "inactive", label: "비활동" }],
+  fees: [{ value: "paid", label: "납부 완료" }, { value: "unpaid", label: "미납" }, { value: "exempt", label: "면제" }],
+  feedback: [{ value: "received", label: "접수" }, { value: "reviewing", label: "검토 중" }, { value: "resolved", label: "답변 완료" }, { value: "closed", label: "종결" }],
+  forms: [{ value: "draft", label: "초안" }, { value: "open", label: "진행 중" }, { value: "closed", label: "마감" }, { value: "archived", label: "보관" }],
+};
+
+const listSearchPlaceholders: Record<Section, string> = {
+  members: "이름 또는 전화번호 검색", guests: "이름 또는 전화번호 검색", fees: "회원 또는 용병 이름 검색", notices: "제목 또는 내용 검색", venues: "구장 또는 주소 검색", events: "일정 제목 또는 날짜 검색", attendance: "일정 제목 또는 날짜 검색", teams: "일정 제목 또는 날짜 검색", feedback: "의견 제목 또는 내용 검색", forms: "제목 또는 설명 검색", permissions: "",
+};
+
 export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, permissions, supabase, reload, toast }: {
   profiles: Profile[]; guestPlayers: GuestPlayer[]; attendance: Attendance[]; fees: Fee[]; guestFees: GuestFee[]; notices: Notice[]; venues: Venue[]; events: Event[]; feedback: Feedback[]; forms: ParticipationForm[]; rolePermissions: RolePermission[]; officerPermissions: OfficerPermission[];
   permissions: Set<string>; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler;
@@ -69,6 +83,10 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
   const [pendingDelete, setPendingDelete] = useState<{ table: string; id: string; label: string } | null>(null);
   const [bulkFeeOpen, setBulkFeeOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [listQuery, setListQuery] = useState("");
+  const [listStatus, setListStatus] = useState("all");
+  const resetListFilters = () => { setListQuery(""); setListStatus("all"); };
+  const selectListSection = (nextSection: Section) => { setSection(nextSection); resetListFilters(); };
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -79,25 +97,46 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     if (error) return toast(toErrorMessage(error), "error");
     toast("삭제했습니다."); reload(scope);
   };
+  const filteredProfiles = filterAdminRows(profiles.map((item) => ({ item, searchValues: [item.name, item.phone], status: item.status })), listQuery, listStatus).map((row) => row.item).sort((left, right) => Number(right.status === "pending") - Number(left.status === "pending"));
+  const filteredGuests = filterAdminRows(guestPlayers.map((item) => ({ item, searchValues: [item.name, item.phone], status: item.is_active ? "active" : "inactive" })), listQuery, listStatus).map((row) => row.item);
+  const filteredFees = filterAdminRows(fees.map((item) => ({ item, searchValues: [item.profiles?.name ?? profiles.find((profile) => profile.id === item.member_id)?.name, item.month.slice(0, 7), item.fee_type], status: item.status })), listQuery, listStatus).map((row) => row.item);
+  const filteredGuestFees = filterAdminRows(guestFees.map((item) => ({ item, searchValues: [item.guest_players?.name, item.events?.title, item.events?.starts_at?.slice(0, 10)], status: item.status })), listQuery, listStatus).map((row) => row.item);
+  const filteredNotices = filterAdminRows(notices.map((item) => ({ item, searchValues: [item.title, item.body] })), listQuery).map((row) => row.item);
+  const filteredVenues = filterAdminRows(venues.map((item) => ({ item, searchValues: [item.name, item.address, item.note] })), listQuery).map((row) => row.item);
+  const filteredEvents = filterAdminRows(events.map((item) => ({ item, searchValues: [item.title, item.starts_at.slice(0, 10), item.venue, item.address] })), listQuery).map((row) => row.item);
+  const filteredFeedback = filterAdminRows(feedback.map((item) => ({ item, searchValues: [item.title, item.body, feedbackCategoryLabels[item.category]], status: item.status })), listQuery, listStatus).map((row) => row.item);
+  const filteredForms = filterAdminRows(forms.map((item) => ({ item, searchValues: [item.title, item.description, formKindLabels[item.kind]], status: item.status })), listQuery, listStatus).map((row) => row.item);
   const count = section === "members" ? profiles.length : section === "guests" ? guestPlayers.length : section === "fees" ? fees.length + guestFees.length : section === "notices" ? notices.length : section === "venues" ? venues.length : section === "events" || section === "attendance" || section === "teams" ? events.length : section === "feedback" ? feedback.length : section === "forms" ? forms.length : rolePermissions.length + officerPermissions.length;
+  const filteredCount = section === "members" ? filteredProfiles.length : section === "guests" ? filteredGuests.length : section === "fees" ? filteredFees.length + filteredGuestFees.length : section === "notices" ? filteredNotices.length : section === "venues" ? filteredVenues.length : section === "events" || section === "attendance" || section === "teams" ? filteredEvents.length : section === "feedback" ? filteredFeedback.length : section === "forms" ? filteredForms.length : count;
+  const hasListFilters = listQuery.trim().length > 0 || listStatus !== "all";
+  const hasStatusFilter = (listStatusOptions[section]?.length ?? 0) > 0;
+  const pendingMemberCount = profiles.filter((profile) => profile.status === "pending").length;
+  const emptyState = count === 0
+    ? <Empty icon={<Inbox />} title={`등록된 ${sectionLabels[section]} 항목이 없습니다`} description="새 항목을 등록하면 이 목록에서 관리할 수 있습니다." />
+    : listQuery.trim().length > 0
+      ? <Empty icon={<SearchX />} title="검색 결과가 없습니다" description="검색어를 바꾸거나 필터를 초기화해 보세요." />
+      : <Empty icon={<SearchX />} title="선택한 상태의 항목이 없습니다" description="다른 상태를 선택하거나 필터를 초기화해 보세요." />;
 
   return <section className="content">
     <div className="page-intro"><span className="eyebrow">OPERATIONS DESK</span><h1>팀 운영 관리</h1><p>시스템 관리 권한은 회원 유형과 별도로 부여되며, 회장·부회장·총무는 직책별 운영 업무를 담당합니다.</p></div>
-    <div className="admin-groups">{sectionGroups.map((group) => <button key={group.key} type="button" aria-pressed={group.key === activeGroup?.key} onClick={() => setSection(group.sections[0])}>{group.label}</button>)}</div>
-    <div className="admin-tabs">{(activeGroup?.sections ?? []).map((key) => <button key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{sectionLabels[key]} 관리</button>)}</div>
-    <div className="admin-toolbar"><b>{count}개 항목</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>
+    <div className="admin-groups">{sectionGroups.map((group) => <button key={group.key} type="button" aria-pressed={group.key === activeGroup?.key} onClick={() => selectListSection(group.sections[0])}>{group.label}</button>)}</div>
+    <div className="admin-tabs">{(activeGroup?.sections ?? []).map((key) => <button key={key} type="button" aria-pressed={section === key} onClick={() => selectListSection(key)}>{sectionLabels[key]} 관리{key === "members" && pendingMemberCount > 0 && <span className="admin-tab-badge" aria-label={`승인 대기 ${pendingMemberCount}명`}>{pendingMemberCount}</span>}</button>)}</div>
+    <div className="admin-toolbar"><b>{hasListFilters ? `검색 결과 ${filteredCount}개` : `${filteredCount}개 항목`}</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>
+    {section !== "permissions" && <div className="admin-list-filters"><label><span className="sr-only">{sectionLabels[section]} 검색</span><input type="search" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder={listSearchPlaceholders[section]} /></label>{hasStatusFilter && <label><span className="sr-only">상태 필터</span><select value={listStatus} onChange={(event) => setListStatus(event.target.value)}><option value="all">모든 상태</option>{listStatusOptions[section]?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}{hasListFilters && <button type="button" className="text-link" onClick={resetListFilters}>필터 초기화</button>}</div>}
     {section === "permissions" ? <PermissionMatrix roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
-      {section === "members" && profiles.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.position ?? "포지션 미정"} · ${row.role === "manager" && row.officer_title ? officerTitleLabels[row.officer_title] : roleLabels[row.role]}${row.is_system_admin ? " · 시스템 관리자" : ""} · ${row.auth_user_id ? "로그인 연결" : "로그인 미연결"} · ${memberStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "members", row: row as unknown as Record<string, unknown> })} />)}
-      {section === "guests" && guestPlayers.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.preferred_position ?? "포지션 미정"} · ${row.appearance_count}회 참여 · 참여비 ${row.fee_amount.toLocaleString()}원 · ${row.is_active ? "활동" : "비활동"}`} onEdit={() => setEditor({ type: "guests", row: row as unknown as Record<string, unknown> })} />)}
-      {section === "fees" && fees.map((row) => <AdminRow key={row.id} title={`${row.profiles?.name ?? profiles.find((p) => p.id === row.member_id)?.name ?? "회원"} · ${row.month.slice(0, 7)}`} meta={`${row.fee_type === "participation" ? "참여비" : "월회비"} · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "fees", id: row.id, label })} />)}
-      {section === "fees" && guestFees.map((row) => <AdminRow key={`${row.event_id}-${row.guest_player_id}`} title={`${row.guest_players?.name ?? "용병"} · ${row.events ? new Date(row.events.starts_at).toLocaleDateString("ko-KR") : "일정"}`} meta={`용병 참여비 · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: { ...row, _fee_scope: "guest" } as unknown as Record<string, unknown> })} />)}
-      {section === "notices" && notices.map((row) => <AdminRow key={row.id} title={row.title} meta={new Date(row.created_at).toLocaleDateString("ko-KR")} onEdit={() => setEditor({ type: "notices", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "notices", id: row.id, label })} />)}
-      {section === "venues" && venues.map((row) => <AdminRow key={row.id} title={row.name} meta={row.address || "주소 미등록"} onEdit={() => setEditor({ type: "venues", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "venues", id: row.id, label })} />)}
-      {section === "events" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "events", id: row.id, label })} />)}
-      {section === "attendance" && events.map((row) => { const eventAttendance = attendance.filter((item) => item.event_id === row.id); const presentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "present").length; const lateCount = eventAttendance.filter((item) => getCheckInStatus(item) === "late").length; const absentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "absent").length; return <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · 출석 ${presentCount}명 · 지각 ${lateCount}명 · 결석 ${absentCount}명`} onEdit={() => setEditor({ type: "attendance", row: row as unknown as Record<string, unknown> })} />; })}
-      {section === "teams" && events.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "균형 편성" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
-      {section === "feedback" && feedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "feedback", id: row.id, label })} />)}
-      {section === "forms" && forms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
+      {filteredCount === 0 ? emptyState : <>
+        {section === "members" && filteredProfiles.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.position ?? "포지션 미정"} · ${row.role === "manager" && row.officer_title ? officerTitleLabels[row.officer_title] : roleLabels[row.role]}${row.is_system_admin ? " · 시스템 관리자" : ""} · ${row.auth_user_id ? "로그인 연결" : "로그인 미연결"} · ${memberStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "members", row: row as unknown as Record<string, unknown> })} />)}
+        {section === "guests" && filteredGuests.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.preferred_position ?? "포지션 미정"} · ${row.appearance_count}회 참여 · 참여비 ${row.fee_amount.toLocaleString()}원 · ${row.is_active ? "활동" : "비활동"}`} onEdit={() => setEditor({ type: "guests", row: row as unknown as Record<string, unknown> })} />)}
+        {section === "fees" && filteredFees.map((row) => <AdminRow key={row.id} title={`${row.profiles?.name ?? profiles.find((p) => p.id === row.member_id)?.name ?? "회원"} · ${row.month.slice(0, 7)}`} meta={`${row.fee_type === "participation" ? "참여비" : "월회비"} · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "fees", id: row.id, label })} />)}
+        {section === "fees" && filteredGuestFees.map((row) => <AdminRow key={`${row.event_id}-${row.guest_player_id}`} title={`${row.guest_players?.name ?? "용병"} · ${row.events ? new Date(row.events.starts_at).toLocaleDateString("ko-KR") : "일정"}`} meta={`용병 참여비 · ${row.amount.toLocaleString()}원 · ${feeStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "fees", row: { ...row, _fee_scope: "guest" } as unknown as Record<string, unknown> })} />)}
+        {section === "notices" && filteredNotices.map((row) => <AdminRow key={row.id} title={row.title} meta={new Date(row.created_at).toLocaleDateString("ko-KR")} onEdit={() => setEditor({ type: "notices", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "notices", id: row.id, label })} />)}
+        {section === "venues" && filteredVenues.map((row) => <AdminRow key={row.id} title={row.name} meta={row.address || "주소 미등록"} onEdit={() => setEditor({ type: "venues", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "venues", id: row.id, label })} />)}
+        {section === "events" && filteredEvents.map((row) => <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · ${row.venue}`} onEdit={() => setEditor({ type: "events", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "events", id: row.id, label })} />)}
+        {section === "attendance" && filteredEvents.map((row) => { const eventAttendance = attendance.filter((item) => item.event_id === row.id); const presentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "present").length; const lateCount = eventAttendance.filter((item) => getCheckInStatus(item) === "late").length; const absentCount = eventAttendance.filter((item) => getCheckInStatus(item) === "absent").length; return <AdminRow key={row.id} title={row.title} meta={`${new Date(row.starts_at).toLocaleDateString("ko-KR")} · 출석 ${presentCount}명 · 지각 ${lateCount}명 · 결석 ${absentCount}명`} onEdit={() => setEditor({ type: "attendance", row: row as unknown as Record<string, unknown> })} />; })}
+        {section === "teams" && filteredEvents.map((row) => <AdminRow key={row.id} title={row.title} meta={`${row.event_teams?.length ?? 0}개 팀 · ${row.team_mode === "balanced" ? "균형 편성" : row.team_mode === "random" ? "랜덤" : "미편성"}${row.is_competitive ? " · 커피 내기" : ""}`} onEdit={() => setEditor({ type: "teams", row: row as unknown as Record<string, unknown> })} />)}
+        {section === "feedback" && filteredFeedback.map((row) => <AdminRow key={row.id} title={`${row.is_anonymous ? "익명" : "회원"} · ${row.title}`} meta={`${feedbackCategoryLabels[row.category]} · ${feedbackStatusLabels[row.status]}${row.github_issue_number ? ` · GitHub #${row.github_issue_number}` : row.publish_to_github ? " · GitHub 연결 대기" : ""}`} href={row.github_issue_url} onEdit={() => setEditor({ type: "feedback", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "feedback", id: row.id, label })} />)}
+        {section === "forms" && filteredForms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
+      </>}
     </div>}
     {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
