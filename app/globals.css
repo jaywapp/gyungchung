@@ -1054,15 +1054,46 @@ footer a {
   line-height: 1.25;
 }
 
-.rsvp {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.rsvp-control {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
   gap: 10px;
-  margin-top: auto;
 }
 
-.rsvp button {
-  height: var(--tap);
+.panel > .rsvp-control { margin-top: auto; }
+
+.rsvp-state {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 10px 12px;
+  border-left: var(--accent-bar) solid var(--green-text);
+  background: var(--paper);
+  color: var(--navy);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rsvp-state span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.rsvp-control.closed .rsvp-state,
+.rsvp-control.unavailable .rsvp-state { border-left-color: var(--muted); }
+.rsvp-control.saving .rsvp-state { border-left-color: var(--neutral-ink); background: var(--neutral-bg); }
+
+.rsvp-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.rsvp-actions button {
+  min-height: var(--tap);
   border: 1px solid var(--line);
   background: var(--paper);
   color: var(--ink);
@@ -1074,17 +1105,29 @@ footer a {
 
 /* Each selected state names both its surface and its ink so neither can be
    overridden independently. */
-.rsvp button.selected {
+.rsvp-actions button.selected {
   border-color: var(--green);
   background: var(--green);
   color: var(--navy);
 }
 
-.rsvp button.selected.no {
+.rsvp-actions button.selected.no {
   border-color: var(--navy);
   background: var(--navy);
   color: var(--surface);
 }
+
+.rsvp-actions button.cancel {
+  grid-column: 1 / -1;
+  background: transparent;
+}
+
+.rsvp-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .65;
+}
+
+.rsvp-login { width: 100%; }
 
 .rsvp-schedule {
   display: flex;
@@ -1139,6 +1182,7 @@ footer a {
 .capacity-status.over_capacity { border-left-color: var(--danger-ink); background: var(--danger-bg); }
 .capacity-status.full small,
 .capacity-status.over_capacity small { color: var(--danger-ink); }
+.capacity-status.detail { width: 100%; padding: 0; border-left: 0; background: transparent; }
 
 /* Knowing you owe money is a dead end without a way to settle it — so the
    callout carries the escape hatch on both the owing and the settled state. */
@@ -2143,6 +2187,8 @@ td { font-weight: 800; }
 
 .event-action .capacity-status { align-self: flex-end; text-align: right; }
 .event-action .restriction-reason { max-width: 220px; text-align: right; }
+.event-action .rsvp-control { width: min(300px, 100%); }
+.event-action .rsvp-state { text-align: left; }
 
 /* Officer-only actions: outlined and icon-led so they read as an admin menu,
    never as a second member CTA beside the filled 참석하기 button. */
@@ -2525,6 +2571,8 @@ td { font-weight: 800; }
 }
 
 .event-detail-actions .restriction-reason { flex-basis: 100%; }
+.event-detail-actions > .rsvp-control { flex: 1 1 420px; }
+.event-detail-actions > .officer-menu { margin-left: auto; }
 
 .event-detail-block {
   margin-top: 34px;

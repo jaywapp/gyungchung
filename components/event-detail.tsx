@@ -10,9 +10,9 @@ import { getCheckInStatus } from "@/lib/attendance";
 import { getEventCapacity } from "@/lib/event-capacity";
 import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
-import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { parseEventDateKey, toEventDateKey } from "@/lib/event-date";
 import { getMomVoteEligibility, isMomVoteCandidate } from "@/lib/mom-vote";
+import { CapacityStatus, RsvpControls } from "@/components/rsvp-controls";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type EventDetailProps = {
@@ -28,6 +28,7 @@ type EventDetailProps = {
   loading: boolean;
   loadError: boolean;
   sessionPending: boolean;
+  rsvpPendingEventIds: Set<string>;
   canManage: boolean;
   onEdit: (event: Event) => void;
   onManageMatch: (event: Event) => void;
@@ -47,11 +48,10 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
  * dates, so everything that describes a single outing — roster, teams, match
  * results, MOM — is read here instead of being stacked into every list row.
  */
-export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, canManage, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
+export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
   const [votingEvent, setVotingEvent] = useState<Event | null>(null);
   const [submittingMomCandidateId, setSubmittingMomCandidateId] = useState<string | null>(null);
   const submittingMomVoteRef = useRef(false);
-  const membershipRestriction = getMembershipRestriction(profile);
   const momDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setVotingEvent(null), active: Boolean(votingEvent) });
   const date = parseEventDateKey(dateKey);
   const dayEvents = useMemo(
@@ -155,16 +155,16 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
         <dl className="event-detail-facts">
           <div><dt>시작 시간</dt><dd>{new Date(event.starts_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}</dd></div>
           <div><dt>장소</dt><dd><a className="inline-map-link" href={naverMapUrl(event)} target="_blank" rel="noreferrer"><MapPin size={15} /> {event.venue}</a></dd></div>
-          <div className={`capacity-fact ${capacity.status}`}><dt>정원 현황</dt><dd>{capacity.capacity === null ? "제한 없음" : `참석 ${capacity.totalCount} / 정원 ${capacity.capacity}명`}<small>{capacity.capacity === null ? `현재 ${capacity.totalCount}명 · 용병 포함` : capacity.status === "over_capacity" ? `정원 ${Math.abs(capacity.remaining ?? 0)}명 초과 · 용병 포함` : capacity.status === "full" ? "정원 도달 · 용병 포함" : `${capacity.status === "nearly_full" ? "임박 · " : ""}잔여 ${capacity.remaining}자리 · 용병 포함`}</small></dd></div>
+          <div className={`capacity-fact ${capacity.status}`}><dt>정원 현황</dt><dd><CapacityStatus capacity={capacity} detail /></dd></div>
           <div><dt>{isPast ? "출석" : "참석 예정"}</dt><dd>{isPast ? `${presentCount}명 · 지각 ${lateCount}명 · 결석 ${absentCount}명` : `회원 ${goingCount}명 · 용병 ${guests.length}명`}</dd></div>
         </dl>
         {event.address && <p className="event-detail-address">{event.address}</p>}
         {event.note && <p className="event-detail-note">{event.note}</p>}
 
-        {(!isPast || canManage) && <div className="event-detail-actions">
-          {!isPast && <><button type="button" className="cta" disabled={Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `event-rsvp-restriction-${event.id}` : undefined} onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{myAttendance?.status === "going" ? "참석 유지하기" : "참석하기"}</button>{membershipRestriction && <p className="restriction-reason" id={`event-rsvp-restriction-${event.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</>}
+        <div className="event-detail-actions">
+          <RsvpControls eventTitle={event.title} startsAt={event.starts_at} status={myAttendance?.status ?? null} isAuthenticated={Boolean(user)} memberStatus={profile?.status ?? null} isLoading={sessionPending} isSaving={rsvpPendingEventIds.has(event.id)} onChange={(status) => onAttendance(status, event.id)} onLogin={onLogin} />
           {canManage && <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className="officer-menu-item" aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className="officer-menu-item" aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>}
-        </div>}
+        </div>
 
         {isPast && <section className="event-detail-block mom-vote-section">
           <h3>MOM 투표</h3>
