@@ -13,6 +13,7 @@ import { editorScopes, showError, tableScopes, toErrorMessage, type ReloadScope,
 import { getCheckInStatus } from "@/lib/attendance";
 import { getAccountState } from "@/lib/account-state";
 import { eventDatePath, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
+import { buildOAuthReturnPath } from "@/lib/oauth-return";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { Empty, FormError, LoadError, LoginGate, SectionSkeleton } from "@/components/section-states";
 
@@ -185,7 +186,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     const params = new URLSearchParams(window.location.search);
     const result = params.get("auth");
     if (!result) return;
-    window.history.replaceState({}, "", window.location.pathname);
+    params.delete("auth");
+    window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
+    setLoginOpen(false);
     const outcome = authResults[result];
     if (outcome) showToast(outcome.message, outcome.kind);
   }, [showToast]);
@@ -244,7 +247,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     setBusy(true);
     const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
     const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", "/?auth=login");
+    callbackUrl.searchParams.set("next", buildOAuthReturnPath(window.location.pathname, window.location.search, window.location.hash, "login"));
     const { error } = await supabase.auth.signInWithOAuth({
       provider: oauthProvider,
       options: {
@@ -279,7 +282,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (!supabase) return;
     setBusy(true);
     const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", "/?auth=linked");
+    callbackUrl.searchParams.set("next", buildOAuthReturnPath(window.location.pathname, window.location.search, window.location.hash, "linked"));
     const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
     const { error } = await supabase.auth.linkIdentity({ provider: oauthProvider, options: { redirectTo: callbackUrl.toString() } });
     if (error) { setBusy(false); showToast("간편 로그인 계정을 연결하지 못했습니다.", "error"); }
