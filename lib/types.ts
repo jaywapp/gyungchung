@@ -25,6 +25,7 @@ export interface Profile {
   role: AccountRole;
   officer_title: OfficerTitle | null;
   is_system_admin: boolean;
+  is_test_account: boolean;
   fee_plan: MemberFeePlan | null;
   position: "GK" | "DF" | "MF" | "FW" | "ANY" | null;
   position_detail: string | null;
