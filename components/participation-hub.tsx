@@ -5,7 +5,7 @@ import { BarChart3, Check, ClipboardList, LockKeyhole, Pencil, Plus, Trash2, Vot
 import type { User } from "@supabase/supabase-js";
 import type { ParticipationForm, ParticipationKind, ParticipationQuestion, ParticipationSubmission, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
-import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
+import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { Empty, SectionSkeleton } from "@/components/section-states";
 
@@ -50,7 +50,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user || !supabase) return onLogin();
-    if (profile?.status !== "active") return toast("회원 승인 후 참여할 수 있습니다.");
+    if (profile?.status !== "active") return showError(toast, "회원 승인 후 참여할 수 있습니다.");
     if (!active) return;
     setSaving(true);
     const submittedAnswers = active.participation_questions

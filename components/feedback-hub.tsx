@@ -5,7 +5,7 @@ import { CheckCircle2, ExternalLink, Github, Lightbulb, MessageSquareText, Penci
 import type { User } from "@supabase/supabase-js";
 import type { Feedback, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
-import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
+import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
@@ -78,7 +78,8 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
     setSaving(true);
     try {
       const published = await publishToGithub(feedbackId);
-      toast(published ? "GitHub 이슈 연결을 완료했습니다." : "GitHub 이슈를 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      if (published) toast("GitHub 이슈 연결을 완료했습니다.");
+      else showError(toast, "GitHub 이슈를 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       if (published) reload();
     } finally {
       setSaving(false);
@@ -88,7 +89,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user || !supabase) return onLogin();
-    if (profile?.status !== "active") return toast("회원 승인이 완료된 뒤 의견을 등록할 수 있습니다.");
+    if (profile?.status !== "active") return showError(toast, "회원 승인이 완료된 뒤 의견을 등록할 수 있습니다.");
     setSaving(true);
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -110,7 +111,8 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
       const published = shouldPublish && saved ? await publishToGithub(saved.id) : false;
       formElement.reset();
       setTitleLength(0); setBodyLength(0);
-      toast(shouldPublish ? published ? "의견을 접수하고 GitHub 이슈로 연결했습니다." : "내부 접수는 완료했지만 GitHub 연결에 실패했습니다." : "의견을 안전하게 접수했습니다.");
+      if (shouldPublish && !published) toast("내부 접수는 완료했지만 GitHub 연결에 실패했습니다.", "warning");
+      else toast(shouldPublish ? "의견을 접수하고 GitHub 이슈로 연결했습니다." : "의견을 안전하게 접수했습니다.");
       reload();
     } finally {
       setSaving(false);

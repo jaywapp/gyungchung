@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
 import type { EditorConfig } from "@/components/admin-console";
-import { editorScopes, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
+import { editorScopes, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus } from "@/lib/attendance";
 import { getAccountState } from "@/lib/account-state";
 import { eventDatePath, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
@@ -240,7 +240,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     await reload("member");
   };
   const signIn = async (provider: "google" | "kakao") => {
-    if (!supabase) return showToast("로그인 연결을 준비 중입니다.");
+    if (!supabase) return showError(showToast, "로그인 연결을 준비 중입니다.");
     setBusy(true);
     const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
     const callbackUrl = new URL("/auth/callback", window.location.origin);
@@ -287,7 +287,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const signOut = async () => { await supabase?.auth.signOut(); navigate("home"); showToast("로그아웃했습니다."); };
   const setMyAttendance = async (status: Attendance["status"], eventId = upcoming?.id) => {
     if (!user || !eventId || !supabase) return setLoginOpen(true);
-    if (me?.status !== "active") return showToast("회원 승인 후 참석 여부를 등록할 수 있습니다.");
+    if (me?.status !== "active") return showError(showToast, "회원 승인 후 참석 여부를 등록할 수 있습니다.");
     const { error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: me.id, status }, { onConflict: "event_id,member_id" });
     if (error) return showToast(toErrorMessage(error), "error");
     setAttendance((rows) => { const existing = rows.find((row) => row.event_id === eventId && row.member_id === me.id); return [...rows.filter((row) => row.event_id !== eventId || row.member_id !== me.id), { event_id: eventId, member_id: me.id, status, check_in_status: existing?.check_in_status ?? null, checked_in_at: existing?.checked_in_at ?? null, checked_in_by: existing?.checked_in_by ?? null }]; }); showToast("참석 여부를 저장했습니다.");
@@ -316,6 +316,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError} sessionPending={sessionPending} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} reload={() => void reload("member")} toast={showToast} />}
       {children}
     </main>
+    <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} />}
