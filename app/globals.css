@@ -2332,6 +2332,11 @@ td { font-weight: 800; }
   outline-color: transparent;
 }
 
+.mom-candidates button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .mom-candidates span { color: var(--green-text); }
 
 /* --------------------------------------------------------------------------
@@ -2495,6 +2500,8 @@ td { font-weight: 800; }
   font-size: 13px;
   font-weight: 800;
 }
+
+.mom-vote-section > .text-link { margin-top: 12px; }
 
 /* Attendance reads as people, not as rows: initial, name, recorded state. */
 .attendee-meter {
