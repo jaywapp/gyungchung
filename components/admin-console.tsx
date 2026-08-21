@@ -366,8 +366,10 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const [saving, setSaving] = useState(false);
   const [pendingMemberUpdate, setPendingMemberUpdate] = useState<{ formData: FormData; submitAction: string | null } | null>(null);
   const [passwordResetOpen, setPasswordResetOpen] = useState(false);
+  const [pendingTeamRegeneration, setPendingTeamRegeneration] = useState<{ formData: FormData; participantCount: number; teamCount: number } | null>(null);
   const pendingTeamAction = useRef<TeamAction | null>(null);
   const savingRef = useRef(false);
+  const teamRegenerationInFlight = useRef(false);
   const [matchDrafts, setMatchDrafts] = useState<MatchDraft[]>(() => buildMatchDrafts(eventRow));
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
@@ -399,11 +401,19 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     pendingTeamAction.current = action;
     dialogRef.current?.requestSubmit();
   };
+  const confirmTeamRegeneration = () => {
+    if (!pendingTeamRegeneration || teamRegenerationInFlight.current) return;
+    teamRegenerationInFlight.current = true;
+    const regeneration = pendingTeamRegeneration;
+    setPendingTeamRegeneration(null);
+    void save(regeneration.formData, "generate").finally(() => { teamRegenerationInFlight.current = false; });
+  };
   const save = async (fd: FormData, submitAction: string | null) => {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     let error: { message: string; userFacing?: boolean } | null = null;
+    let successMessage: string | null = null;
     const addQuestion = async (formId: string, position: number) => {
       const prompt = String(fd.get("prompt") ?? "").trim();
       if (!prompt) return null;
@@ -554,6 +564,8 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
                 const nextEvent = { ...teamEvent, team_mode: mode as Event["team_mode"], event_teams: (refreshed.data ?? []) as Event["event_teams"] };
                 setTeamEvent(nextEvent);
                 setMatchDrafts(buildMatchDrafts(nextEvent));
+                const generatedParticipantCount = (nextEvent.event_teams ?? []).reduce((sum, team) => sum + team.event_team_members.length, 0);
+                successMessage = `${nextEvent.event_teams?.length ?? 0}개 팀 · ${generatedParticipantCount}명으로 팀 편성을 완료했습니다.`;
                 window.setTimeout(() => teamResultsRef.current?.focus(), 0);
               }
             }
@@ -629,7 +641,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     if (config.type === "teams") {
       const action = (submitAction ?? "generate") as TeamSaveAction;
       setTeamSaveSignal((current) => ({ action, version: (current?.version ?? 0) + 1 }));
-      const message = action === "generate" ? "팀 편성을 완료했습니다." : action === "stats" ? "팀 집계를 저장했습니다." : "경기별 기록을 저장했습니다.";
+      const message = action === "generate" ? successMessage ?? "팀 편성을 완료했습니다." : action === "stats" ? "팀 집계를 저장했습니다." : "경기별 기록을 저장했습니다.";
       return onSaved({ close: false, message });
     }
     setFormDirty(false);
@@ -642,6 +654,10 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     pendingTeamAction.current = null;
     if (config.type === "teams" && !submitAction) return;
     const formData = new FormData(event.currentTarget);
+    if (config.type === "teams" && submitAction === "generate" && (teamEvent.event_teams?.length ?? 0) > 0) {
+      setPendingTeamRegeneration({ formData, participantCount: formData.getAll("member_ids").length + (teamEvent.event_guest_players?.length ?? 0), teamCount: Number(formData.get("team_count")) });
+      return;
+    }
     if (config.type === "members" && submitAction === "password") {
       if (document.activeElement === submitter) {
         setPasswordResetOpen(true);
@@ -656,6 +672,15 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     void save(formData, submitAction);
   };
   const memberName = String(pendingMemberUpdate?.formData.get("name") ?? row.name ?? "회원");
+  const replacedTeams = teamEvent.event_teams ?? [];
+  const replacedMembers = replacedTeams.flatMap((team) => team.event_team_members);
+  const replacedGoals = replacedMembers.reduce((sum, member) => sum + member.goals, 0);
+  const replacedRatings = replacedMembers.filter((member) => member.rating !== null).length;
+  const replacedScores = replacedTeams.filter((team) => team.score !== null).length;
+  const replacedMatches = teamEvent.event_matches ?? [];
+  const replacedScorers = replacedMatches.flatMap((match) => match.event_match_scorers ?? []);
+  const teamRegenerationTarget = `${new Date(teamEvent.starts_at).toLocaleString("ko-KR")} · ${teamEvent.title}`;
+  const teamRegenerationDescription = pendingTeamRegeneration ? `현재 팀 편성 ${replacedTeams.length}개, 팀 스코어 ${replacedScores}건, 선수 골 ${replacedGoals}골, 평점 ${replacedRatings}건, 경기 ${replacedMatches.length}경기와 득점자 ${replacedScorers.length}건을 삭제하고 새 결과로 교체합니다. ${pendingTeamRegeneration.participantCount}명을 ${pendingTeamRegeneration.teamCount}개 팀으로 다시 편성합니다.` : "";
   return <><div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onChange={() => { if (config.type !== "teams") setFormDirty(true); }} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
     {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button type="button" className="cta secondary" disabled={saving} onClick={() => setPasswordResetOpen(true)}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="pending">승인 대기</option><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label><p className="form-description">활동으로 변경하면 회원 기능 전체가 열리고, 승인 대기로 변경하면 회원 기능을 이용할 수 없습니다.</p></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 10,000원</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
@@ -689,7 +714,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
     {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
     {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : config.type === "attendance" && attendanceSaveReport?.failures.length ? `실패 ${attendanceSaveReport.failures.length}명 재시도` : "저장하기"}</button>}
-  </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}{passwordResetOpen && <ConfirmDialog title="비밀번호를 초기화할까요?" target={String(row.name ?? "이 회원")} description="이 회원은 기존 비밀번호를 더 이상 사용할 수 없으며, 비밀번호가 1234로 변경됩니다." confirmLabel="비밀번호 초기화" busy={saving} onConfirm={() => void confirmPasswordReset()} onCancel={() => setPasswordResetOpen(false)} />}</div>{discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target={config.type === "teams" ? `저장되지 않은 기록 ${teamDirtyCount}건이 있습니다.` : `저장하지 않은 ${editorTitles[config.type]} 변경이 있습니다.`} description="버리면 변경한 내용을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={onClose} onCancel={() => setDiscardOpen(false)} />}</>;
+  </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}{passwordResetOpen && <ConfirmDialog title="비밀번호를 초기화할까요?" target={String(row.name ?? "이 회원")} description="이 회원은 기존 비밀번호를 더 이상 사용할 수 없으며, 비밀번호가 1234로 변경됩니다." confirmLabel="비밀번호 초기화" busy={saving} onConfirm={() => void confirmPasswordReset()} onCancel={() => setPasswordResetOpen(false)} />}{pendingTeamRegeneration && <ConfirmDialog title="팀을 다시 만들까요?" target={teamRegenerationTarget} description={teamRegenerationDescription} confirmLabel="기록을 교체하고 다시 만들기" busyLabel="다시 만드는 중…" busy={saving} onConfirm={confirmTeamRegeneration} onCancel={() => setPendingTeamRegeneration(null)} />}</div>{discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target={config.type === "teams" ? `저장되지 않은 기록 ${teamDirtyCount}건이 있습니다.` : `저장하지 않은 ${editorTitles[config.type]} 변경이 있습니다.`} description="버리면 변경한 내용을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={onClose} onCancel={() => setDiscardOpen(false)} />}</>;
 }
 
 type TeamEditorProps = {

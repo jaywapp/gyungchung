@@ -3,12 +3,13 @@
 import { X } from "lucide-react";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 
-export default function ConfirmDialog({ title, target, description, confirmLabel = "삭제하기", busy = false, onConfirm, onCancel }: {
+export default function ConfirmDialog({ title, target, description, confirmLabel = "삭제하기", busyLabel = "삭제 중…", busy = false, onConfirm, onCancel }: {
   title: string;
   /** What is about to be destroyed. Naming it is the whole point of the dialog. */
   target?: string;
   description: string;
   confirmLabel?: string;
+  busyLabel?: string;
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -22,7 +23,7 @@ export default function ConfirmDialog({ title, target, description, confirmLabel
       <p id="confirm-dialog-description">{description}</p>
       <div className="confirm-actions">
         <button type="button" className="cta ghost" onClick={onCancel}>취소</button>
-        <button type="button" className="cta danger" disabled={busy} onClick={onConfirm}>{busy ? "삭제 중…" : confirmLabel}</button>
+        <button type="button" className="cta danger" disabled={busy} onClick={onConfirm}>{busy ? busyLabel : confirmLabel}</button>
       </div>
     </div>
   </div>;
