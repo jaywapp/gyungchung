@@ -13,7 +13,7 @@ import { eventDatePath } from "@/lib/event-date";
 import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
 import { filterAdminRows } from "@/lib/admin-list-filters";
 import ConfirmDialog from "@/components/confirm-dialog";
-import { Empty } from "@/components/section-states";
+import { Empty, LoadError } from "@/components/section-states";
 import ParticipationFormQuestionEditor from "@/components/participation-form-question-editor";
 import { answeredFormPolicyViolation, createQuestionDrafts, requiresResponseImpactConfirmation, serializeQuestionDrafts, validateQuestionDrafts } from "@/lib/participation-form-editor";
 
@@ -61,8 +61,9 @@ const listSearchPlaceholders: Record<Section, string> = {
   members: "이름 또는 전화번호 검색", guests: "이름 또는 전화번호 검색", fees: "회원 또는 용병 이름 검색", notices: "제목 또는 내용 검색", venues: "구장 또는 주소 검색", events: "일정 제목 또는 날짜 검색", attendance: "일정 제목 또는 날짜 검색", teams: "일정 제목 또는 날짜 검색", feedback: "의견 제목 또는 내용 검색", forms: "제목 또는 설명 검색", permissions: "",
 };
 
-export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, permissions, supabase, reload, toast }: {
+export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, sectionLoadErrors, permissions, supabase, reload, toast }: {
   profiles: Profile[]; guestPlayers: GuestPlayer[]; attendance: Attendance[]; fees: Fee[]; guestFees: GuestFee[]; notices: Notice[]; venues: Venue[]; events: Event[]; feedback: Feedback[]; forms: ParticipationForm[]; rolePermissions: RolePermission[]; officerPermissions: OfficerPermission[];
+  sectionLoadErrors: Partial<Record<Section, boolean>>;
   permissions: Set<string>; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler;
 }) {
   /** Narrow by domain first, then by section — ten flat tabs read as a wall. */
@@ -127,7 +128,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     <div className="admin-tabs">{(activeGroup?.sections ?? []).map((key) => <button key={key} type="button" aria-pressed={section === key} onClick={() => selectListSection(key)}>{sectionLabels[key]} 관리{key === "members" && pendingMemberCount > 0 && <span className="admin-tab-badge" aria-label={`승인 대기 ${pendingMemberCount}명`}>{pendingMemberCount}</span>}</button>)}</div>
     <div className="admin-toolbar"><b>{hasListFilters ? `검색 결과 ${filteredCount}개` : `${filteredCount}개 항목`}</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>
     {section !== "permissions" && <div className="admin-list-filters"><label><span className="sr-only">{sectionLabels[section]} 검색</span><input type="search" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder={listSearchPlaceholders[section]} /></label>{hasStatusFilter && <label><span className="sr-only">상태 필터</span><select value={listStatus} onChange={(event) => setListStatus(event.target.value)}><option value="all">모든 상태</option>{listStatusOptions[section]?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}{hasListFilters && <button type="button" className="text-link" onClick={resetListFilters}>필터 초기화</button>}</div>}
-    {section === "permissions" ? <PermissionMatrix roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
+    {sectionLoadErrors[section] ? <LoadError onRetry={() => reload()} /> : section === "permissions" ? <PermissionMatrix roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
       {filteredCount === 0 ? emptyState : <>
         {section === "members" && filteredProfiles.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.position ?? "포지션 미정"} · ${row.role === "manager" && row.officer_title ? officerTitleLabels[row.officer_title] : roleLabels[row.role]}${row.is_system_admin ? " · 시스템 관리자" : ""} · ${row.auth_user_id ? "로그인 연결" : "로그인 미연결"} · ${memberStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "members", row: row as unknown as Record<string, unknown> })} />)}
         {section === "guests" && filteredGuests.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.preferred_position ?? "포지션 미정"} · ${row.appearance_count}회 참여 · 참여비 ${row.fee_amount.toLocaleString()}원 · ${row.is_active ? "활동" : "비활동"}`} onEdit={() => setEditor({ type: "guests", row: row as unknown as Record<string, unknown> })} />)}

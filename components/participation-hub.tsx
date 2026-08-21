@@ -14,7 +14,6 @@ import { createSubmittedAnswers, findFirstMissingRequiredQuestion, getRequiredQu
 import { canReviewParticipationAnswers, formatParticipationAnswer, indexOwnSubmissions } from "@/lib/submission-history";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
-
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
 const kindMeta = {
