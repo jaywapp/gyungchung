@@ -154,7 +154,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     const privateProfiles = (allProfileRes.data as Profile[] | null) ?? [];
     const visibleProfiles = new Map(((profileRes.data as Profile[] | null) ?? []).map((profile) => [profile.id, profile]));
     privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
-    const enrichedProfiles = Array.from(visibleProfiles.values()).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const enrichedProfiles = Array.from(visibleProfiles.values())
+      .filter((profile) => !profile.is_test_account)
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
     const ownProfile = privateProfiles.find((profile) => profile.auth_user_id === currentUser.id) ?? null;
     setProfiles(enrichedProfiles);
     setMe(ownProfile);
