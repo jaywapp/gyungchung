@@ -1,5 +1,10 @@
-export type ToastKind = "success" | "error";
+export type ToastKind = "success" | "warning" | "error";
 export type ToastHandler = (message: string, kind?: ToastKind) => void;
+
+/** Keep failure announcements assertive so callers cannot accidentally omit their kind. */
+export function showError(toast: ToastHandler, message: string) {
+  toast(message, "error");
+}
 
 /**
  * Which half of the clubhouse data set a mutation invalidated. `public` covers

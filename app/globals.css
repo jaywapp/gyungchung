@@ -577,6 +577,11 @@ footer a {
   box-shadow: 6px 6px 0 var(--danger-echo);
 }
 
+.toast.warning {
+  background: #8a4b00;
+  box-shadow: 6px 6px 0 #d08a26;
+}
+
 .toast:empty { display: none; }
 
 .toast-close {
