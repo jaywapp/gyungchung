@@ -3644,6 +3644,98 @@ td { font-weight: 800; }
   accent-color: var(--green-text);
 }
 
+.permission-matrix td.is-pending {
+  background: var(--warn-bg);
+  box-shadow: inset 0 -3px 0 var(--warn-ink);
+}
+
+.permission-review {
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--navy);
+  background: var(--surface);
+}
+
+.permission-review > header,
+.permission-review li,
+.permission-review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.permission-review h3,
+.permission-review p { margin: 0; }
+
+.permission-review > header > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.permission-review ul {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.permission-review li {
+  padding: 12px 14px;
+  background: var(--paper);
+}
+
+.permission-review li span {
+  display: grid;
+  gap: 3px;
+}
+
+.permission-review li small { color: var(--muted); }
+
+.permission-review li strong {
+  flex: none;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.permission-review li strong.is-grant {
+  color: var(--ok-ink);
+  background: var(--ok-bg);
+}
+
+.permission-review li strong.is-revoke {
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+}
+
+.permission-review > p {
+  margin-top: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.permission-review .permission-save-error {
+  padding: 12px 14px;
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+  font-weight: 800;
+}
+
+.permission-review-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+@media (max-width: 640px) {
+  .permission-review > header,
+  .permission-review li,
+  .permission-review-actions { align-items: stretch; flex-direction: column; }
+  .permission-review-actions .cta { width: 100%; }
+}
+
 .read-box {
   margin-bottom: 18px;
   padding: 14px 17px;

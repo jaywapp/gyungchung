@@ -12,6 +12,7 @@ import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { eventDatePath } from "@/lib/event-date";
 import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
 import { filterAdminRows } from "@/lib/admin-list-filters";
+import { applyPermissionBatch, updatePendingPermissionChanges, type PendingPermissionChange } from "@/lib/permission-batch.mjs";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { Empty, LoadError } from "@/components/section-states";
 import ParticipationFormQuestionEditor from "@/components/participation-form-question-editor";
@@ -61,10 +62,10 @@ const listSearchPlaceholders: Record<Section, string> = {
   members: "이름 또는 전화번호 검색", guests: "이름 또는 전화번호 검색", fees: "회원 또는 용병 이름 검색", notices: "제목 또는 내용 검색", venues: "구장 또는 주소 검색", events: "일정 제목 또는 날짜 검색", attendance: "일정 제목 또는 날짜 검색", teams: "일정 제목 또는 날짜 검색", feedback: "의견 제목 또는 내용 검색", forms: "제목 또는 설명 검색", permissions: "",
 };
 
-export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, sectionLoadErrors, permissions, supabase, reload, toast }: {
+export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, sectionLoadErrors, permissions, currentProfileId, supabase, reload, toast }: {
   profiles: Profile[]; guestPlayers: GuestPlayer[]; attendance: Attendance[]; fees: Fee[]; guestFees: GuestFee[]; notices: Notice[]; venues: Venue[]; events: Event[]; feedback: Feedback[]; forms: ParticipationForm[]; rolePermissions: RolePermission[]; officerPermissions: OfficerPermission[];
   sectionLoadErrors: Partial<Record<Section, boolean>>;
-  permissions: Set<string>; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler;
+  permissions: Set<string>; currentProfileId: string | null; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler;
 }) {
   /** Narrow by domain first, then by section — ten flat tabs read as a wall. */
   const sectionGroups = useMemo(() => {
@@ -128,7 +129,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     <div className="admin-tabs">{(activeGroup?.sections ?? []).map((key) => <button key={key} type="button" aria-pressed={section === key} onClick={() => selectListSection(key)}>{sectionLabels[key]} 관리{key === "members" && pendingMemberCount > 0 && <span className="admin-tab-badge" aria-label={`승인 대기 ${pendingMemberCount}명`}>{pendingMemberCount}</span>}</button>)}</div>
     <div className="admin-toolbar"><b>{hasListFilters ? `검색 결과 ${filteredCount}개` : `${filteredCount}개 항목`}</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>
     {section !== "permissions" && <div className="admin-list-filters"><label><span className="sr-only">{sectionLabels[section]} 검색</span><input type="search" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder={listSearchPlaceholders[section]} /></label>{hasStatusFilter && <label><span className="sr-only">상태 필터</span><select value={listStatus} onChange={(event) => setListStatus(event.target.value)}><option value="all">모든 상태</option>{listStatusOptions[section]?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}{hasListFilters && <button type="button" className="text-link" onClick={resetListFilters}>필터 초기화</button>}</div>}
-    {sectionLoadErrors[section] ? <LoadError onRetry={() => reload()} /> : section === "permissions" ? <PermissionMatrix roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
+    {sectionLoadErrors[section] ? <LoadError onRetry={() => reload()} /> : section === "permissions" ? <PermissionMatrix profiles={profiles} roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
       {filteredCount === 0 ? emptyState : <>
         {section === "members" && filteredProfiles.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.position ?? "포지션 미정"} · ${row.role === "manager" && row.officer_title ? officerTitleLabels[row.officer_title] : roleLabels[row.role]}${row.is_system_admin ? " · 시스템 관리자" : ""} · ${row.auth_user_id ? "로그인 연결" : "로그인 미연결"} · ${memberStatusLabels[row.status]}`} onEdit={() => setEditor({ type: "members", row: row as unknown as Record<string, unknown> })} />)}
         {section === "guests" && filteredGuests.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.preferred_position ?? "포지션 미정"} · ${row.appearance_count}회 참여 · 참여비 ${row.fee_amount.toLocaleString()}원 · ${row.is_active ? "활동" : "비활동"}`} onEdit={() => setEditor({ type: "guests", row: row as unknown as Record<string, unknown> })} />)}
@@ -143,8 +144,8 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
         {section === "forms" && filteredForms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
       </>}
     </div>}
-    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다.", result?.kind); reload(scope); }} onError={(message) => toast(message, "error")} />}
-    {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description={pendingDelete.table === "participation_forms" ? "이 작업은 되돌릴 수 없습니다. 이미 응답이 있는 참여 항목은 삭제되지 않으므로 편집기에서 상태를 보관으로 변경해 주세요." : "이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다."} busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
+    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={currentProfileId} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다.", result?.kind); reload(scope); }} onError={(message) => toast(message, "error")} />}
+    {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
   </section>;
 }
@@ -202,18 +203,81 @@ function BulkFeeDialog({ profiles, fees, supabase, onClose, onSaved, onError }: 
   </form></div>{discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target="변경한 월회비 일괄 등록 기준이 있습니다." description="버리면 변경한 내용을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={onClose} onCancel={() => setDiscardOpen(false)} />}</>;
 }
 
-function PermissionMatrix({ roleRows, officerRows, canManageSystemRoles, supabase, reload, toast }: { roleRows: RolePermission[]; officerRows: OfficerPermission[]; canManageSystemRoles: boolean; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler }) {
+function PermissionMatrix({ profiles, roleRows, officerRows, canManageSystemRoles, supabase, reload, toast }: { profiles: Profile[]; roleRows: RolePermission[]; officerRows: OfficerPermission[]; canManageSystemRoles: boolean; supabase: SupabaseClient; reload: ReloadHandler; toast: ToastHandler }) {
   const columns: Array<{ key: "admin" | OfficerTitle; label: string }> = [
     { key: "admin", label: "시스템 관리자" },
     ...(["president", "vice_president", "treasurer"] as OfficerTitle[]).map((title) => ({ key: title, label: officerTitleLabels[title] })),
   ];
-  const toggle = async (officerTitle: OfficerTitle, permission: string, enabled: boolean) => {
-    if (permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && officerTitle === "president")) return;
-    const result = enabled ? await supabase.from("officer_permissions").insert({ officer_title: officerTitle, permission }) : await supabase.from("officer_permissions").delete().eq("officer_title", officerTitle).eq("permission", permission);
-    if (result.error) return toast(toErrorMessage(result.error), "error");
-    reload("member");
+  const [pendingChanges, setPendingChanges] = useState<PendingPermissionChange[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [requiresRefresh, setRequiresRefresh] = useState(false);
+  const affectedProfiles = profiles.filter((profile) => profile.status === "active" && profile.role === "manager" && profile.officer_title && pendingChanges.some((change) => change.officer_title === profile.officer_title));
+  const grantCount = pendingChanges.filter((change) => change.enabled).length;
+  const revokeCount = pendingChanges.length - grantCount;
+  const checkedFor = (officerTitle: OfficerTitle, permission: string) => pendingChanges.find((change) => change.officer_title === officerTitle && change.permission === permission)?.enabled
+    ?? officerRows.some((row) => row.officer_title === officerTitle && row.permission === permission);
+  const queueChange = (officerTitle: OfficerTitle, permission: string, enabled: boolean) => {
+    if (savingRef.current || permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && officerTitle === "president")) return;
+    setSaveError(null);
+    setPendingChanges((current) => updatePendingPermissionChanges(officerRows, current, officerTitle, permission, enabled));
   };
-  return <div className="permission-matrix"><div className="permission-intro"><ShieldCheck /><p>시스템 관리 권한은 일반회원·관리자 여부와 별개이며 모든 운영 권한을 포함합니다. 회장은 부회장·총무의 세부 운영 권한을 조정할 수 있습니다.</p></div><div className="table-wrap scroll-region" tabIndex={0} role="region" aria-label="직책별 운영 권한 설정"><table><caption className="sr-only">직책별 운영 권한 설정</caption><thead><tr><th scope="col">권한</th>{columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{Object.entries(permissionLabels).map(([permission, label]) => <tr key={permission}><th scope="row">{label}</th>{columns.map((column) => { const isAdmin = column.key === "admin"; const checked = isAdmin ? roleRows.some((row) => row.role === "admin" && row.permission === permission) : officerRows.some((row) => row.officer_title === column.key && row.permission === permission); const disabled = isAdmin || permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && column.key === "president"); return <td key={column.key}><input aria-label={`${column.label} ${label}`} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => { if (!isAdmin) void toggle(column.key as OfficerTitle, permission, event.target.checked); }} /></td>; })}</tr>)}</tbody></table></div></div>;
+  const applyChanges = async () => {
+    if (savingRef.current || pendingChanges.length === 0) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+    setRequiresRefresh(false);
+    try {
+      await applyPermissionBatch(supabase, pendingChanges);
+      const appliedCount = pendingChanges.length;
+      setPendingChanges([]);
+      setConfirmOpen(false);
+      toast(`권한 변경 ${appliedCount}건을 모두 적용했습니다.`);
+      reload("member");
+    } catch (error) {
+      const value = error as { code?: string | null };
+      const isStale = value.code === "40001";
+      const message = isStale
+        ? "다른 운영자가 먼저 권한을 변경했습니다. 변경안을 취소하고 최신 상태에서 다시 설정해 주세요."
+        : value.code === "INCOMPLETE_PERMISSION_BATCH"
+          ? "서버가 전체 적용을 확인하지 못했습니다. 변경안은 남아 있으므로 다시 시도해 주세요."
+          : `${toErrorMessage(error)} 변경안은 남아 있으므로 다시 시도할 수 있습니다.`;
+      setSaveError(message);
+      setRequiresRefresh(isStale);
+      if (isStale) reload("member");
+      toast(message, "error");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+  const discardChanges = () => {
+    if (savingRef.current) return;
+    setPendingChanges([]);
+    setSaveError(null);
+    setRequiresRefresh(false);
+    setConfirmOpen(false);
+  };
+  const impactTarget = affectedProfiles.length > 0 ? `영향 회원 ${affectedProfiles.length}명 · ${affectedProfiles.map((profile) => profile.name).join(", ")}` : "현재 해당 직책의 활동 회원 없음";
+
+  return <div className="permission-matrix">
+    <div className="permission-intro"><ShieldCheck /><p>체크 변경은 바로 저장되지 않습니다. 아래에서 대상 직책과 영향 회원을 검토한 뒤 한 번에 적용하세요.</p></div>
+    <p id="permission-matrix-help" className="form-description">Tab 키로 각 체크박스와 검토 버튼을 이동할 수 있습니다. 시스템 관리자 권한과 권한 위임 항목은 잠금 정책에 따라 변경할 수 없습니다.</p>
+    <div className="table-wrap scroll-region" tabIndex={0} role="region" aria-label="직책별 운영 권한 설정" aria-describedby="permission-matrix-help"><table><caption className="sr-only">직책별 운영 권한 설정</caption><thead><tr><th scope="col">권한</th>{columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{Object.entries(permissionLabels).map(([permission, label]) => <tr key={permission}><th scope="row">{label}</th>{columns.map((column) => { const isAdmin = column.key === "admin"; const checked = isAdmin ? roleRows.some((row) => row.role === "admin" && row.permission === permission) : checkedFor(column.key as OfficerTitle, permission); const disabled = saving || isAdmin || permission === "roles.manage" || permission === "officers.manage" || (!canManageSystemRoles && column.key === "president"); const pending = !isAdmin && pendingChanges.some((change) => change.officer_title === column.key && change.permission === permission); return <td key={column.key} className={pending ? "is-pending" : undefined}><input aria-label={`${column.label} ${label}${pending ? " 변경 대기" : ""}`} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => { if (!isAdmin) queueChange(column.key as OfficerTitle, permission, event.target.checked); }} /></td>; })}</tr>)}</tbody></table></div>
+    <section className="permission-review" aria-live="polite" aria-atomic="true" aria-label="권한 변경 검토">
+      <header><div><span className="eyebrow">PENDING CHANGES</span><h3>{pendingChanges.length > 0 ? `${pendingChanges.length}건 변경 대기` : "대기 중인 변경 없음"}</h3></div>{pendingChanges.length > 0 && <span>부여 {grantCount} · 회수 {revokeCount}</span>}</header>
+      {pendingChanges.length > 0 ? <ul>{pendingChanges.map((change) => {
+        const impacted = profiles.filter((profile) => profile.status === "active" && profile.role === "manager" && profile.officer_title === change.officer_title);
+        return <li key={`${change.officer_title}:${change.permission}`}><span><b>{officerTitleLabels[change.officer_title]} · {permissionLabels[change.permission]}</b><small>{impacted.length > 0 ? impacted.map((profile) => profile.name).join(", ") : "현재 영향 회원 없음"}</small></span><strong className={change.enabled ? "is-grant" : "is-revoke"}>{change.enabled ? "부여" : "회수"}</strong></li>;
+      })}</ul> : <p>매트릭스에서 권한을 선택하면 저장 전 변경 내용과 영향 회원이 여기에 표시됩니다.</p>}
+      {saveError && <p className="permission-save-error" role="alert">{saveError}</p>}
+      <div className="permission-review-actions"><button type="button" className="cta ghost" disabled={saving || pendingChanges.length === 0} onClick={discardChanges}>변경 취소</button><button type="button" className="cta" disabled={saving || pendingChanges.length === 0} onClick={() => { if (requiresRefresh) discardChanges(); else { setSaveError(null); setConfirmOpen(true); } }}>{saving ? "적용 중…" : requiresRefresh ? "최신 상태에서 다시 설정" : `${pendingChanges.length}건 검토 및 적용`}</button></div>
+    </section>
+    {confirmOpen && <ConfirmDialog title="권한 변경을 적용할까요?" target={impactTarget} description={saveError ?? `부여 ${grantCount}건과 회수 ${revokeCount}건을 하나의 작업으로 적용합니다. 한 건이라도 실패하면 전체 변경이 취소됩니다.`} confirmLabel={requiresRefresh ? "최신 상태에서 다시 설정" : saveError ? "다시 시도" : "모두 적용"} busy={saving} onConfirm={() => { if (requiresRefresh) discardChanges(); else void applyChanges(); }} onCancel={() => { if (!saving) setConfirmOpen(false); }} />}
+  </div>;
 }
 
 function toLocalDateTimeInput(date: Date) {
@@ -302,8 +366,9 @@ function shuffled<T>(items: T[]) {
   return result;
 }
 
-export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: (result?: { close?: boolean; message?: string; kind?: ToastKind }) => void; onError: (message: string) => void }) {
+export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, currentProfileId, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; currentProfileId: string | null; supabase: SupabaseClient; onClose: () => void; onSaved: (result?: { close?: boolean; message?: string; kind?: ToastKind }) => void; onError: (message: string) => void }) {
   const row = config.row ?? {};
+  const isEditingSelfSystemAdmin = config.type === "members" && row.id === currentProfileId && Boolean(row.is_system_admin);
   const eventRow = row as unknown as Event;
   const [teamEvent, setTeamEvent] = useState(eventRow);
   const teamResultsRef = useRef<HTMLDivElement>(null);
@@ -438,7 +503,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     if (config.type === "members") {
       const canManageRoles = permissions.has("roles.manage");
       const nextRole = canManageRoles ? fd.get("role") : row.role ?? "member";
-      const payload = { name: fd.get("name"), phone: fd.get("phone"), position: fd.get("position") || null, jersey_number: Number(fd.get("jersey_number")) || null, role: nextRole, officer_title: canManageRoles ? nextRole === "manager" ? fd.get("officer_title") : null : row.officer_title ?? null, fee_plan: canManageRoles ? nextRole === "member" ? fd.get("fee_plan") : null : row.fee_plan ?? "monthly", is_system_admin: canManageRoles ? fd.get("is_system_admin") === "on" : Boolean(row.is_system_admin), status: fd.get("status") ?? "active" };
+      const payload = { name: fd.get("name"), phone: fd.get("phone"), position: fd.get("position") || null, jersey_number: Number(fd.get("jersey_number")) || null, role: nextRole, officer_title: canManageRoles ? nextRole === "manager" ? fd.get("officer_title") : null : row.officer_title ?? null, fee_plan: canManageRoles ? nextRole === "member" ? fd.get("fee_plan") : null : row.fee_plan ?? "monthly", is_system_admin: canManageRoles ? isEditingSelfSystemAdmin || fd.get("is_system_admin") === "on" : Boolean(row.is_system_admin), status: isEditingSelfSystemAdmin ? row.status : fd.get("status") ?? "active" };
       if (row.id) {
         ({ error } = await supabase.from("profiles").update(payload).eq("id", row.id));
       } else {
@@ -709,7 +774,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const teamRegenerationTarget = `${new Date(teamEvent.starts_at).toLocaleString("ko-KR")} · ${teamEvent.title}`;
   const teamRegenerationDescription = pendingTeamRegeneration ? `현재 팀 편성 ${replacedTeams.length}개, 팀 스코어 ${replacedScores}건, 선수 골 ${replacedGoals}골, 평점 ${replacedRatings}건, 경기 ${replacedMatches.length}경기와 득점자 ${replacedScorers.length}건을 삭제하고 새 결과로 교체합니다. ${pendingTeamRegeneration.participantCount}명을 ${pendingTeamRegeneration.teamCount}개 팀으로 다시 편성합니다.` : "";
   return <><div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onChange={() => { if (config.type !== "teams") setFormDirty(true); }} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
-    {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button type="button" className="cta secondary" disabled={saving} onClick={() => setPasswordResetOpen(true)}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} /> 시스템 관리 권한 부여</label>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")}><option value="pending">승인 대기</option><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label><p className="form-description">활동으로 변경하면 회원 기능 전체가 열리고, 승인 대기로 변경하면 회원 기능을 이용할 수 없습니다.</p></>}
+    {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && <button type="button" className="cta secondary" disabled={saving} onClick={() => setPasswordResetOpen(true)}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · 30,000원</option><option value="per_event">참여 시 · 10,000원</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 15,000원입니다.</p>}{permissions.has("roles.manage") && <><label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} disabled={isEditingSelfSystemAdmin} /> 시스템 관리 권한 부여</label>{isEditingSelfSystemAdmin && <p className="form-description">자기 자신의 시스템 관리 권한과 활동 상태는 변경할 수 없습니다. 다른 시스템 관리자가 변경해야 합니다.</p>}</>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")} disabled={isEditingSelfSystemAdmin}><option value="pending" disabled={Boolean(row.is_system_admin)}>승인 대기</option><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label><p className="form-description">활동으로 변경하면 회원 기능 전체가 열리고, 승인 대기로 변경하면 회원 기능을 이용할 수 없습니다.</p></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 10,000원</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 10,000원</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
