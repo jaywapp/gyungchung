@@ -61,6 +61,9 @@ export function toErrorMessage(error: unknown): string {
   if (code === "23514") return "입력한 값 중에 허용되지 않는 항목이 있습니다. 포지션·점수 같은 선택 항목을 확인한 뒤 다시 시도해 주세요.";
   if (code === "23505" || message.includes("duplicate")) return "이미 등록된 내용입니다.";
   if (code === "23503" || message.includes("foreign key")) return "연결된 정보가 있어 처리할 수 없습니다.";
+  if (message.includes("answered participation forms cannot be deleted")) return "이미 응답이 있는 참여 항목은 삭제할 수 없습니다. 상태를 보관으로 변경해 주세요.";
+  if (message.includes("answered questions cannot be deleted") || message.includes("answered question type cannot be changed") || message.includes("answered rating range cannot be changed") || message.includes("answered option cannot be deleted") || message.includes("answered option label cannot be changed") || message.includes("answered optional question cannot become required") || message.includes("new questions on an answered form must be optional")) return "이미 응답이 있어 해당 문항 변경을 적용할 수 없습니다. 응답 보존 안내를 확인해 주세요.";
+  if (message.includes("answered question prompt change needs confirmation")) return "기존 응답에 영향을 줄 수 있는 문항 문구 변경은 확인 후 저장해 주세요.";
   if (message.includes("failed to fetch") || message.includes("network")) return "서버에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.";
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }

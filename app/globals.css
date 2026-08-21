@@ -3578,6 +3578,133 @@ td { font-weight: 800; }
   white-space: pre-wrap;
 }
 
+.form-question-editor {
+  display: grid;
+  gap: 16px;
+  margin: 28px 0 22px;
+  padding-top: 24px;
+  border-top: 2px solid var(--ink);
+}
+
+.form-question-editor > header,
+.form-question-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.form-question-editor > header h3 {
+  margin: 4px 0 0;
+  font-size: 28px;
+}
+
+.editor .form-question-editor > header .cta {
+  width: auto;
+  margin: 0;
+}
+
+.form-question-list {
+  display: grid;
+  gap: 16px;
+}
+
+.form-question-card {
+  display: grid;
+  gap: 15px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.form-question-card > header > b {
+  font-size: 14px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.form-question-actions,
+.form-option-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-question-actions button,
+.form-option-row button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.form-question-actions button:disabled,
+.form-option-row button:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.editor .form-required-toggle {
+  align-self: end;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+}
+
+.form-option-editor {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.form-option-editor legend {
+  padding: 0 0 8px;
+  font-weight: 900;
+}
+
+.form-option-row > span {
+  width: 24px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.editor .form-option-row > input {
+  flex: 1;
+}
+
+.form-option-add {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.form-response-policy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+}
+
+.form-response-policy.warning { border-color: #d08a26; }
+.form-response-policy.danger { border-color: var(--danger); }
+.form-response-policy svg { flex: 0 0 auto; }
+.form-response-policy p { margin: 4px 0 0; }
+
 .team-editor-intro { margin-bottom: 20px; }
 
 .team-roster-picker .team-step-description {
@@ -5076,6 +5203,22 @@ td { font-weight: 800; }
   .match-lineup-editor > header { display: grid; }
   .match-lineup-list { grid-template-columns: 1fr; }
   .match-scorer-row { grid-template-columns: 1fr 1fr 58px var(--tap); }
+
+  .form-question-editor > header {
+    align-items: flex-end;
+  }
+
+  .form-option-row {
+    display: grid;
+    grid-template-columns: 24px repeat(3, 36px);
+  }
+
+  .editor .form-option-row > input {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .form-option-row > span { grid-row: 2; }
 
   .login-modal,
   .editor { padding: 40px 25px 30px; }
