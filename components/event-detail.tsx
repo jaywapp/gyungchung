@@ -7,6 +7,7 @@ import type { User } from "@supabase/supabase-js";
 import type { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Profile } from "@/lib/types";
 import { getCheckInStatus } from "@/lib/attendance";
+import { getEventCapacity } from "@/lib/event-capacity";
 import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { parseEventDateKey, toEventDateKey } from "@/lib/event-date";
@@ -126,6 +127,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
         .filter((row): row is { attendance: Attendance; profile: Profile } => Boolean(row.profile))
         .sort((a, b) => a.profile.name.localeCompare(b.profile.name, "ko"));
       const goingCount = eventAttendance.filter((row) => row.status === "going").length;
+      const capacity = getEventCapacity(event.capacity, goingCount, guests.length);
       const presentCount = eventAttendance.filter((row) => getCheckInStatus(row) === "present").length;
       const lateCount = eventAttendance.filter((row) => getCheckInStatus(row) === "late").length;
       const absentCount = eventAttendance.filter((row) => getCheckInStatus(row) === "absent").length;
@@ -151,7 +153,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
         <dl className="event-detail-facts">
           <div><dt>시작 시간</dt><dd>{new Date(event.starts_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}</dd></div>
           <div><dt>장소</dt><dd><a className="inline-map-link" href={naverMapUrl(event)} target="_blank" rel="noreferrer"><MapPin size={15} /> {event.venue}</a></dd></div>
-          <div><dt>정원</dt><dd>{event.capacity ? `${event.capacity}명` : "제한 없음"}</dd></div>
+          <div className={`capacity-fact ${capacity.status}`}><dt>정원 현황</dt><dd>{capacity.capacity === null ? "제한 없음" : `참석 ${capacity.totalCount} / 정원 ${capacity.capacity}명`}<small>{capacity.capacity === null ? `현재 ${capacity.totalCount}명 · 용병 포함` : capacity.status === "over_capacity" ? `정원 ${Math.abs(capacity.remaining ?? 0)}명 초과 · 용병 포함` : capacity.status === "full" ? "정원 도달 · 용병 포함" : `${capacity.status === "nearly_full" ? "임박 · " : ""}잔여 ${capacity.remaining}자리 · 용병 포함`}</small></dd></div>
           <div><dt>{isPast ? "출석" : "참석 예정"}</dt><dd>{isPast ? `${presentCount}명 · 지각 ${lateCount}명 · 결석 ${absentCount}명` : `회원 ${goingCount}명 · 용병 ${guests.length}명`}</dd></div>
         </dl>
         {event.address && <p className="event-detail-address">{event.address}</p>}

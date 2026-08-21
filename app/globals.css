@@ -1099,6 +1099,26 @@ footer a {
   font-size: 12px;
 }
 
+.capacity-status {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  width: fit-content;
+  padding: 9px 11px;
+  border-left: var(--accent-bar) solid var(--green-text);
+  background: var(--paper);
+  color: var(--navy);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.capacity-status small { color: var(--muted); font-size: 11px; font-weight: 800; }
+.capacity-status.nearly_full { border-left-color: var(--neutral-ink); background: var(--neutral-bg); }
+.capacity-status.full,
+.capacity-status.over_capacity { border-left-color: var(--danger-ink); background: var(--danger-bg); }
+.capacity-status.full small,
+.capacity-status.over_capacity small { color: var(--danger-ink); }
+
 /* Knowing you owe money is a dead end without a way to settle it — so the
    callout carries the escape hatch on both the owing and the settled state. */
 .unpaid-callout {
@@ -2100,6 +2120,8 @@ td { font-weight: 800; }
   padding-right: 22px;
 }
 
+.event-action .capacity-status { align-self: flex-end; text-align: right; }
+
 /* Officer-only actions: outlined and icon-led so they read as an admin menu,
    never as a second member CTA beside the filled 참석하기 button. */
 .officer-menu {
@@ -2449,6 +2471,14 @@ td { font-weight: 800; }
   font-size: 17px;
   font-weight: 900;
 }
+
+.event-detail-facts .capacity-fact.nearly_full { border-top: 3px solid var(--neutral-ink); }
+.event-detail-facts .capacity-fact.full,
+.event-detail-facts .capacity-fact.over_capacity { border-top: 3px solid var(--danger-ink); background: var(--danger-bg); }
+.event-detail-facts .capacity-fact dd { display: flex; flex-direction: column; gap: 4px; }
+.event-detail-facts .capacity-fact dd small { color: var(--muted); font-size: 12px; font-weight: 800; line-height: 1.4; }
+.event-detail-facts .capacity-fact.full dd small,
+.event-detail-facts .capacity-fact.over_capacity dd small { color: var(--danger-ink); }
 
 .event-detail-facts .inline-map-link {
   display: inline-flex;
