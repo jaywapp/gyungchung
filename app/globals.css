@@ -3519,8 +3519,8 @@ td { font-weight: 800; }
 .team-goal-stepper button {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--tap);
+  height: var(--tap);
   border: 1px solid var(--line);
   border-radius: 50%;
   background: var(--surface);
@@ -3581,7 +3581,7 @@ td { font-weight: 800; }
 
 .team-member-stat {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -3600,25 +3600,40 @@ td { font-weight: 800; }
   white-space: nowrap;
 }
 
+.team-goal-stepper { grid-column: 3; }
+
 .team-rating-control {
+  grid-column: 2 / -1;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
 .team-rating-control button {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 17px;
-  height: 17px;
+  width: var(--tap);
+  height: var(--tap);
   padding: 0;
-  border: 1px solid var(--lime);
-  border-radius: 50%;
-  background: var(--surface);
+  border: 0;
+  background: transparent;
   cursor: pointer;
 }
 
+.team-rating-control button::before {
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  border: 1px solid var(--lime);
+  border-radius: 50%;
+  background: var(--surface);
+  content: "";
+}
+
 .team-rating-control button span {
+  position: relative;
+  z-index: 1;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -3626,6 +3641,10 @@ td { font-weight: 800; }
 }
 
 .team-rating-control button.is-selected {
+  background: transparent;
+}
+
+.team-rating-control button.is-selected::before {
   background: var(--lime);
 }
 
@@ -3723,13 +3742,13 @@ td { font-weight: 800; }
 
 .match-score-total > span {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 26px;
+  grid-template-columns: var(--tap) minmax(0, 1fr) var(--tap);
   align-items: center;
   border: 1px solid var(--line);
 }
 
 .match-score-total button {
-  min-height: 28px;
+  min-height: var(--tap);
   border: 0;
   background: transparent;
   color: var(--green-text);
@@ -3832,13 +3851,13 @@ td { font-weight: 800; }
 
 .match-scorer-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 60px 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 60px var(--tap);
   gap: 8px;
   align-items: end;
 }
 
 .match-scorer-row > button {
-  min-height: 38px;
+  min-height: var(--tap);
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
@@ -4333,7 +4352,7 @@ td { font-weight: 800; }
 
 .editor .attendance-status-toggle {
   width: 116px;
-  min-height: 38px;
+  min-height: var(--tap);
   margin: 0;
   padding: 7px 10px;
   border: 1px solid var(--line);
@@ -4723,11 +4742,11 @@ td { font-weight: 800; }
   .field-row { grid-template-columns: 1fr; }
 
   .team-member-stat { grid-template-columns: 34px minmax(0, 1fr) auto; }
-  .team-rating-control { grid-column: 2 / -1; justify-content: flex-start; }
+  .team-rating-control { grid-column: 1 / -1; justify-content: flex-start; }
   .match-history-score { grid-template-columns: minmax(0, 1fr) 92px 14px 92px minmax(0, 1fr); }
   .match-lineup-editor > header { display: grid; }
   .match-lineup-list { grid-template-columns: 1fr; }
-  .match-scorer-row { grid-template-columns: 1fr 1fr 58px 32px; }
+  .match-scorer-row { grid-template-columns: 1fr 1fr 58px var(--tap); }
 
   .login-modal,
   .editor { padding: 40px 25px 30px; }
