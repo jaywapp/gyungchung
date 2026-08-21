@@ -3006,7 +3006,82 @@ td { font-weight: 800; }
   margin-top: 1px;
 }
 
-.github-consent { margin: 8px 0 !important; }
+.github-publication-panel {
+  margin: 14px 0 18px;
+  padding: 14px;
+  border: 1px solid var(--navy);
+  background: var(--paper);
+}
+
+.github-publication-heading,
+.github-publication-heading span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.github-publication-heading {
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.github-publication-heading small { color: var(--muted); }
+
+.github-publication-panel dl {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.github-publication-panel dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.github-publication-panel dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.github-publication-panel dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.github-publication-panel .github-preview-body { white-space: pre-wrap; }
+
+.github-publication-panel > p {
+  margin: 0;
+  padding: 10px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.github-consent { margin: 8px 0 0 !important; }
+
+.github-consent span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.github-consent small {
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.45;
+}
 
 .github-issue-link,
 .github-retry {
@@ -3030,6 +3105,27 @@ td { font-weight: 800; }
   cursor: wait;
   opacity: .65;
 }
+
+.github-publication-state {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.github-publication-state.failed {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+
+.github-publication-state p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.github-publication-state .github-retry { margin-top: 8px; }
 
 .feedback-card {
   padding: 22px 0;

@@ -1,22 +1,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.2";
+import {
+  buildGithubIssue,
+  GITHUB_FEEDBACK_LABEL,
+  GITHUB_FEEDBACK_REPOSITORY,
+  githubFeedbackMarker,
+  hasGithubPublicationConsent,
+} from "../_shared/feedback-publication.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_PUBLISHABLE_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SUPABASE_SECRET_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const GITHUB_TOKEN = Deno.env.get("GITHUB_ISSUES_TOKEN") ?? "";
-const GITHUB_REPOSITORY = "jaywapp/gyungchung";
-const GITHUB_LABEL = "제보";
 const MAX_PUBLISHED_REPORTS_PER_HOUR = 5;
-
-const categoryLabels: Record<string, string> = {
-  operation: "팀 운영",
-  system: "시스템",
-  facility: "구장·시설",
-  finance: "회비·재정",
-  safety: "안전",
-  other: "기타",
-};
+const PUBLICATION_FAILURE_MESSAGE = "GitHub 공개 등록에 실패했습니다. 원본 제보는 접수되었으며 다시 시도할 수 있습니다.";
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get("origin") ?? "*";
@@ -63,12 +60,55 @@ function github(path: string, init?: RequestInit) {
   });
 }
 
-function normalizeText(value: string) {
-  return value
-    .replace(/\r\n?/g, "\n")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .replace(/<\s*\/?\s*(script|iframe|object|embed|style)\b[^>]*>/gi, "")
-    .trim();
+type AdminClient = ReturnType<typeof createClient>;
+
+type GithubIssue = {
+  number: number;
+  html_url: string;
+  body?: string | null;
+};
+
+async function findExistingGithubIssue(feedbackId: string) {
+  const response = await github(
+    `/repos/${GITHUB_FEEDBACK_REPOSITORY}/issues?state=all&labels=${encodeURIComponent(GITHUB_FEEDBACK_LABEL)}&per_page=100`,
+  );
+  if (!response.ok) throw new Error(`GitHub issue lookup error: ${response.status}`);
+
+  const marker = githubFeedbackMarker(feedbackId);
+  const issues = await response.json() as GithubIssue[];
+  return issues.find((issue) => typeof issue.body === "string" && issue.body.includes(marker)) ?? null;
+}
+
+async function storePublishedIssue(admin: AdminClient, feedbackId: string, authorId: string, issue: GithubIssue, attemptedAt: string) {
+  const { error } = await admin
+    .from("feedback")
+    .update({
+      github_issue_number: issue.number,
+      github_issue_url: issue.html_url,
+      github_issue_state: "open",
+      github_issue_closed_at: null,
+      github_publication_status: "published",
+      github_publication_error: null,
+      github_publication_attempted_at: attemptedAt,
+    })
+    .eq("id", feedbackId)
+    .eq("author_id", authorId)
+    .is("github_issue_url", null);
+  if (error) throw error;
+}
+
+async function markPublicationFailed(admin: AdminClient, feedbackId: string, authorId: string, attemptedAt: string, message = PUBLICATION_FAILURE_MESSAGE) {
+  const { error } = await admin
+    .from("feedback")
+    .update({
+      github_publication_status: "failed",
+      github_publication_error: message,
+      github_publication_attempted_at: attemptedAt,
+    })
+    .eq("id", feedbackId)
+    .eq("author_id", authorId)
+    .is("github_issue_url", null);
+  if (error) console.error(`GitHub publication status error: ${error.message}`);
 }
 
 Deno.serve(async (request: Request) => {
@@ -113,7 +153,7 @@ Deno.serve(async (request: Request) => {
 
       let changed = 0;
       await Promise.all((linkedFeedback ?? []).map(async (item) => {
-        const issueResponse = await github(`/repos/${GITHUB_REPOSITORY}/issues/${item.github_issue_number}`);
+        const issueResponse = await github(`/repos/${GITHUB_FEEDBACK_REPOSITORY}/issues/${item.github_issue_number}`);
         if (!issueResponse.ok) return;
         const issue = await issueResponse.json() as { state?: unknown; closed_at?: unknown };
         if (issue.state !== "open" && issue.state !== "closed") return;
@@ -138,78 +178,93 @@ Deno.serve(async (request: Request) => {
 
     const { data: feedback, error: feedbackError } = await admin
       .from("feedback")
-      .select("id,author_id,category,title,body,is_anonymous,publish_to_github,github_issue_number,github_issue_url,created_at")
+      .select("id,author_id,category,title,body,is_anonymous,publish_to_github,github_publication_consented_at,github_issue_number,github_issue_url,created_at")
       .eq("id", feedbackId)
       .eq("author_id", member.id)
       .single();
     if (feedbackError || !feedback) return json(request, { error: "제보를 찾을 수 없습니다." }, 404);
-    if (feedback.category !== "system" || !feedback.publish_to_github) {
-      return json(request, { error: "시스템 제보만 GitHub에 공개 등록할 수 있습니다." }, 403);
-    }
     if (feedback.github_issue_number && feedback.github_issue_url) {
       return json(request, { issueNumber: feedback.github_issue_number, issueUrl: feedback.github_issue_url });
     }
+    if (!hasGithubPublicationConsent({
+      category: feedback.category,
+      publishToGithub: feedback.publish_to_github,
+      consentedAt: feedback.github_publication_consented_at,
+    })) {
+      return json(request, { error: "명시적으로 공개에 동의한 시스템 제보만 GitHub에 등록할 수 있습니다." }, 403);
+    }
 
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count, error: countError } = await admin
+    const attemptedAt = new Date().toISOString();
+    const { error: pendingError } = await admin
       .from("feedback")
-      .select("id", { count: "exact", head: true })
-      .eq("author_id", member.id)
-      .eq("publish_to_github", true)
-      .gte("created_at", oneHourAgo);
-    if (countError) throw countError;
-    if ((count ?? 0) > MAX_PUBLISHED_REPORTS_PER_HOUR) {
-      return json(request, { error: "GitHub 제보는 한 시간에 5건까지 등록할 수 있습니다." }, 429);
-    }
-
-    const labelResponse = await github(`/repos/${GITHUB_REPOSITORY}/labels/${encodeURIComponent(GITHUB_LABEL)}`);
-    if (labelResponse.status === 404) {
-      const createLabelResponse = await github(`/repos/${GITHUB_REPOSITORY}/labels`, {
-        method: "POST",
-        body: JSON.stringify({ name: GITHUB_LABEL, color: "1F883D", description: "경충FC 앱에서 공개 등록된 사용자 제보" }),
-      });
-      if (!createLabelResponse.ok && createLabelResponse.status !== 422) throw new Error(`GitHub label error: ${createLabelResponse.status}`);
-    } else if (!labelResponse.ok) {
-      throw new Error(`GitHub label error: ${labelResponse.status}`);
-    }
-
-    const category = categoryLabels[feedback.category] ?? "기타";
-    const title = normalizeText(String(feedback.title)).replace(/\s+/g, " ").slice(0, 120);
-    const body = normalizeText(String(feedback.body)).slice(0, 5000);
-    const issueResponse = await github(`/repos/${GITHUB_REPOSITORY}/issues`, {
-      method: "POST",
-      body: JSON.stringify({
-        title: `[제보][${category}] ${title}`,
-        body: [
-          `## ${category} 제보`,
-          "",
-          `- 제보자: ${feedback.is_anonymous ? "익명" : member.name}`,
-          "",
-          body,
-          "",
-          "---",
-          "",
-          `<!-- gyungchung-feedback:${feedback.id} -->`,
-          "> 경충FC 클럽하우스에서 시스템 제보로 접수되어 자동 생성된 이슈입니다.",
-        ].join("\n"),
-        labels: [GITHUB_LABEL],
-      }),
-    });
-    if (!issueResponse.ok) throw new Error(`GitHub issue error: ${issueResponse.status}`);
-
-    const issue = await issueResponse.json() as { number?: unknown; html_url?: unknown };
-    if (typeof issue.number !== "number" || typeof issue.html_url !== "string") {
-      throw new Error("GitHub issue response was invalid");
-    }
-    const { error: updateError } = await admin
-      .from("feedback")
-      .update({ github_issue_number: issue.number, github_issue_url: issue.html_url, github_issue_state: "open", github_issue_closed_at: null })
+      .update({
+        github_publication_status: "pending",
+        github_publication_error: null,
+        github_publication_attempted_at: attemptedAt,
+      })
       .eq("id", feedback.id)
       .eq("author_id", member.id)
       .is("github_issue_url", null);
-    if (updateError) throw updateError;
+    if (pendingError) throw pendingError;
 
-    return json(request, { issueNumber: issue.number, issueUrl: issue.html_url }, 201);
+    try {
+      const existingIssue = await findExistingGithubIssue(feedback.id);
+      if (existingIssue) {
+        await storePublishedIssue(admin, feedback.id, member.id, existingIssue, attemptedAt);
+        return json(request, { issueNumber: existingIssue.number, issueUrl: existingIssue.html_url });
+      }
+
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count, error: countError } = await admin
+        .from("feedback")
+        .select("id", { count: "exact", head: true })
+        .eq("author_id", member.id)
+        .eq("publish_to_github", true)
+        .gte("created_at", oneHourAgo);
+      if (countError) throw countError;
+      if ((count ?? 0) > MAX_PUBLISHED_REPORTS_PER_HOUR) {
+        const message = "GitHub 공개 제보는 한 시간에 5건까지 등록할 수 있습니다. 원본 제보에서 나중에 다시 시도해 주세요.";
+        await markPublicationFailed(admin, feedback.id, member.id, attemptedAt, message);
+        return json(request, { error: message }, 429);
+      }
+
+      const labelResponse = await github(`/repos/${GITHUB_FEEDBACK_REPOSITORY}/labels/${encodeURIComponent(GITHUB_FEEDBACK_LABEL)}`);
+      if (labelResponse.status === 404) {
+        const createLabelResponse = await github(`/repos/${GITHUB_FEEDBACK_REPOSITORY}/labels`, {
+          method: "POST",
+          body: JSON.stringify({ name: GITHUB_FEEDBACK_LABEL, color: "1F883D", description: "경충FC 앱에서 공개 등록된 사용자 제보" }),
+        });
+        if (!createLabelResponse.ok && createLabelResponse.status !== 422) throw new Error(`GitHub label error: ${createLabelResponse.status}`);
+      } else if (!labelResponse.ok) {
+        throw new Error(`GitHub label error: ${labelResponse.status}`);
+      }
+
+      const issueDraft = buildGithubIssue({
+        feedbackId: feedback.id,
+        category: feedback.category,
+        title: String(feedback.title),
+        body: String(feedback.body),
+        isAnonymous: feedback.is_anonymous,
+        authorName: member.name,
+      });
+      const issueResponse = await github(`/repos/${GITHUB_FEEDBACK_REPOSITORY}/issues`, {
+        method: "POST",
+        body: JSON.stringify(issueDraft),
+      });
+      if (!issueResponse.ok) throw new Error(`GitHub issue error: ${issueResponse.status}`);
+
+      const issue = await issueResponse.json() as Partial<GithubIssue>;
+      if (typeof issue.number !== "number" || typeof issue.html_url !== "string") {
+        throw new Error("GitHub issue response was invalid");
+      }
+      await storePublishedIssue(admin, feedback.id, member.id, issue as GithubIssue, attemptedAt);
+
+      return json(request, { issueNumber: issue.number, issueUrl: issue.html_url }, 201);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      await markPublicationFailed(admin, feedback.id, member.id, attemptedAt);
+      return json(request, { error: PUBLICATION_FAILURE_MESSAGE }, 502);
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return json(request, { error: "GitHub 이슈를 등록하지 못했습니다. 잠시 후 다시 시도해 주세요." }, 502);

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test lib/*.test.mjs"
+    "test": "node --experimental-default-type=module --test lib/*.test.mjs supabase/functions/tests/*.test.ts",
+    "test:db": "supabase test db supabase/tests/database --local"
   },
   "dependencies": {
     "@supabase/ssr": "0.7.0",
