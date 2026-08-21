@@ -11,6 +11,7 @@ import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, Gu
 import type { EditorConfig } from "@/components/admin-console";
 import { editorScopes, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus } from "@/lib/attendance";
+import { getAccountState } from "@/lib/account-state";
 import { eventDatePath, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { Empty, FormError, LoadError, LoginGate, SectionSkeleton } from "@/components/section-states";
@@ -58,6 +59,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
+  const accountState = getAccountState(user, me);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -296,7 +298,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <header className="topbar">
       <Link className="brand" href="/" onClick={() => setMenuOpen(false)} aria-label="경충FC 홈"><span className="crest"><span>GC</span></span><span className="brand-copy"><strong>경충FC</strong><small>WEEKEND FUTSAL CLUB</small></span></Link>
       <nav ref={navRef} tabIndex={-1} id="primary-navigation" className={menuOpen ? "nav open" : "nav"} aria-label="주 메뉴">{navItems.map(([key, label]) => <Link key={key} href={tabPaths[key]} className={tab === key ? "active" : ""} aria-current={pathname === tabPaths[key] ? "page" : tab === key ? "true" : undefined} onClick={() => setMenuOpen(false)}>{label}</Link>)}{isOfficer && <Link href={tabPaths.admin} className={tab === "admin" ? "active" : ""} aria-current={tab === "admin" ? "page" : undefined} onClick={() => setMenuOpen(false)}>관리</Link>}<button type="button" className="nav-close" onClick={() => setMenuOpen(false)}><X size={16} /> 메뉴 닫기</button></nav>
-      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" role="status" aria-label="로그인 상태 확인 중" /> : user ? <button className="login-button" onClick={() => setAccountOpen(true)} aria-label={me?.name ? `${me.name} · 마이페이지` : "마이페이지"}><UserRound size={16} /> {me?.name ?? "마이페이지"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
+      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" role="status" aria-label="로그인 상태 확인 중" /> : accountState !== "signed-out" ? <button className="login-button" onClick={() => setAccountOpen(true)} aria-label={accountState === "member" ? `${me?.name} · 마이페이지` : "계정 연결 필요"}><UserRound size={16} /> {accountState === "member" ? me?.name : "계정 연결 필요"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
 
     <main id="main">
@@ -317,7 +319,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} />}
-    {accountOpen && user && me && <AccountModal user={user} profile={me} busy={busy} onClose={() => setAccountOpen(false)} onLink={linkIdentity} onSignOut={async () => { setAccountOpen(false); await signOut(); }} />}
+    {accountOpen && user && (accountState === "member" && me ? <AccountModal user={user} profile={me} busy={busy} onClose={() => setAccountOpen(false)} onLink={linkIdentity} onSignOut={async () => { setAccountOpen(false); await signOut(); }} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={async () => { setAccountOpen(false); await signOut(); }} />)}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
@@ -344,6 +346,11 @@ function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { use
   const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const providers = new Set((user.identities ?? []).map((identity) => identity.provider));
   return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">간편 로그인 계정을 연결하면 다음부터 해당 계정으로도 로그인할 수 있습니다.</p><button type="button" className="social kakao" disabled={busy || providers.has("custom:kakao")} onClick={() => onLink("kakao")}><Link2 size={17} /> {providers.has("custom:kakao") ? "카카오 연결됨" : "카카오 계정 연결"}</button><button type="button" className="social google" disabled={busy || providers.has("google")} onClick={() => onLink("google")}><Link2 size={17} /> {providers.has("google") ? "Google 연결됨" : "Google 계정 연결"}</button><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
+}
+
+function UnlinkedAccountModal({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => Promise<void> }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="계정 연결 필요"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">ACCOUNT NOTICE</span><h2>계정 연결이 필요합니다</h2><div className="read-box"><b>회원 프로필을 찾지 못했습니다</b><p>로그인은 완료됐지만 이 계정은 아직 경충FC 회원 프로필에 연결되지 않았습니다.</p></div><p className="form-description">운영진에게 계정 연결을 문의해 주세요. 다른 계정으로 로그인하려면 먼저 로그아웃할 수 있습니다.</p><Link href={tabPaths.feedback} className="cta secondary" onClick={onClose}>운영진에게 문의하기 <ChevronRight size={17} /></Link><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
 }
 
 function Home({ upcoming, notice, feeStanding, goingCount, memberCount, user, publicLoading, eventLoadError, noticeLoadError, onRetry, onNavigate, onAttendance, myAttendance }: { upcoming?: Event; notice?: Notice; feeStanding: FeeStanding | null; goingCount: number; memberCount: number; user: User | null; publicLoading: boolean; eventLoadError: boolean; noticeLoadError: boolean; onRetry: () => void; onNavigate: (tab: Tab) => void; onAttendance: (status: Attendance["status"]) => void; myAttendance?: Attendance["status"] }) {
