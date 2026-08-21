@@ -5,8 +5,9 @@ import { CalendarPlus, ExternalLink, Github, Inbox, Pencil, Plus, SearchX, Shiel
 import type { AccountRole, Attendance, Event, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, Profile, RolePermission, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { countChangedFields, countChangedRecords, countSetChanges, dirtyDialogAction } from "@/lib/dirty-state";
-import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandler, type ToastHandler } from "@/lib/ui-feedback";
+import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandler, type ToastHandler, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus, isCheckedIn } from "@/lib/attendance";
+import { applyAttendanceSaveSuccesses, buildAttendanceSaveItems, reconcileAttendanceSaveResults, type AttendanceSaveFailure, type AttendanceSaveRpcResult } from "@/lib/attendance-save";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { eventDatePath } from "@/lib/event-date";
 import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
@@ -139,7 +140,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
         {section === "forms" && filteredForms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]} · ${formStatusLabels[row.status]}${row.secret_ballot ? " · 비밀투표" : ""}`} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
       </>}
     </div>}
-    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다."); reload(scope); }} onError={(message) => toast(message, "error")} />}
+    {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다.", result?.kind); reload(scope); }} onError={(message) => toast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
   </section>;
@@ -298,7 +299,7 @@ function shuffled<T>(items: T[]) {
   return result;
 }
 
-export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: (result?: { close?: boolean; message?: string }) => void; onError: (message: string) => void }) {
+export function AdminEditor({ config, profiles, guestPlayers, venues, events, attendance, permissions, supabase, onClose, onSaved, onError }: { config: EditorConfig; profiles: Profile[]; guestPlayers: GuestPlayer[]; venues: Venue[]; events: Event[]; attendance: Attendance[]; permissions: Set<string>; supabase: SupabaseClient; onClose: () => void; onSaved: (result?: { close?: boolean; message?: string; kind?: ToastKind }) => void; onError: (message: string) => void }) {
   const row = config.row ?? {};
   const eventRow = row as unknown as Event;
   const [teamEvent, setTeamEvent] = useState(eventRow);
@@ -314,7 +315,16 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const [attendanceQuery, setAttendanceQuery] = useState("");
   const attendanceSearch = attendanceQuery.trim().toLocaleLowerCase();
   const attendanceRecordFor = (profile: Profile) => eventAttendance.find((item) => item.member_id === profile.id);
-  const [attendanceStatuses, setAttendanceStatuses] = useState<Record<string, Attendance["check_in_status"]>>(() => Object.fromEntries(activeProfiles.map((profile) => [profile.id, getCheckInStatus(attendanceRecordFor(profile))])) as Record<string, Attendance["check_in_status"]>);
+  const initialAttendanceStatuses = () => Object.fromEntries(activeProfiles.map((profile) => [profile.id, getCheckInStatus(attendanceRecordFor(profile))])) as Record<string, Attendance["check_in_status"]>;
+  const [attendanceStatuses, setAttendanceStatuses] = useState<Record<string, Attendance["check_in_status"]>>(initialAttendanceStatuses);
+  const [savedAttendanceStatuses, setSavedAttendanceStatuses] = useState<Record<string, Attendance["check_in_status"]>>(initialAttendanceStatuses);
+  const [attendanceNormalizationPendingIds, setAttendanceNormalizationPendingIds] = useState(() => new Set(activeProfiles.filter((profile) => {
+    const record = attendanceRecordFor(profile);
+    const status = getCheckInStatus(record);
+    return Boolean(status && (record?.check_in_status === null || ((status === "present" || status === "late") && !record?.checked_in_at)));
+  }).map((profile) => profile.id)));
+  const [attendanceSaveReport, setAttendanceSaveReport] = useState<{ savedCount: number; failures: AttendanceSaveFailure[] } | null>(null);
+  const pendingAttendanceSaveItems = buildAttendanceSaveItems(activeProfiles.map((profile) => profile.id), eventAttendance, attendanceStatuses, savedAttendanceStatuses, attendanceNormalizationPendingIds);
   const attendanceStatusFor = (profile: Profile) => attendanceStatuses[profile.id] ?? null;
   const cycleAttendanceStatus = (profileId: string) => setAttendanceStatuses((current) => {
     const currentStatus = current[profileId] ?? null;
@@ -322,6 +332,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     const nextStatus = checkInStatusOrder[(currentIndex + 1) % checkInStatusOrder.length];
     return { ...current, [profileId]: nextStatus };
   });
+  const attendanceFailureByMember = new Map((attendanceSaveReport?.failures ?? []).map((failure) => [failure.memberId, failure.message]));
   const hasRecordedWalkIns = walkInProfiles.some((profile) => attendanceStatusFor(profile) !== null);
   const attendanceScope = activeProfiles.filter((profile) => scheduledProfiles.some((scheduled) => scheduled.id === profile.id) || attendanceStatusFor(profile) !== null);
   const attendanceCheckedCount = attendanceScope.filter((profile) => ["present", "late"].includes(attendanceStatusFor(profile) ?? "")).length;
@@ -339,7 +350,8 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     const nextStatus = checkInStatusOrder[(currentIndex + 1) % checkInStatusOrder.length];
     const statusLabel = status ? checkInStatusLabels[status] : "미체크";
     const responseLabel = record?.status === "going" ? "참석 예정" : record?.status === "not_going" ? "불참 응답" : record?.status === "undecided" ? "미응답" : "현장 추가 가능";
-    return <div className={`attendance-row attendance-row-${status ?? "pending"}`} key={profile.id} role="group" aria-label={`${profile.name} 출석 상태`}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{responseLabel}</small></span><input type="hidden" name={`check_in_status_${profile.id}`} value={status ?? ""} readOnly /><button type="button" className="attendance-status-toggle" onClick={() => cycleAttendanceStatus(profile.id)} aria-label={`${profile.name} 상태 ${statusLabel}. 클릭하면 ${checkInStatusLabels[nextStatus]}으로 변경`}>{statusLabel}</button></div>;
+    const failureMessage = attendanceFailureByMember.get(profile.id);
+    return <div className={`attendance-row attendance-row-${status ?? "pending"}${failureMessage ? " attendance-row-failed" : ""}`} key={profile.id} role="group" aria-label={`${profile.name} 출석 상태`}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{failureMessage ? "저장 실패 · 재시도 필요" : responseLabel}</small></span><input type="hidden" name={`check_in_status_${profile.id}`} value={status ?? ""} readOnly /><button type="button" className="attendance-status-toggle" onClick={() => cycleAttendanceStatus(profile.id)} aria-label={`${profile.name} 상태 ${statusLabel}. 클릭하면 ${checkInStatusLabels[nextStatus]}으로 변경`}>{statusLabel}</button></div>;
   };
   const [venue, setVenue] = useState(String(row.venue ?? ""));
   const [address, setAddress] = useState(String(row.address ?? ""));
@@ -355,6 +367,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const [pendingMemberUpdate, setPendingMemberUpdate] = useState<{ formData: FormData; submitAction: string | null } | null>(null);
   const [passwordResetOpen, setPasswordResetOpen] = useState(false);
   const pendingTeamAction = useRef<TeamAction | null>(null);
+  const savingRef = useRef(false);
   const [matchDrafts, setMatchDrafts] = useState<MatchDraft[]>(() => buildMatchDrafts(eventRow));
   const [selectedRole, setSelectedRole] = useState<AccountRole>((row.role as AccountRole | undefined) ?? "member");
   const initialFeeMember = profiles.find((profile) => profile.id === row.member_id) ?? profiles[0];
@@ -387,6 +400,8 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     dialogRef.current?.requestSubmit();
   };
   const save = async (fd: FormData, submitAction: string | null) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     let error: { message: string; userFacing?: boolean } | null = null;
     const addQuestion = async (formId: string, position: number) => {
@@ -473,15 +488,41 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       }
     }
     if (config.type === "attendance") {
-      for (const profile of activeProfiles) {
-        const current = attendance.find((item) => item.event_id === eventId && item.member_id === profile.id);
-        const submittedStatus = String(fd.get(`check_in_status_${profile.id}`) ?? "");
-        const nextStatus: Attendance["check_in_status"] = submittedStatus === "present" || submittedStatus === "late" || submittedStatus === "absent" ? submittedStatus : null;
-        const currentStatus = getCheckInStatus(current);
-        if (nextStatus && (currentStatus !== nextStatus || current?.check_in_status === null || !current?.checked_in_at)) ({ error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: profile.id, status: current?.status ?? "undecided", check_in_status: nextStatus }, { onConflict: "event_id,member_id" }));
-        if (!nextStatus && currentStatus) ({ error } = await supabase.from("attendance").update({ check_in_status: null, checked_in_at: null, checked_in_by: null }).eq("event_id", eventId).eq("member_id", profile.id));
-        if (error) break;
+      const changes = pendingAttendanceSaveItems;
+      if (changes.length === 0) {
+        savingRef.current = false;
+        setSaving(false);
+        return onSaved();
       }
+
+      let result;
+      try {
+        result = await supabase.rpc("save_attendance_batch", { target_event_id: eventId, target_changes: changes });
+      } catch (caught) {
+        savingRef.current = false;
+        setSaving(false);
+        setAttendanceSaveReport({ savedCount: 0, failures: changes.map((item) => ({ memberId: item.member_id, message: "저장 결과를 확인하지 못했습니다." })) });
+        return onError(toErrorMessage(caught));
+      }
+      if (result.error) {
+        savingRef.current = false;
+        setSaving(false);
+        setAttendanceSaveReport({ savedCount: 0, failures: changes.map((item) => ({ memberId: item.member_id, message: result.error.message })) });
+        return onError(toErrorMessage(result.error));
+      }
+
+      const { succeededIds, failures } = reconcileAttendanceSaveResults(changes, (result.data ?? []) as AttendanceSaveRpcResult[]);
+      setSavedAttendanceStatuses((current) => applyAttendanceSaveSuccesses(current, changes, succeededIds));
+      setAttendanceNormalizationPendingIds((current) => {
+        const next = new Set(current);
+        succeededIds.forEach((memberId) => next.delete(memberId));
+        return next;
+      });
+      setAttendanceSaveReport({ savedCount: succeededIds.length, failures });
+      savingRef.current = false;
+      setSaving(false);
+      if (failures.length > 0) return onSaved({ close: false, message: `${succeededIds.length}명 저장, ${failures.length}명 실패 · 실패 항목만 다시 저장할 수 있습니다.`, kind: "warning" });
+      return onSaved();
     }
     if (config.type === "teams") {
       const action = submitAction;
@@ -583,6 +624,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
       error = formResult.error;
       if (!error && formResult.data) error = await addQuestion(formResult.data.id, 0);
     }
+    savingRef.current = false;
     setSaving(false); if (error) return onError(toErrorMessage(error));
     if (config.type === "teams") {
       const action = (submitAction ?? "generate") as TeamSaveAction;
@@ -640,11 +682,13 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         <p className="form-description">참석 여부를 밝히지 않았거나 불참으로 답한 회원도 현장에 오면 여기서 상태를 기록하세요.</p>
         <div className="attendance-status-grid">{filteredWalkInProfiles.length > 0 ? filteredWalkInProfiles.map(renderAttendanceRow) : <p className="form-description">{attendanceSearch ? "검색 결과가 없습니다." : "추가할 활동 회원이 없습니다."}</p>}</div>
       </details>
+      {saving && <div className="attendance-save-report attendance-save-progress" role="status">변경한 출석 {pendingAttendanceSaveItems.length}명을 저장하고 있습니다…</div>}
+      {!saving && attendanceSaveReport && <div className={`attendance-save-report${attendanceSaveReport.failures.length > 0 ? " attendance-save-partial" : ""}`} role="status" aria-live="polite"><b>{attendanceSaveReport.savedCount}명 저장, {attendanceSaveReport.failures.length}명 실패</b>{attendanceSaveReport.failures.length > 0 && <p>{attendanceSaveReport.failures.map((failure) => profiles.find((profile) => profile.id === failure.memberId)?.name ?? "알 수 없는 회원").join(", ")} 항목만 다시 저장해 주세요.</p>}</div>}
     </div>}
      {config.type === "teams" && <TeamEditor event={teamEvent} profiles={profiles} attendance={attendance} assignedMemberIds={assignedMemberIds} saving={saving} matchDrafts={matchDrafts} saveSignal={teamSaveSignal} resultRef={teamResultsRef} onMatchDraftsChange={setMatchDrafts} onDirtyCountChange={setTeamDirtyCount} onAction={requestTeamAction} />}
     {config.type === "feedback" && <><div className="read-box"><b>{String(row.title)}</b><p>{String(row.body)}</p></div><label>처리 상태<select name="status" defaultValue={String(row.status ?? "received")}><option value="received">접수</option><option value="reviewing">검토 중</option><option value="resolved">답변 완료</option><option value="closed">종결</option></select></label><label>운영진 답변<textarea name="officer_response" rows={6} defaultValue={String(row.officer_response ?? "")} /></label></>}
     {config.type === "forms" && <><label>종류<select name="kind" defaultValue={String(row.kind ?? allowedKinds[0])} disabled={Boolean(row.id)}>{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "election" ? "회장단 선거" : kind === "poll" ? "의사 결정 투표" : "회원 설문"}</option>)}</select></label><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>설명<textarea name="description" rows={3} defaultValue={String(row.description ?? "")} /></label><div className="field-row"><label>시작<input name="starts_at" type="datetime-local" defaultValue={row.starts_at ? new Date(String(row.starts_at)).toISOString().slice(0, 16) : ""} /></label><label>마감<input name="ends_at" type="datetime-local" defaultValue={row.ends_at ? new Date(String(row.ends_at)).toISOString().slice(0, 16) : ""} /></label></div><label>상태<select name="status" defaultValue={String(row.status ?? "draft")}><option value="draft">초안</option><option value="open">진행 중</option><option value="closed">마감</option><option value="archived">보관</option></select></label><label>{row.id ? "새 질문 추가 (선택)" : "첫 질문"}<input name="prompt" required={!row.id} placeholder="회원에게 물어볼 내용을 입력하세요" /></label><label>질문 형식<select name="question_type" defaultValue="single_choice"><option value="single_choice">단일 선택</option><option value="multiple_choice">복수 선택</option><option value="yes_no">찬반</option><option value="short_text">짧은 답변</option><option value="long_text">긴 답변</option><option value="rating">1~5점</option></select></label><label>선택지<input name="options" placeholder="후보 A, 후보 B (쉼표로 구분)" /></label>{!row.id && <label className="check"><input name="secret_ballot" type="checkbox" /> 선거를 비밀투표로 진행</label>}<label className="check"><input name="show_results" type="checkbox" defaultChecked={row.id ? Boolean(row.show_results) : true} /> 종료 후 결과 공개</label></>}
-    {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : "저장하기"}</button>}
+    {config.type !== "teams" && <button className="cta" disabled={saving}>{saving ? "저장 중…" : config.type === "attendance" && attendanceSaveReport?.failures.length ? `실패 ${attendanceSaveReport.failures.length}명 재시도` : "저장하기"}</button>}
   </form>{pendingMemberUpdate && <ConfirmDialog title="회원 승인을 진행할까요?" target={memberName} description="활동으로 변경하면 이 회원의 회원 명단·회비·팀 편성·투표 등 회원 기능 전체가 열립니다." confirmLabel="승인하기" busy={saving} onConfirm={() => { void save(pendingMemberUpdate.formData, pendingMemberUpdate.submitAction); setPendingMemberUpdate(null); }} onCancel={() => setPendingMemberUpdate(null)} />}{passwordResetOpen && <ConfirmDialog title="비밀번호를 초기화할까요?" target={String(row.name ?? "이 회원")} description="이 회원은 기존 비밀번호를 더 이상 사용할 수 없으며, 비밀번호가 1234로 변경됩니다." confirmLabel="비밀번호 초기화" busy={saving} onConfirm={() => void confirmPasswordReset()} onCancel={() => setPasswordResetOpen(false)} />}</div>{discardOpen && <ConfirmDialog title="작성 중인 내용을 버릴까요?" target={config.type === "teams" ? `저장되지 않은 기록 ${teamDirtyCount}건이 있습니다.` : `저장하지 않은 ${editorTitles[config.type]} 변경이 있습니다.`} description="버리면 변경한 내용을 복구할 수 없습니다." confirmLabel="버리기" onConfirm={onClose} onCancel={() => setDiscardOpen(false)} />}</>;
 }
 

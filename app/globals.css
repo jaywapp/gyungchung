@@ -4519,6 +4519,44 @@ td { font-weight: 800; }
   color: var(--danger-ink);
 }
 
+.editor .attendance-row-failed {
+  margin-inline: -8px;
+  padding-inline: 12px !important;
+  border: 1px solid var(--danger-ink);
+  background: var(--danger-bg) !important;
+}
+
+.attendance-row-failed .attendance-member small {
+  color: var(--danger-ink);
+  font-weight: 900;
+}
+
+.attendance-save-report {
+  padding: 14px 16px;
+  border-left: var(--accent-bar) solid var(--green);
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+}
+
+.attendance-save-report p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.attendance-save-partial {
+  border-left-color: var(--danger-ink);
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+
+.attendance-save-progress {
+  border-left-color: var(--warn-ink);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-weight: 900;
+}
+
 .attendance-member {
   display: flex;
   min-width: 0;
