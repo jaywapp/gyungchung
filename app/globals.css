@@ -338,12 +338,31 @@ footer {
 }
 
 .approval-banner {
-  padding: 12px 7vw;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 7vw;
   border-bottom: 1px solid var(--navy);
-  background: var(--lime);
-  color: var(--navy);
-  font-weight: 900;
-  text-align: center;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.approval-banner.inactive {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+
+.approval-banner > div { display: grid; gap: 3px; }
+.approval-banner span { font-size: 12px; font-weight: 900; letter-spacing: .1em; }
+.approval-banner b { font-size: 16px; }
+.approval-banner p { margin: 0; font-size: 14px; font-weight: 700; line-height: 1.5; }
+
+.restriction-reason {
+  margin: 0;
+  color: var(--warn-ink);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 footer {
@@ -1050,6 +1069,8 @@ footer a {
   font-weight: 900;
   cursor: pointer;
 }
+
+.rsvp button:disabled { cursor: not-allowed; opacity: .64; }
 
 /* Each selected state names both its surface and its ink so neither can be
    overridden independently. */
@@ -2121,6 +2142,7 @@ td { font-weight: 800; }
 }
 
 .event-action .capacity-status { align-self: flex-end; text-align: right; }
+.event-action .restriction-reason { max-width: 220px; text-align: right; }
 
 /* Officer-only actions: outlined and icon-led so they read as an admin menu,
    never as a second member CTA beside the filled 참석하기 button. */
@@ -2501,6 +2523,8 @@ td { font-weight: 800; }
   gap: 20px;
   margin-top: 26px;
 }
+
+.event-detail-actions .restriction-reason { flex-basis: 100%; }
 
 .event-detail-block {
   margin-top: 34px;
@@ -3099,6 +3123,8 @@ td { font-weight: 800; }
   align-items: flex-end;
   gap: 8px;
 }
+
+.participation-actions .restriction-reason { max-width: 220px; text-align: right; }
 
 .secret {
   display: inline-flex;
@@ -4785,6 +4811,8 @@ td { font-weight: 800; }
   }
 
   .event-action .cta { width: 100%; }
+  .event-action .restriction-reason,
+  .participation-actions .restriction-reason { max-width: none; text-align: left; }
   .event-focus-head h2 { font-size: 22px; }
   .officer-menu { justify-content: stretch; }
 

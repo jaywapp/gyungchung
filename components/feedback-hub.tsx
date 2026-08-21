@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import type { Feedback, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
+import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
@@ -49,6 +50,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
   const formLocked = !user || profile?.status !== "active";
+  const membershipRestriction = getMembershipRestriction(profile);
   const linkedIssuesKey = feedback
     .filter((item) => item.github_issue_number)
     .map((item) => `${item.github_issue_number}:${item.github_issue_state ?? "unknown"}`)
@@ -130,7 +132,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
         <form className="voice-form" onSubmit={submit}>
           <div className="panel-title"><Lightbulb /><span><small>NEW FEEDBACK</small><b>의견 보내기</b></span></div>
           {!user && <button type="button" className="login-callout" onClick={onLogin}>로그인하고 의견 남기기</button>}
-          {user && profile?.status !== "active" && <p className="form-lock-notice">회원 승인이 완료되면 의견을 작성할 수 있습니다.</p>}
+          {membershipRestriction && <p className="form-lock-notice">{getMembershipRestrictionCopy(membershipRestriction).description}</p>}
           <fieldset disabled={formLocked || saving}>
             <label>분류<select name="category" defaultValue="operation" aria-describedby="feedback-routing-notice"><option value="operation">팀 운영</option><option value="system">시스템</option><option value="facility">구장·시설</option><option value="finance">회비·재정</option><option value="safety">안전</option><option value="other">기타</option></select></label>
             <label>제목<input name="title" required minLength={2} maxLength={120} placeholder="어떤 의견인가요?" aria-describedby="feedback-title-count" onChange={(event) => setTitleLength(event.target.value.length)} /></label>

@@ -10,6 +10,7 @@ import { getCheckInStatus } from "@/lib/attendance";
 import { getEventCapacity } from "@/lib/event-capacity";
 import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { parseEventDateKey, toEventDateKey } from "@/lib/event-date";
 import { getMomVoteEligibility, isMomVoteCandidate } from "@/lib/mom-vote";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
@@ -50,6 +51,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
   const [votingEvent, setVotingEvent] = useState<Event | null>(null);
   const [submittingMomCandidateId, setSubmittingMomCandidateId] = useState<string | null>(null);
   const submittingMomVoteRef = useRef(false);
+  const membershipRestriction = getMembershipRestriction(profile);
   const momDialogRef = useDialogFocus<HTMLDivElement>(() => setVotingEvent(null), Boolean(votingEvent));
   const date = parseEventDateKey(dateKey);
   const dayEvents = useMemo(
@@ -160,7 +162,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
         {event.note && <p className="event-detail-note">{event.note}</p>}
 
         {(!isPast || canManage) && <div className="event-detail-actions">
-          {!isPast && <button type="button" className="cta" onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{myAttendance?.status === "going" ? "참석 유지하기" : "참석하기"}</button>}
+          {!isPast && <><button type="button" className="cta" disabled={Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `event-rsvp-restriction-${event.id}` : undefined} onClick={() => user ? onAttendance("going", event.id) : onLogin()}>{myAttendance?.status === "going" ? "참석 유지하기" : "참석하기"}</button>{membershipRestriction && <p className="restriction-reason" id={`event-rsvp-restriction-${event.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</>}
           {canManage && <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className="officer-menu-item" aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className="officer-menu-item" aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>}
         </div>}
 

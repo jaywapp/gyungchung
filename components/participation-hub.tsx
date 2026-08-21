@@ -7,6 +7,7 @@ import type { ParticipationForm, ParticipationKind, ParticipationQuestion, Parti
 import { createClient } from "@/lib/supabase/client";
 import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { Empty, SectionSkeleton } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
@@ -40,6 +41,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   const dialogRef = useDialogFocus<HTMLFormElement>(() => setActiveId(null), Boolean(active));
   const completed = new Set(submissions.map((item) => item.form_id));
   const canManage = manageableKinds.length > 0;
+  const membershipRestriction = getMembershipRestriction(profile);
 
   const setAnswer = (question: ParticipationQuestion, value: string, checked?: boolean) => {
     if (question.type !== "multiple_choice") return setAnswers((current) => ({ ...current, [question.id]: question.type === "rating" ? Number(value) : value }));
@@ -75,7 +77,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
           return <article className="participation-card" key={form.id}>
             <div className="participation-icon"><Icon /></div>
             <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
-            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}<button className={isDone ? "done-button" : "cta small"} disabled={isDone || form.status !== "open"} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); }}>{isDone ? <><Check size={16} /> 참여 완료</> : form.status === "open" ? "참여하기" : "마감됨"}</button></div>
+            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}<button className={isDone ? "done-button" : "cta small"} disabled={isDone || form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => { if (!user) return onLogin(); setActiveId(form.id); setAnswers({}); }}>{isDone ? <><Check size={16} /> 참여 완료</> : form.status === "open" ? "참여하기" : "마감됨"}</button>{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
           </article>;
         })}
         {forms.length === 0 && <Empty icon={<Vote />} title="현재 공개된 참여 항목이 없습니다" description="새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다." />}
