@@ -1078,7 +1078,7 @@ footer a {
 
 .rsvp-state span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1176,7 +1176,7 @@ footer a {
   line-height: 1.35;
 }
 
-.capacity-status small { color: var(--muted); font-size: 11px; font-weight: 800; }
+.capacity-status small { color: var(--muted); font-size: 12px; font-weight: 800; }
 .capacity-status.nearly_full { border-left-color: var(--neutral-ink); background: var(--neutral-bg); }
 .capacity-status.full,
 .capacity-status.over_capacity { border-left-color: var(--danger-ink); background: var(--danger-bg); }
