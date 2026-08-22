@@ -4479,7 +4479,10 @@ td { font-weight: 800; }
 .editor h2 {
   margin: 18px 0;
   font-size: 48px;
-  line-height: .95;
+  /* Hangul glyphs fill nearly the whole em box (ink height ~.975em), unlike
+     Latin display faces, so a Latin-tuned tight leading (.95) makes wrapped
+     two-line Korean titles overlap. 1.15 keeps the tight look with headroom. */
+  line-height: 1.15;
   letter-spacing: -.04em;
 }
 
@@ -5401,7 +5404,7 @@ td { font-weight: 800; }
   .editor { padding: 40px 25px 30px; }
 
   .login-modal h2,
-  .editor h2 { font-size: 40px; }
+  .editor h2 { font-size: 40px; } /* line-height 1.15 inherited from base rule above */
 
   .password-card { padding: 40px 25px 30px; }
   .password-card h1 { font-size: 40px; }
