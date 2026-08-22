@@ -1961,7 +1961,7 @@ td { font-weight: 800; }
   padding: 10px 12px;
   border-right: 1px solid var(--line);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-align: center;
 }
@@ -2035,12 +2035,12 @@ td { font-weight: 800; }
   text-align: left;
 }
 
-.day-event b { font-size: 10px; }
+.day-event b { font-size: 12px; }
 
 .day-event span {
   max-width: 100%;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
