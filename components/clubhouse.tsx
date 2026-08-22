@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
@@ -600,7 +600,62 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
       const teams = event.event_teams ?? [];
       const hasTeams = teams.length > 0;
       const myTeam = profile ? teams.find((team) => team.event_team_members.some((member) => member.profile_id === profile.id)) : undefined;
-      return <article key={event.id} className={`event-card${isPast ? " past" : ""}`}><time className="event-date" dateTime={event.starts_at}><small>{eventDate.getFullYear()} · {eventDate.toLocaleDateString("ko-KR", { month: "long" })}</small><b>{String(eventDate.getDate()).padStart(2, "0")}</b><span>{eventDate.toLocaleDateString("ko-KR", { weekday: "long" })}</span></time><div className="event-info"><small>{isPast ? "지난 일정" : "WEEKLY FUTSAL"}{event.is_competitive ? " · 커피 내기" : ""}</small><h2><Link className="event-card-link" href={eventDatePath(event.starts_at)}>{event.title}</Link></h2><p><MapPin size={16} /> {event.venue}<span className="event-meta-time">· {formatTime(event.starts_at)}</span></p>{hasTeams && (myTeam ? <span className="event-team-badge">내 팀 · {myTeam.team_name}</span> : <a className="event-team-badge unassigned" href={`${eventDatePath(event.starts_at)}?section=teams`}>팀 명단 보기</a>)}</div><div className="event-action"><b>{isPast ? `출석 ${presentCount}명` : `참석 예정 ${goingCount}명`} · 용병 {guestCount}명{hasTeams ? ` · ${teams.length}팀 편성` : ""}</b><CapacityStatus capacity={capacity} />{canManage && <div className="resource-actions"><button aria-label={`${event.title} 수정`} onClick={() => onEdit(event)}><Pencil size={16} /></button><button aria-label={`${event.title} 삭제`} onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={16} /></button></div>}<RsvpControls eventTitle={event.title} startsAt={event.starts_at} status={myAttendance} isAuthenticated={Boolean(user)} memberStatus={profile?.status ?? null} isLoading={sessionPending} isSaving={rsvpPendingEventIds.has(event.id)} onChange={(status) => onAttendance(status, event.id)} onLogin={onLogin} />{canManage && <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className="officer-menu-item" aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className="officer-menu-item" aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>}</div><ChevronRight className="event-open-cue" size={20} aria-hidden="true" /></article>;
+      const eventDateLabel = eventDate.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+      const minutesUntilStart = (eventDate.getTime() - Date.now()) / 60000;
+      const isStartingSoon = minutesUntilStart > 0 && minutesUntilStart <= 120;
+      const attendanceProgress = capacity.capacity === null ? 0 : Math.min(100, Math.max(0, Math.round((capacity.totalCount / capacity.capacity) * 100)));
+      const remainingLabel = capacity.capacity === null
+        ? "정원 제한 없음"
+        : (capacity.remaining ?? 0) < 0
+          ? `정원 ${Math.abs(capacity.remaining ?? 0)}명 초과`
+          : `${capacity.remaining ?? 0}자리 남음`;
+      const managementHint = isPast ? "경기 기록을 정리해 주세요." : isStartingSoon ? "경기 시작 전 출석을 확인해 주세요." : "참석 응답을 먼저 확인해 주세요.";
+      return <article key={event.id} className={`event-card${isPast ? " past" : ""}`}>
+        <time className="event-date" dateTime={event.starts_at}>
+          <small>{eventDate.getFullYear()} · {eventDate.toLocaleDateString("ko-KR", { month: "long" })}</small>
+          <b>{String(eventDate.getDate()).padStart(2, "0")}</b>
+          <span>{eventDate.toLocaleDateString("ko-KR", { weekday: "long" })}</span>
+        </time>
+        <div className="event-card-main">
+          <div className="event-card-title-row">
+            <div className="event-info">
+              <small>{isPast ? "지난 일정" : "WEEKLY FUTSAL"}</small>
+              <h2><Link className="event-card-link" href={eventDatePath(event.starts_at)}>{event.title}</Link></h2>
+            </div>
+            {canManage && <details className="event-management-menu event-card-more">
+              <summary className="event-management-trigger" aria-label={`${event.title} 일정 메뉴`}><MoreHorizontal size={20} /></summary>
+              <div className="event-management-popover" role="menu">
+                <button type="button" role="menuitem" onClick={() => onEdit(event)}><Pencil size={15} /> 일정 수정</button>
+                <button type="button" role="menuitem" onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={15} /> 일정 삭제</button>
+              </div>
+            </details>}
+          </div>
+          <div className="event-card-schedule">
+            <time dateTime={event.starts_at}><Clock3 size={16} /> {eventDateLabel} · {formatTime(event.starts_at)}</time>
+            <a href={naverMapUrl(event)} target="_blank" rel="noreferrer"><MapPin size={16} /> {event.venue}</a>
+          </div>
+          {(myTeam || hasTeams || event.is_competitive) && <div className="event-card-chips" aria-label="일정 특성">
+            {myTeam && <span className="event-card-chip mine">{myTeam.team_name}</span>}
+            {hasTeams && <span className="event-card-chip">{teams.length}팀 편성</span>}
+            {event.is_competitive && <span className="event-card-chip">커피 내기</span>}
+            {hasTeams && !myTeam && <a className="event-card-chip unassigned" href={`${eventDatePath(event.starts_at)}?section=teams`}>팀 명단 보기</a>}
+          </div>}
+          <section className="event-card-section event-card-attendance" aria-labelledby={`event-card-attendance-${event.id}`}>
+            <div className="event-card-section-heading"><h3 id={`event-card-attendance-${event.id}`}>참석 현황</h3><span>{isPast ? "출석 기록" : "현재 등록 기준"}</span></div>
+            <div className="event-card-attendance-figure"><div><strong>{capacity.totalCount}</strong>{capacity.capacity !== null && <span>/ {capacity.capacity}명</span>}{capacity.capacity === null && <span>명</span>}</div><b>{remainingLabel}</b></div>
+            {capacity.capacity !== null && <div className="event-card-attendance-progress" role="progressbar" aria-label={`참석 ${capacity.totalCount}명, 정원 ${capacity.capacity}명`} aria-valuemin={0} aria-valuemax={capacity.capacity} aria-valuenow={Math.min(capacity.totalCount, capacity.capacity)}><span style={{ width: `${attendanceProgress}%` }} /></div>}
+            <p>{isPast ? `출석 ${presentCount}명` : `참석 ${goingCount}명`} · 용병 {guestCount}명</p>
+          </section>
+          <section className="event-card-section event-card-response" aria-labelledby={`event-card-response-${event.id}`}>
+            <div className="event-card-section-heading"><h3 id={`event-card-response-${event.id}`}>내 응답</h3></div>
+            <RsvpControls variant="detail" eventTitle={event.title} startsAt={event.starts_at} status={myAttendance} isAuthenticated={Boolean(user)} memberStatus={profile?.status ?? null} isLoading={sessionPending} isSaving={rsvpPendingEventIds.has(event.id)} onChange={(status) => onAttendance(status, event.id)} onLogin={onLogin} />
+          </section>
+          {canManage && <section className={`event-card-section event-card-management${isPast ? " past-priority" : isStartingSoon ? " attendance-priority" : ""}`} aria-labelledby={`event-card-management-${event.id}`}>
+            <div className="event-card-section-heading"><h3 id={`event-card-management-${event.id}`}>경기 관리</h3><span>{managementHint}</span></div>
+            <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>
+          </section>}
+        </div>
+      </article>;
     })}
   </section>}</section>;
 }
