@@ -860,9 +860,24 @@ footer a {
   color: var(--navy);
 }
 
+/* min-width: 0 lets this block shrink past its content's intrinsic width
+   (the flex default is auto, which would push the row wider instead) and
+   flex-wrap lets its spans stack instead of forcing that overflow — this is
+   what absorbs the squeeze from the logged-in "참석 예정" span so the
+   button beside it (kept single-line below) never has to shrink itself. */
 .schedule-foot > div {
   display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 18px;
+  min-width: 0;
+}
+
+/* Fixed to its content size and never wraps — see the flex-wrap note on
+   the sibling block above for where the squeeze goes instead. */
+.schedule-foot button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .schedule-foot span {
@@ -1078,7 +1093,7 @@ footer a {
 
 .rsvp-state span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1176,7 +1191,7 @@ footer a {
   line-height: 1.35;
 }
 
-.capacity-status small { color: var(--muted); font-size: 11px; font-weight: 800; }
+.capacity-status small { color: var(--muted); font-size: 12px; font-weight: 800; }
 .capacity-status.nearly_full { border-left-color: var(--neutral-ink); background: var(--neutral-bg); }
 .capacity-status.full,
 .capacity-status.over_capacity { border-left-color: var(--danger-ink); background: var(--danger-bg); }
@@ -1653,7 +1668,9 @@ footer a {
   gap: 6px;
 }
 
-.resource-actions button,
+/* :not(.cta) excludes text CTAs (e.g. admin-console's "새로 등록") that share
+   this container with icon-only buttons — the 44x44 square is for icons only. */
+.resource-actions button:not(.cta),
 .resource-icon-action {
   width: var(--tap);
   height: var(--tap);
@@ -4477,7 +4494,10 @@ td { font-weight: 800; }
 .editor h2 {
   margin: 18px 0;
   font-size: 48px;
-  line-height: .95;
+  /* Hangul glyphs fill nearly the whole em box (ink height ~.975em), unlike
+     Latin display faces, so a Latin-tuned tight leading (.95) makes wrapped
+     two-line Korean titles overlap. 1.15 keeps the tight look with headroom. */
+  line-height: 1.15;
   letter-spacing: -.04em;
 }
 
@@ -5234,7 +5254,7 @@ td { font-weight: 800; }
     align-items: flex-start;
   }
 
-  .schedule-foot > div { flex-wrap: wrap; }
+  /* flex-wrap already lives on the base .schedule-foot > div rule. */
   .side-stats { gap: 20px; }
 
   .locker,
@@ -5399,7 +5419,7 @@ td { font-weight: 800; }
   .editor { padding: 40px 25px 30px; }
 
   .login-modal h2,
-  .editor h2 { font-size: 40px; }
+  .editor h2 { font-size: 40px; } /* line-height 1.15 inherited from base rule above */
 
   .password-card { padding: 40px 25px 30px; }
   .password-card h1 { font-size: 40px; }

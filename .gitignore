@@ -11,3 +11,7 @@ tsconfig.tsbuildinfo
 .impeccable/
 .codex-worktrees/
 .codex-remote-attachments/
+.ux-review/
+.playwright-mcp/
+.claude/worktrees/
+.claude/settings.local.json
