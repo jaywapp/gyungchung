@@ -203,6 +203,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
 
   useEffect(() => () => window.clearTimeout(toastTimerRef.current), []);
   useEffect(() => { setMenuOpen(false); }, [pathname]);
+  const requiresPasswordChange = !memberLoading && Boolean(me?.must_change_password) && pathname !== "/auth/update-password";
+  useEffect(() => {
+    if (requiresPasswordChange) router.replace("/auth/update-password");
+  }, [requiresPasswordChange, router]);
 
   const permissions = useMemo(() => {
     if (me?.is_system_admin) return new Set([...systemAdminPermissions, ...rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission)]);
@@ -281,6 +285,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
         return "로그인하지 못했습니다. 입력 정보를 확인해 주세요.";
       }
       setLoginOpen(false);
+      if (!identifier.includes("@") && password === "1234") {
+        router.replace("/auth/update-password");
+        return null;
+      }
       showToast("로그인했습니다.");
       return null;
     } catch {
@@ -331,6 +339,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     }
   };
 
+  if (requiresPasswordChange) {
+    return <main className="password-page"><section className="password-card"><span className="eyebrow">SECURITY UPDATE</span><h1>비밀번호 변경이 필요합니다</h1><p>안전한 회원 계정 사용을 위해 새 비밀번호 설정 화면으로 이동하고 있습니다.</p></section></main>;
+  }
+
   return <div className="page">
     <a className="skip-link" href="#main">본문 바로가기</a>
     <header className="topbar">
@@ -379,7 +391,27 @@ function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean
     const error = await onPasswordAuth(phone, String(form.get("password") ?? ""));
     if (error) setErrorMessage(error);
   };
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MEMBER ACCESS</span><h2>로그인</h2><p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p><p className="form-description">처음 이용하시나요? 경충FC는 운영진이 회원 프로필과 로그인 계정을 직접 등록합니다. 운영진에게 이름과 전화번호를 알려 계정 등록을 요청해 주세요.</p><form className="password-auth-form" onSubmit={submit}><label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label><label>비밀번호<input name="password" type="password" required minLength={legacyEmail ? 6 : 4} autoComplete="current-password" placeholder={legacyEmail ? "비밀번호 입력" : "초기 비밀번호 1234"} /></label>{errorMessage && <FormError id="login-error" message={errorMessage} />}<button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button><small>{legacyEmail ? "기존 이메일 계정의 비밀번호를 입력해 주세요." : "초기 비밀번호는 1234입니다. 로그인할 수 없으면 운영진에게 문의해 주세요."}</small><button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button></form><div className="auth-divider"><span>또는</span></div><button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button><button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button><small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}>
+    <div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="회원 로그인">
+      <button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button>
+      <span className="eyebrow">MEMBER ACCESS</span>
+      <h2>로그인</h2>
+      <p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p>
+      <p className="form-description">처음 이용하시나요? 경충FC는 운영진이 회원 프로필과 로그인 계정을 직접 등록합니다. 운영진에게 이름과 전화번호를 알려 계정 등록을 요청해 주세요.</p>
+      <form className="password-auth-form" onSubmit={submit}>
+        <label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label>
+        <label>비밀번호<input name="password" type="password" required minLength={legacyEmail ? 6 : 4} autoComplete="current-password" placeholder="비밀번호 입력" /></label>
+        {errorMessage && <FormError id="login-error" message={errorMessage} />}
+        <button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button>
+        <small>{legacyEmail ? "기존 이메일 계정의 비밀번호를 입력해 주세요." : "운영진에게 안내받은 초기 비밀번호로 로그인한 뒤 새 비밀번호를 설정해 주세요."}</small>
+        <button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button>
+      </form>
+      <div className="auth-divider"><span>또는</span></div>
+      <button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button>
+      <button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button>
+      <small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small>
+    </div>
+  </div>;
 }
 
 function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { user: User; profile: Profile; busy: boolean; onClose: () => void; onLink: (provider: "google" | "kakao") => void; onSignOut: () => Promise<void> }) {

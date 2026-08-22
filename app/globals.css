@@ -1919,6 +1919,7 @@ td { font-weight: 800; }
 
 .ranking-layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 45px;
 }
 
@@ -2005,7 +2006,7 @@ td { font-weight: 800; }
 
 .month-calendar > header small {
   color: var(--green-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: .15em;
 }
@@ -2261,7 +2262,7 @@ td { font-weight: 800; }
 
 .event-date small {
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: .08em;
 }
 
@@ -2326,7 +2327,7 @@ td { font-weight: 800; }
   border: 1px solid rgba(24, 116, 53, .24);
   background: var(--note-bg);
   color: var(--green-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-decoration: none;
 }
@@ -2364,7 +2365,7 @@ td { font-weight: 800; }
 
 .event-card-section-heading span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -2796,7 +2797,7 @@ td { font-weight: 800; }
   border: 1px solid rgba(24, 116, 53, .24);
   background: var(--note-bg);
   color: var(--green-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -4945,6 +4946,12 @@ td { font-weight: 800; }
 .password-auth-form input,
 .password-card input,
 .editor input:not([type="checkbox"]),
+.editor select,
+.editor textarea { font-size: 16px; }
+
+.password-auth-form input,
+.password-card input,
+.editor input:not([type="checkbox"]),
 .editor select { min-height: var(--tap); }
 
 .password-auth-form .cta,
@@ -5698,6 +5705,40 @@ td { font-weight: 800; }
     flex-direction: column;
   }
 
+  .month-calendar-grid { min-width: 0; }
+
+  .month-calendar-weekdays span { padding-inline: 2px; }
+
+  .month-calendar-days > div,
+  .month-calendar-days > button {
+    min-height: 72px;
+    padding: 6px 2px;
+  }
+
+  .month-calendar-days time {
+    margin-inline: auto;
+    margin-bottom: 3px;
+  }
+
+  /* A compact marker keeps all seven days visible without making event names
+     illegible inside roughly 50px-wide mobile cells. The button label still
+     announces the date and event count to assistive technology. */
+  .day-event {
+    width: 8px;
+    height: 8px;
+    margin: 3px auto 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  .day-event b,
+  .day-event span { display: none; }
+
+  .month-calendar-days > button.selected .day-event { background: var(--lime); }
+
   .event-card {
     grid-template-columns: 76px minmax(0, 1fr);
     align-items: start;
@@ -5707,6 +5748,13 @@ td { font-weight: 800; }
 
   .event-card-main { gap: 15px; }
   .event-card-schedule { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .event-card-link {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+  .event-card-schedule a,
+  .event-card-chip.unassigned { min-height: var(--tap); }
   .event-date { padding-right: 12px; }
   .event-date b { font-size: 34px; }
   .event-info h2 { font-size: 24px; }

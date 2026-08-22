@@ -94,6 +94,13 @@ Deno.serve(async (request: Request) => {
   if (member.auth_user_id) {
     const { error } = await adminClient.auth.admin.updateUserById(member.auth_user_id, { password: INITIAL_PASSWORD });
     if (error) return json(request, { error: "비밀번호를 변경하지 못했습니다." }, 500);
+    const { data: updatedProfile, error: profileError } = await adminClient
+      .from("profiles")
+      .update({ must_change_password: true })
+      .eq("id", member.id)
+      .select("id")
+      .maybeSingle();
+    if (profileError || !updatedProfile) return json(request, { error: "초기 비밀번호 변경 상태를 저장하지 못했습니다." }, 500);
     return json(request, { member_id: member.id, auth_user_id: member.auth_user_id, password_updated: true });
   }
 
@@ -106,6 +113,18 @@ Deno.serve(async (request: Request) => {
   if (error || !data.user) {
     const duplicate = error?.message.toLowerCase().includes("already") || error?.status === 422;
     return json(request, { error: duplicate ? "이미 다른 계정에서 사용하는 전화번호입니다." : "계정을 준비하지 못했습니다." }, duplicate ? 409 : 500);
+  }
+
+  const { data: updatedProfile, error: profileError } = await adminClient
+    .from("profiles")
+    .update({ must_change_password: true })
+    .eq("id", member.id)
+    .eq("auth_user_id", data.user.id)
+    .select("id")
+    .maybeSingle();
+  if (profileError || !updatedProfile) {
+    await adminClient.auth.admin.deleteUser(data.user.id);
+    return json(request, { error: "초기 비밀번호 변경 상태를 저장하지 못했습니다." }, 500);
   }
 
   return json(request, { member_id: member.id, auth_user_id: data.user.id });
