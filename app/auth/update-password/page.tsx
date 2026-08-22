@@ -3,8 +3,21 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { FormError } from "@/components/section-states";
+
+async function getPasswordChangeError(error: unknown) {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json() as { error?: unknown };
+      if (typeof body.error === "string" && body.error) return body.error;
+    } catch {
+      // Fall through when an intermediary returned a non-JSON response.
+    }
+  }
+  return "비밀번호를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
@@ -28,7 +41,7 @@ export default function UpdatePasswordPage() {
     try {
       const { error } = await supabase.functions.invoke("change-member-password", { body: { password } });
       if (error) {
-        return setErrorMessage("비밀번호를 저장하지 못했습니다. 로그인 상태를 확인한 뒤 다시 시도해 주세요.");
+        return setErrorMessage(await getPasswordChangeError(error));
       }
       router.replace("/");
     } catch {

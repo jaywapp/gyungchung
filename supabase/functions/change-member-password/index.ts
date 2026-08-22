@@ -69,7 +69,10 @@ Deno.serve(async (request: Request) => {
     .maybeSingle();
   if (profileLookupError || !profile) return json(request, { error: "연결된 회원 계정을 찾을 수 없습니다." }, 404);
 
-  const { error: passwordError } = await userClient.auth.updateUser({ password });
+  // The caller was verified above with their bearer token. updateUser() cannot
+  // be used by this stateless server client because it requires a persisted
+  // Auth session, so update only that verified user through the admin API.
+  const { error: passwordError } = await adminClient.auth.admin.updateUserById(userData.user.id, { password });
   if (passwordError) {
     if (passwordError.code === "weak_password") return json(request, { error: "더 안전한 비밀번호를 사용해 주세요." }, 400);
     return json(request, { error: "비밀번호를 변경하지 못했습니다." }, 400);
