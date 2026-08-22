@@ -5099,7 +5099,7 @@ td { font-weight: 800; }
 .password-card h1 {
   margin: 18px 0;
   font-size: 48px;
-  line-height: .95;
+  line-height: 1.15;
   letter-spacing: -.04em;
 }
 
