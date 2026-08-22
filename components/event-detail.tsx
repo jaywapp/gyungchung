@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ClipboardCheck, MapPin, Pencil, Shield, Trash2, Trophy, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ClipboardCheck, Clock3, MapPin, MoreHorizontal, Pencil, Shield, Trash2, Trophy, Users, X } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Profile } from "@/lib/types";
@@ -12,7 +12,7 @@ import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { parseEventDateKey, toEventDateKey } from "@/lib/event-date";
 import { getMomVoteEligibility, isMomVoteCandidate } from "@/lib/mom-vote";
-import { CapacityStatus, RsvpControls } from "@/components/rsvp-controls";
+import { RsvpControls } from "@/components/rsvp-controls";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type EventDetailProps = {
@@ -50,6 +50,7 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
  */
 export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
   const [votingEvent, setVotingEvent] = useState<Event | null>(null);
+  const [openManagementMenuId, setOpenManagementMenuId] = useState<string | null>(null);
   const [submittingMomCandidateId, setSubmittingMomCandidateId] = useState<string | null>(null);
   const submittingMomVoteRef = useRef(false);
   const momDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setVotingEvent(null), active: Boolean(votingEvent) });
@@ -58,6 +59,22 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
     () => events.filter((event) => toEventDateKey(event.starts_at) === dateKey).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
     [dateKey, events],
   );
+
+  useEffect(() => {
+    if (!openManagementMenuId) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Element && !event.target.closest(".event-management-menu")) setOpenManagementMenuId(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenManagementMenuId(null);
+    };
+    document.addEventListener("click", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("click", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openManagementMenuId]);
 
   useEffect(() => {
     if (loading || dayEvents.length === 0 || new URLSearchParams(window.location.search).get("section") !== "teams") return;
@@ -84,10 +101,6 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
   if (loadError) return <section className="content event-detail-page">{back}<LoadError onRetry={onRetry} /></section>;
   if (!date || dayEvents.length === 0) return <section className="content event-detail-page">{back}<Empty icon={<CalendarDays />} title="이 날짜에는 등록된 일정이 없습니다" description="주소를 다시 확인하거나 일정 목록에서 원하는 날짜를 선택해 주세요." /></section>;
 
-  const dayAttendance = attendance.filter((row) => dayEvents.some((event) => event.id === row.event_id));
-  const totalGoing = dayAttendance.filter((row) => row.status === "going").length;
-  const totalPresent = dayAttendance.filter((row) => getCheckInStatus(row) === "present").length;
-  const totalGuests = dayEvents.reduce((sum, event) => sum + (event.event_guest_players?.length ?? 0), 0);
   const dayIsPast = dayEvents.every((event) => new Date(event.starts_at) < new Date());
   const votingCandidates = votingEvent ? profiles.filter((candidate) => isMomVoteCandidate({
     candidateProfileId: candidate.id,
@@ -99,9 +112,9 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
   return <section className="content event-detail-page">
     {back}
     <header className="detail-headline">
-      <span className="eyebrow">WEEKEND SCHEDULE</span>
+      <span className="eyebrow">{date.getFullYear()} · {date.getMonth() + 1}월 · WEEKLY FUTSAL</span>
       <h1><time dateTime={`${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`}>{date.getMonth() + 1}월 {date.getDate()}일</time> <span>{date.toLocaleDateString("ko-KR", { weekday: "long" })}</span></h1>
-      <p>{date.getFullYear()}년 · 일정 {dayEvents.length}개 · {dayIsPast ? `출석 ${totalPresent}명` : `참석 예정 ${totalGoing}명`} · 용병 {totalGuests}명</p>
+      <p>일정 {dayEvents.length}개 · {dayIsPast ? "지난 일정" : "예정된 일정"}</p>
     </header>
 
     {dayEvents.map((event) => {
@@ -139,32 +152,69 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
       const winnerCount = maxScore === null ? 0 : scoredTeams.filter((team) => team.score === maxScore).length;
       const rosterVisible = Boolean(user && profile?.status === "active");
       const teamMemberCount = teams.reduce((sum, team) => sum + team.event_team_members.length, 0);
+      const myTeamNames = profile ? teams.filter((team) => team.event_team_members.some((member) => member.profile_id === profile.id)).map((team) => team.team_name) : [];
+      const eventDate = new Date(event.starts_at);
+      const eventDateLabel = eventDate.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+      const eventTimeLabel = eventDate.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
+      const minutesUntilStart = (eventDate.getTime() - Date.now()) / 60000;
+      const isStartingSoon = minutesUntilStart > 0 && minutesUntilStart <= 120;
+      const attendanceProgress = capacity.capacity === null ? 0 : Math.min(100, Math.max(0, Math.round((capacity.totalCount / capacity.capacity) * 100)));
+      const remainingLabel = capacity.capacity === null
+        ? "정원 제한 없음"
+        : (capacity.remaining ?? 0) < 0
+          ? `정원 ${Math.abs(capacity.remaining ?? 0)}명 초과`
+          : `잔여 ${capacity.remaining ?? 0}자리`;
+      const managementHint = isPast ? "경기 기록을 정리해 주세요." : isStartingSoon ? "경기 시작 전 출석을 확인해 주세요." : "참석 응답을 먼저 확인해 주세요.";
 
       return <article key={event.id} className={`event-detail${isPast ? " past" : ""}`}>
         <div className="event-detail-head">
-          <div>
-            <span className={isPast ? "status closed" : "status paid"}>{isPast ? "지난 일정" : "예정된 일정"}{event.is_competitive ? " · 커피 내기" : ""}</span>
+          <div className="event-detail-title-group">
+            <span className={isPast ? "status closed" : "status paid"}>{isPast ? "지난 일정" : "예정된 일정"}</span>
             <h2>{event.title}</h2>
+            <div className="event-detail-schedule">
+              <time dateTime={event.starts_at}><Clock3 size={16} /> {eventDateLabel} · {eventTimeLabel}</time>
+              <a className="inline-map-link" href={naverMapUrl(event)} target="_blank" rel="noreferrer"><MapPin size={16} /> {event.venue}</a>
+            </div>
+            {(myTeamNames.length > 0 || teams.length > 0 || event.is_competitive) && <div className="event-detail-chips" aria-label="일정 특성">
+              {myTeamNames.map((teamName) => <span key={teamName} className="mine">{teamName}</span>)}
+              {teams.length > 0 && <span>{teams.length}팀 편성</span>}
+              {event.is_competitive && <span>커피 내기</span>}
+            </div>}
           </div>
-          {canManage && <div className="resource-actions">
-            <button type="button" aria-label={`${event.title} 수정`} onClick={() => onEdit(event)}><Pencil size={16} /></button>
-            <button type="button" aria-label={`${event.title} 삭제`} onClick={() => onDelete(event.id, `${date.getMonth() + 1}월 ${date.getDate()}일 · ${event.title}`)}><Trash2 size={16} /></button>
+          {canManage && <div className="event-management-menu">
+            <button type="button" className="event-management-trigger" aria-label={`${event.title} 일정 메뉴`} aria-haspopup="menu" aria-expanded={openManagementMenuId === event.id} aria-controls={`event-management-${event.id}`} onClick={() => setOpenManagementMenuId((current) => current === event.id ? null : event.id)}><MoreHorizontal size={20} /></button>
+            {openManagementMenuId === event.id && <div id={`event-management-${event.id}`} className="event-management-popover" role="menu">
+              <button type="button" role="menuitem" onClick={() => { setOpenManagementMenuId(null); onEdit(event); }}><Pencil size={15} /> 일정 수정</button>
+              <button type="button" role="menuitem" onClick={() => { setOpenManagementMenuId(null); onDelete(event.id, `${date.getMonth() + 1}월 ${date.getDate()}일 · ${event.title}`); }}><Trash2 size={15} /> 일정 삭제</button>
+            </div>}
           </div>}
         </div>
 
-        <dl className="event-detail-facts">
-          <div><dt>시작 시간</dt><dd>{new Date(event.starts_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}</dd></div>
-          <div><dt>장소</dt><dd><a className="inline-map-link" href={naverMapUrl(event)} target="_blank" rel="noreferrer"><MapPin size={15} /> {event.venue}</a></dd></div>
-          <div className={`capacity-fact ${capacity.status}`}><dt>정원 현황</dt><dd><CapacityStatus capacity={capacity} detail /></dd></div>
-          <div><dt>{isPast ? "출석" : "참석 예정"}</dt><dd>{isPast ? `${presentCount}명 · 지각 ${lateCount}명 · 결석 ${absentCount}명` : `회원 ${goingCount}명 · 용병 ${guests.length}명`}</dd></div>
-        </dl>
         {event.address && <p className="event-detail-address">{event.address}</p>}
         {event.note && <p className="event-detail-note">{event.note}</p>}
 
-        <div className="event-detail-actions">
-          <RsvpControls eventTitle={event.title} startsAt={event.starts_at} status={myAttendance?.status ?? null} isAuthenticated={Boolean(user)} memberStatus={profile?.status ?? null} isLoading={sessionPending} isSaving={rsvpPendingEventIds.has(event.id)} onChange={(status) => onAttendance(status, event.id)} onLogin={onLogin} />
-          {canManage && <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className="officer-menu-item" aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className="officer-menu-item" aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>}
-        </div>
+        <section className="event-detail-block event-attendance-block" aria-labelledby={`attendance-heading-${event.id}`}>
+          <div className="event-section-heading">
+            <div><h3 id={`attendance-heading-${event.id}`}>참석 현황</h3><p>현재 등록된 인원 기준</p></div>
+            <Users size={19} aria-hidden="true" />
+          </div>
+          <div className="attendance-summary-figure">
+            <div><strong>{capacity.totalCount}</strong>{capacity.capacity !== null && <span>/ {capacity.capacity}명</span>} {capacity.capacity === null && <span>명</span>}</div>
+            <b>{remainingLabel}</b>
+          </div>
+          {capacity.capacity !== null && <div className="attendance-summary-progress" role="progressbar" aria-label={`참석 ${capacity.totalCount}명, 정원 ${capacity.capacity}명`} aria-valuemin={0} aria-valuemax={capacity.capacity} aria-valuenow={Math.min(capacity.totalCount, capacity.capacity)}><span style={{ width: `${attendanceProgress}%` }} /></div>}
+          <div className="attendance-summary-meta"><span>참석 {goingCount}명 · 용병 {guests.length}명</span>{isPast && <span>출석 {presentCount}명 · 지각 {lateCount}명 · 결석 {absentCount}명</span>}</div>
+        </section>
+
+        <section className="event-detail-block event-response-block" aria-labelledby={`response-heading-${event.id}`}>
+          <div className="event-section-heading"><div><h3 id={`response-heading-${event.id}`}>내 응답</h3><p>참석 여부를 현재 상태에 맞게 변경할 수 있습니다.</p></div><Check size={19} aria-hidden="true" /></div>
+          <RsvpControls variant="detail" eventTitle={event.title} startsAt={event.starts_at} status={myAttendance?.status ?? null} isAuthenticated={Boolean(user)} memberStatus={profile?.status ?? null} isLoading={sessionPending} isSaving={rsvpPendingEventIds.has(event.id)} onChange={(status) => onAttendance(status, event.id)} onLogin={onLogin} />
+        </section>
+
+        {canManage && <section className={`event-detail-block event-management-block${isPast ? " past-priority" : isStartingSoon ? " attendance-priority" : ""}`} aria-labelledby={`management-heading-${event.id}`}>
+          <div className="event-section-heading"><div><h3 id={`management-heading-${event.id}`}>경기 관리</h3><p>{managementHint}</p></div><Trophy size={19} aria-hidden="true" /></div>
+          <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>
+        </section>}
 
         {isPast && <section className="event-detail-block mom-vote-section">
           <h3>MOM 투표</h3>
