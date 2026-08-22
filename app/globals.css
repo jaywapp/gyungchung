@@ -1653,7 +1653,9 @@ footer a {
   gap: 6px;
 }
 
-.resource-actions button,
+/* :not(.cta) excludes text CTAs (e.g. admin-console's "새로 등록") that share
+   this container with icon-only buttons — the 44x44 square is for icons only. */
+.resource-actions button:not(.cta),
 .resource-icon-action {
   width: var(--tap);
   height: var(--tap);
