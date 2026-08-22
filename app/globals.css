@@ -860,9 +860,24 @@ footer a {
   color: var(--navy);
 }
 
+/* min-width: 0 lets this block shrink past its content's intrinsic width
+   (the flex default is auto, which would push the row wider instead) and
+   flex-wrap lets its spans stack instead of forcing that overflow — this is
+   what absorbs the squeeze from the logged-in "참석 예정" span so the
+   button beside it (kept single-line below) never has to shrink itself. */
 .schedule-foot > div {
   display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 18px;
+  min-width: 0;
+}
+
+/* Fixed to its content size and never wraps — see the flex-wrap note on
+   the sibling block above for where the squeeze goes instead. */
+.schedule-foot button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .schedule-foot span {
@@ -5239,7 +5254,7 @@ td { font-weight: 800; }
     align-items: flex-start;
   }
 
-  .schedule-foot > div { flex-wrap: wrap; }
+  /* flex-wrap already lives on the base .schedule-foot > div rule. */
   .side-stats { gap: 20px; }
 
   .locker,
