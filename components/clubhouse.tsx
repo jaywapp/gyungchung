@@ -48,6 +48,7 @@ const authResults: Record<string, { message: string; kind: ToastKind }> = {
   error: { message: "로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.", kind: "error" },
   linked: { message: "간편 로그인 계정을 연결했습니다.", kind: "success" },
   login: { message: "로그인했습니다.", kind: "success" },
+  "password-updated": { message: "비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.", kind: "success" },
 };
 
 export default function Clubhouse({ children }: { children?: React.ReactNode }) {
@@ -196,7 +197,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (!result) return;
     params.delete("auth");
     window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
-    setLoginOpen(false);
+    setLoginOpen(result === "password-updated");
     const outcome = authResults[result];
     if (outcome) showToast(outcome.message, outcome.kind);
   }, [showToast]);

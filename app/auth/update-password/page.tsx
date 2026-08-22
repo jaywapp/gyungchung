@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { FormError } from "@/components/section-states";
@@ -20,7 +19,6 @@ async function getPasswordChangeError(error: unknown) {
 }
 
 export default function UpdatePasswordPage() {
-  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -43,7 +41,8 @@ export default function UpdatePasswordPage() {
       if (error) {
         return setErrorMessage(await getPasswordChangeError(error));
       }
-      router.replace("/");
+      await supabase.auth.signOut({ scope: "local" });
+      window.location.replace("/?auth=password-updated");
     } catch {
       setErrorMessage("인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
