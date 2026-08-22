@@ -1,12 +1,18 @@
 begin;
 
-select plan(4);
+select plan(5);
 
 select has_column(
   'public',
   'profiles',
   'must_change_password',
   'profiles track whether an administrator-issued password must be replaced'
+);
+
+select is(
+  has_schema_privilege('service_role', 'private', 'USAGE'),
+  true,
+  'the service role can resolve explicitly granted private trigger helpers'
 );
 
 insert into auth.users (
