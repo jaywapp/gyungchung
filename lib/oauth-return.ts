@@ -6,6 +6,7 @@ const returnPaths = new Set([
   "/fees",
   "/members",
   "/notices",
+  "/oauth/consent",
   "/participation",
   "/rankings",
 ]);
