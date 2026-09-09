@@ -5,11 +5,11 @@ export function indexOwnSubmissions(
   profileId?: string,
 ) {
   if (!profileId) return new Map<string, ParticipationSubmission>();
-  return new Map(
-    submissions
-      .filter((submission) => submission.participant_id === profileId)
-      .map((submission) => [submission.form_id, submission]),
-  );
+  const result = new Map<string, ParticipationSubmission>();
+  for (const submission of submissions) {
+    if (submission.participant_id === profileId) result.set(submission.form_id, submission);
+  }
+  return result;
 }
 
 export function canReviewParticipationAnswers(secretBallot: boolean) {
@@ -30,9 +30,12 @@ export function formatParticipationAnswer(
 
   if (question.type === "multiple_choice") {
     if (!Array.isArray(answer)) return "선택 항목을 확인할 수 없음";
+    const options = new Map<string, string>();
+    for (const option of question.participation_options) {
+      if (!options.has(option.id)) options.set(option.id, option.label);
+    }
     const labels = answer.flatMap((optionId) => {
-      const option = question.participation_options.find((item) => item.id === optionId);
-      return option ? [option.label] : [];
+      return typeof optionId === "string" && options.has(optionId) ? [options.get(optionId)!] : [];
     });
     return labels.length > 0 ? labels.join(", ") : "선택 항목을 확인할 수 없음";
   }
