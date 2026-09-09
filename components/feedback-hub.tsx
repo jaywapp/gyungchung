@@ -7,7 +7,7 @@ import type { Feedback, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
 import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
-import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
+import { AccountConnectionNotice, Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 import { buildGithubPublicationPreview } from "@/supabase/functions/_shared/feedback-publication";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
@@ -62,7 +62,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
   const syncedIssuesRef = useRef("");
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
-  const formLocked = !user || profile?.status !== "active";
+  const formLocked = loading || loadError || !user || profile?.status !== "active";
   const membershipRestriction = getMembershipRestriction(profile);
   const linkedIssuesKey = feedback
     .filter((item) => item.github_issue_number)
@@ -155,6 +155,7 @@ export default function FeedbackHub({ user, profile, feedback, supabase, loading
         <form className="voice-form" onSubmit={submit}>
           <div className="panel-title"><Lightbulb /><span><small>NEW FEEDBACK</small><b>의견 보내기</b></span></div>
           {!user && <button type="button" className="login-callout" onClick={onLogin}>로그인하고 의견 남기기</button>}
+          {user && !loading && !loadError && !profile && <AccountConnectionNotice />}
           {membershipRestriction && <p className="form-lock-notice">{getMembershipRestrictionCopy(membershipRestriction).description}</p>}
           <fieldset disabled={formLocked || saving}>
             <label>분류<select name="category" value={category} aria-describedby="feedback-routing-notice" onChange={(event) => {

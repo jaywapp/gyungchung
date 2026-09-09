@@ -12,6 +12,14 @@ export function SectionSkeleton({ label = "불러오는 중" }: { label?: string
   return <div className="list-loading" role="status" aria-label={label}><span /><span /><span /></div>;
 }
 
+export function AccountConnectionNotice() {
+  return <div className="form-lock-notice" role="note">
+    <p><strong>운영진에게 계정 등록·연결을 요청해 주세요.</strong></p>
+    <p>회원 프로필에 연결되기 전에는 이 사이트에서 의견을 접수할 수 없습니다. 운영진에게 직접 이름과 전화번호를 알려 주시고, 이미 등록된 회원이라면 계정 연결 확인을 요청해 주세요.</p>
+    <p>운영진에게 받은 전화번호 계정이 있다면 로그아웃한 뒤 해당 계정으로 다시 로그인해 주세요.</p>
+  </div>;
+}
+
 export function LoadError({ onRetry }: { onRetry: () => void }) {
   return <div className="empty error">
     <AlertCircle />

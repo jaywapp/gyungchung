@@ -5705,11 +5705,12 @@ td { font-weight: 800; }
 
 @media (max-width: 760px) {
   .hero { min-height: 0; }
-  .hero-copy { padding: 58px 6vw; }
+  .hero-copy { padding: 28px 6vw; }
 
   .hero h1 {
-    margin-top: 20px;
-    font-size: clamp(48px, 17vw, 76px);
+    margin: 18px 0 24px;
+    font-size: clamp(32px, 10.5vw, 64px);
+    line-height: 1.15;
   }
 
   .lead-row {
@@ -5723,7 +5724,7 @@ td { font-weight: 800; }
     gap: 20px;
   }
 
-  .fixture-side { padding: 55px 6vw 60px; }
+  .fixture-side { padding: 28px 6vw 36px; }
   .schedule-card { box-shadow: 9px 9px 0 var(--green); }
 
   .schedule-head {
