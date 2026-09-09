@@ -51,6 +51,8 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
 export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
   const [votingEvent, setVotingEvent] = useState<Event | null>(null);
   const [openManagementMenuId, setOpenManagementMenuId] = useState<string | null>(null);
+  const managementMenuRef = useRef<HTMLDivElement>(null);
+  const managementMenuInitialFocusRef = useRef<"first" | "last">("first");
   const [submittingMomCandidateId, setSubmittingMomCandidateId] = useState<string | null>(null);
   const submittingMomVoteRef = useRef(false);
   const momDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setVotingEvent(null), active: Boolean(votingEvent) });
@@ -62,11 +64,17 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
 
   useEffect(() => {
     if (!openManagementMenuId) return;
+    const items = managementMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+    (managementMenuInitialFocusRef.current === "last" ? items?.[items.length - 1] : items?.[0])?.focus();
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (event.target instanceof Element && !event.target.closest(".event-management-menu")) setOpenManagementMenuId(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenManagementMenuId(null);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        document.getElementById(`event-management-trigger-${openManagementMenuId}`)?.focus();
+        setOpenManagementMenuId(null);
+      }
     };
     document.addEventListener("click", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -182,10 +190,30 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
             </div>}
           </div>
           {canManage && <div className="event-management-menu">
-            <button type="button" className="event-management-trigger" aria-label={`${event.title} 일정 메뉴`} aria-haspopup="menu" aria-expanded={openManagementMenuId === event.id} aria-controls={`event-management-${event.id}`} onClick={() => setOpenManagementMenuId((current) => current === event.id ? null : event.id)}><MoreHorizontal size={20} /></button>
-            {openManagementMenuId === event.id && <div id={`event-management-${event.id}`} className="event-management-popover" role="menu">
-              <button type="button" role="menuitem" onClick={() => { setOpenManagementMenuId(null); onEdit(event); }}><Pencil size={15} /> 일정 수정</button>
-              <button type="button" role="menuitem" onClick={() => { setOpenManagementMenuId(null); onDelete(event.id, `${date.getMonth() + 1}월 ${date.getDate()}일 · ${event.title}`); }}><Trash2 size={15} /> 일정 삭제</button>
+            <button id={`event-management-trigger-${event.id}`} type="button" className="event-management-trigger" aria-label={`${event.title} 일정 메뉴`} aria-haspopup="menu" aria-expanded={openManagementMenuId === event.id} aria-controls={`event-management-${event.id}`} onClick={() => { managementMenuInitialFocusRef.current = "first"; setOpenManagementMenuId((current) => current === event.id ? null : event.id); }} onKeyDown={(keyEvent) => {
+              if (keyEvent.key !== "ArrowDown" && keyEvent.key !== "ArrowUp") return;
+              keyEvent.preventDefault();
+              managementMenuInitialFocusRef.current = keyEvent.key === "ArrowUp" ? "last" : "first";
+              if (openManagementMenuId === event.id) {
+                const items = managementMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+                (keyEvent.key === "ArrowUp" ? items?.[items.length - 1] : items?.[0])?.focus();
+              } else setOpenManagementMenuId(event.id);
+            }}><MoreHorizontal size={20} /></button>
+            {openManagementMenuId === event.id && <div ref={managementMenuRef} id={`event-management-${event.id}`} className="event-management-popover" role="menu" aria-labelledby={`event-management-trigger-${event.id}`} onKeyDown={(keyEvent) => {
+              if (keyEvent.key === "Tab") {
+                document.getElementById(`event-management-trigger-${event.id}`)?.focus();
+                setOpenManagementMenuId(null);
+                return;
+              }
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(keyEvent.key)) return;
+              keyEvent.preventDefault();
+              const items = Array.from(keyEvent.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+              const index = items.findIndex((item) => item === document.activeElement);
+              const next = keyEvent.key === "Home" ? 0 : keyEvent.key === "End" ? items.length - 1 : (index + (keyEvent.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+              items[next]?.focus();
+            }}>
+              <button type="button" role="menuitem" tabIndex={-1} onClick={() => { document.getElementById(`event-management-trigger-${event.id}`)?.focus(); setOpenManagementMenuId(null); onEdit(event); }}><Pencil size={15} /> 일정 수정</button>
+              <button type="button" role="menuitem" tabIndex={-1} onClick={() => { document.getElementById(`event-management-trigger-${event.id}`)?.focus(); setOpenManagementMenuId(null); onDelete(event.id, `${date.getMonth() + 1}월 ${date.getDate()}일 · ${event.title}`); }}><Trash2 size={15} /> 일정 삭제</button>
             </div>}
           </div>}
         </div>
