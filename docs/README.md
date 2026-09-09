@@ -17,3 +17,5 @@
 
 - 2026-09-09 성능·안정성: [분석](runtime-resilience-20260909-analysis.md), [설계](runtime-resilience-20260909-design.md), [작업](runtime-resilience-20260909-tasks.md)
 - 2026-09-09 UX/UI 보완: [분석](ux-audit-fixes-20260909-analysis.md), [설계](ux-audit-fixes-20260909-design.md), [작업](ux-audit-fixes-20260909-tasks.md)
+
+- 2026-09-09 전화번호 로그인: [분석](phone-login-20260909-analysis.md), [설계](phone-login-20260909-design.md), [작업](phone-login-20260909-tasks.md)
