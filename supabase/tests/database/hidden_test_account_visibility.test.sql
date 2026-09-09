@@ -2,6 +2,10 @@ begin;
 
 select plan(5);
 
+insert into auth.users (id, instance_id, aud, role, raw_app_meta_data, raw_user_meta_data)
+values ('86000000-0000-0000-0000-000000000003',
+  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{}'::jsonb, '{}'::jsonb);
+
 select has_column(
   'public',
   'profiles',
@@ -14,9 +18,12 @@ values
   ('86000000-0000-0000-0000-000000000001', 'Visible Test Member', '010-8600-0001', 'member', 'monthly', false, 'active'),
   ('86000000-0000-0000-0000-000000000002', 'Hidden Test Account', '010-8600-0002', 'member', 'monthly', true, 'active');
 
+update public.profiles set auth_user_id = '86000000-0000-0000-0000-000000000003'
+where id = '86000000-0000-0000-0000-000000000001';
+
 select pg_catalog.set_config(
   'request.jwt.claim.sub',
-  '86000000-0000-0000-0000-000000000001',
+  '86000000-0000-0000-0000-000000000003',
   true
 );
 

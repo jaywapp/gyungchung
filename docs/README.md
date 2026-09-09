@@ -19,3 +19,4 @@
 - 2026-09-09 UX/UI 보완: [분석](ux-audit-fixes-20260909-analysis.md), [설계](ux-audit-fixes-20260909-design.md), [작업](ux-audit-fixes-20260909-tasks.md)
 
 - 2026-09-09 전화번호 로그인: [분석](phone-login-20260909-analysis.md), [설계](phone-login-20260909-design.md), [작업](phone-login-20260909-tasks.md)
+- 2026-09-09 운영 인증·DB: [분석](production-auth-db-analysis.md), [설계](production-auth-db-design.md), [실제 검증 결과](production-auth-db-tasks.md)
