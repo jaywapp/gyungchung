@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Link2, LogIn, LogOut, MapPin, Menu, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LogIn, LogOut, MapPin, Menu, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
@@ -15,7 +15,7 @@ import { getAccountState, getMembershipRestriction, getMembershipRestrictionCopy
 import { getEventCapacity } from "@/lib/event-capacity";
 import { eventDatePath, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
 import { applyRsvpStatus, beginRsvpSave, getRsvpCapacityWarning, restoreRsvpStatus } from "@/lib/rsvp";
-import { buildOAuthReturnPath } from "@/lib/oauth-return";
+import { createPhoneLoginCredentials, getPhoneLoginError } from "@/lib/phone-login";
 import { getLoadErrors, type LoadErrors, type LoadResource } from "@/lib/load-state";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { CapacityStatus, RsvpControls } from "@/components/rsvp-controls";
@@ -37,16 +37,10 @@ const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fee
 const tabPaths: Record<Tab, string> = { home: "/", members: "/members", fees: "/fees", notices: "/notices", events: "/events", rankings: "/rankings", feedback: "/feedback", participation: "/participation", admin: "/admin" };
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
 
-function normalizePhone(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (/^01[016789]\d{7,8}$/.test(digits)) return `+82${digits.slice(1)}`;
-  return value.trim();
-}
-
 /** Results the auth callback and the OAuth redirect hand back on the URL. */
 const authResults: Record<string, { message: string; kind: ToastKind }> = {
   error: { message: "로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.", kind: "error" },
-  linked: { message: "간편 로그인 계정을 연결했습니다.", kind: "success" },
+  "phone-only": { message: "전화번호와 비밀번호로 로그인해 주세요.", kind: "success" },
   login: { message: "로그인했습니다.", kind: "success" },
   "password-updated": { message: "비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.", kind: "success" },
 };
@@ -95,8 +89,11 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [busy, setBusy] = useState(false);
   const [rsvpPendingEventIds, setRsvpPendingEventIds] = useState<Set<string>>(() => new Set());
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
-  const authLoadKeyRef = useRef<string | undefined>(undefined);
+  const userRef = useRef<User | null>(null);
+  const memberRequestIdRef = useRef(0);
+  const publicRequestIdRef = useRef(0);
   const rsvpPendingEventIdsRef = useRef(new Set<string>());
   const toastTimerRef = useRef<number | undefined>(undefined);
 
@@ -108,7 +105,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, []);
 
   const loadPublicData = useCallback(async (showSkeleton = false) => {
-    if (!supabase) return;
+    const requestId = ++publicRequestIdRef.current;
+    const requestUserId = userRef.current?.id;
+    if (!supabase) { setPublicLoading(false); return; }
     if (showSkeleton) setPublicLoading(true);
     const [eventRes, noticeRes, formRes, venueRes] = await Promise.all([
       supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at"),
@@ -120,6 +119,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     const resolvedEventRes = eventRes.error
       ? await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at")
       : eventRes;
+    if (requestId !== publicRequestIdRef.current || requestUserId !== userRef.current?.id) return;
     setEvents(resolvedEventRes.error ? [] : ((resolvedEventRes.data as Event[] | null) ?? []).map((event) => ({ ...event, venue_id: event.venue_id ?? null })));
     setVenues(venueRes.error ? [] : (venueRes.data as Venue[] | null) ?? []);
     setNotices(noticeRes.error ? [] : (noticeRes.data as Notice[] | null) ?? []);
@@ -129,7 +129,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [supabase]);
 
   const loadMemberData = useCallback(async (currentUser?: User | null, showSkeleton = false) => {
-    if (!supabase) return;
+    const requestId = ++memberRequestIdRef.current;
+    if (!supabase) { setMemberLoading(false); return; }
     if (!currentUser) {
       setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setRawGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]);
       setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: { error: null }, profiles: { error: null }, fees: { error: null }, guestFees: { error: null }, attendance: { error: null }, feedback: { error: null }, submissions: { error: null }, rolePermissions: { error: null }, officerPermissions: { error: null }, guestPlayers: { error: null }, rankings: { error: null }, momVotes: { error: null }, momResults: { error: null }, momLeaderboard: { error: null } }) }));
@@ -152,6 +153,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       supabase.rpc("get_event_mom_results"),
       supabase.rpc("get_mom_leaderboard"),
     ]);
+    if (requestId !== memberRequestIdRef.current || currentUser.id !== userRef.current?.id) return;
     const privateProfiles = (allProfileRes.data as Profile[] | null) ?? [];
     const visibleProfiles = new Map(((profileRes.data as Profile[] | null) ?? []).map((profile) => [profile.id, profile]));
     privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
@@ -166,8 +168,6 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     setMemberLoading(false);
   }, [supabase]);
 
-  const userRef = useRef<User | null>(null);
-  useEffect(() => { userRef.current = user; }, [user]);
   const reload = useCallback(async (scope: ReloadScope = "all") => {
     await Promise.all([
       scope === "member" ? null : loadPublicData(),
@@ -176,19 +176,44 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [loadMemberData, loadPublicData]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) { setAuthLoading(false); setAuthError(true); return; }
+    let active = true;
+    const pendingTimer = window.setTimeout(() => { if (active) setAuthError(true); }, 12000);
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
       const nextUser = session?.user ?? null;
-      const authLoadKey = nextUser?.id ?? "anonymous";
-      if (authLoadKeyRef.current === authLoadKey) return;
-      authLoadKeyRef.current = authLoadKey;
+      if (userRef.current?.id !== nextUser?.id) {
+        memberRequestIdRef.current += 1;
+        publicRequestIdRef.current += 1;
+        setPublicLoading(true);
+        setMe(null);
+        setMemberLoading(true);
+      }
       userRef.current = nextUser;
       setUser(nextUser);
       setAuthLoading(false);
-      void Promise.all([loadPublicData(true), loadMemberData(nextUser, true)]);
+      setAuthError(false);
+      window.clearTimeout(pendingTimer);
     });
-    return () => data.subscription.unsubscribe();
-  }, [loadMemberData, loadPublicData, supabase]);
+    void supabase.auth.getSession().then(({ error }) => {
+      if (active && error) setAuthError(true);
+    }).catch(() => { if (active) setAuthError(true); });
+    return () => {
+      active = false;
+      memberRequestIdRef.current += 1;
+      publicRequestIdRef.current += 1;
+      window.clearTimeout(pendingTimer);
+      data.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const sessionUserId = user?.id;
+  useEffect(() => {
+    if (authLoading) return;
+    void loadMemberData(userRef.current, true);
+    // Public views also contain member-only nested rows and must follow identity changes.
+    void loadPublicData(true);
+  }, [authLoading, sessionUserId, loadMemberData, loadPublicData]);
 
   /** The auth callback reports its outcome on the URL; report it to the member. */
   useEffect(() => {
@@ -197,7 +222,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (!result) return;
     params.delete("auth");
     window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`);
-    setLoginOpen(result === "password-updated");
+    setLoginOpen(result === "password-updated" || result === "phone-only");
     const outcome = authResults[result];
     if (outcome) showToast(outcome.message, outcome.kind);
   }, [showToast]);
@@ -258,35 +283,16 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     showToast(`${target.name} 회원을 강퇴했습니다.`);
     await reload("member");
   };
-  const signIn = async (provider: "google" | "kakao") => {
-    if (!supabase) return showError(showToast, "로그인 연결을 준비 중입니다.");
-    setBusy(true);
-    const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", buildOAuthReturnPath(window.location.pathname, window.location.search, window.location.hash, "login"));
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: oauthProvider,
-      options: {
-        redirectTo: callbackUrl.toString(),
-      },
-    });
-    if (error) { showToast("로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); setBusy(false); }
-  };
   const passwordAuth = async (identifier: string, password: string) => {
     if (!supabase) return "로그인 연결을 준비 중입니다.";
+    const credentials = createPhoneLoginCredentials(identifier, password);
+    if (!credentials) return "올바른 휴대전화 번호를 입력해 주세요.";
     setBusy(true);
     try {
-      const result = identifier.includes("@")
-        ? await supabase.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password })
-        : await supabase.auth.signInWithPassword({ phone: normalizePhone(identifier), password: password === "1234" ? "gyungchung-1234" : password });
-      if (result.error) {
-        if (result.error.code === "invalid_credentials") return "로그인 정보를 확인하거나 운영진에게 문의해 주세요.";
-        if (result.error.code === "weak_password") return "더 안전한 비밀번호를 사용해 주세요.";
-        if (result.error.code?.includes("rate_limit")) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
-        return "로그인하지 못했습니다. 입력 정보를 확인해 주세요.";
-      }
+      const result = await supabase.auth.signInWithPassword(credentials);
+      if (result.error) return getPhoneLoginError(result.error);
       setLoginOpen(false);
-      if (!identifier.includes("@") && password === "1234") {
+      if (password === "1234") {
         router.replace("/auth/update-password");
         return null;
       }
@@ -298,16 +304,21 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       setBusy(false);
     }
   };
-  const linkIdentity = async (provider: "google" | "kakao") => {
-    if (!supabase) return;
+  const signOut = async () => {
+    if (!supabase || busy) return;
     setBusy(true);
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", buildOAuthReturnPath(window.location.pathname, window.location.search, window.location.hash, "linked"));
-    const oauthProvider = provider === "kakao" ? "custom:kakao" : provider;
-    const { error } = await supabase.auth.linkIdentity({ provider: oauthProvider, options: { redirectTo: callbackUrl.toString() } });
-    if (error) { setBusy(false); showToast("간편 로그인 계정을 연결하지 못했습니다.", "error"); }
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) return showToast("로그아웃을 완료하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.", "error");
+      setAccountOpen(false);
+      navigate("home");
+      showToast("로그아웃했습니다.");
+    } catch {
+      showToast("인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error");
+    } finally {
+      setBusy(false);
+    }
   };
-  const signOut = async () => { await supabase?.auth.signOut(); navigate("home"); showToast("로그아웃했습니다."); };
   const setMyAttendance = async (status: Attendance["status"], eventId = upcoming?.id) => {
     if (!eventId || !supabase) return;
     if (!user) return setLoginOpen(true);
@@ -353,6 +364,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     </header>
 
     <main id="main">
+      {authError && <aside className="approval-banner" role="alert"><AlertCircle /><div><b>로그인 상태를 확인하지 못했습니다</b><p>연결 상태를 확인한 뒤 다시 연결해 주세요.</p><button type="button" className="text-link" onClick={() => window.location.reload()}>다시 연결</button></div></aside>}
       {membershipRestriction && <aside className={`approval-banner ${membershipRestriction}`} role="status"><Shield size={20} /><div><span>{getMembershipRestrictionCopy(membershipRestriction).label}</span><b>{getMembershipRestrictionCopy(membershipRestriction).title}</b><p>{getMembershipRestrictionCopy(membershipRestriction).description}</p></div></aside>}
       {view === "home" && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} profile={me} sessionPending={sessionPending} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} onRetryFees={() => void loadMemberData(userRef.current, true)} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
       {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
@@ -371,8 +383,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
-    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onSignIn={signIn} onPasswordAuth={passwordAuth} />}
-    {accountOpen && user && (accountState === "member" && me ? <AccountModal user={user} profile={me} busy={busy} onClose={() => setAccountOpen(false)} onLink={linkIdentity} onSignOut={async () => { setAccountOpen(false); await signOut(); }} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={async () => { setAccountOpen(false); await signOut(); }} />)}
+    {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
+    {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
@@ -381,13 +393,14 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   </div>;
 }
 
-function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean; onClose: () => void; onSignIn: (provider: "google" | "kakao") => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null> }) {
+function LoginModal({ busy, onClose, onPasswordAuth }: { busy: boolean; onClose: () => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null> }) {
   const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
   const [phone, setPhone] = useState("");
-  const [legacyEmail, setLegacyEmail] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setErrorMessage(null);
+    event.preventDefault();
+    if (busy) return;
+    setErrorMessage(null);
     const form = new FormData(event.currentTarget);
     const error = await onPasswordAuth(phone, String(form.get("password") ?? ""));
     if (error) setErrorMessage(error);
@@ -400,25 +413,20 @@ function LoginModal({ busy, onClose, onSignIn, onPasswordAuth }: { busy: boolean
       <p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p>
       <p className="form-description">처음 이용하시나요? 경충FC는 운영진이 회원 프로필과 로그인 계정을 직접 등록합니다. 운영진에게 이름과 전화번호를 알려 계정 등록을 요청해 주세요.</p>
       <form className="password-auth-form" onSubmit={submit}>
-        <label>{legacyEmail ? "기존 이메일" : "전화번호"}<input name="phone" type={legacyEmail ? "email" : "tel"} required inputMode={legacyEmail ? "email" : "tel"} autoComplete={legacyEmail ? "email" : "tel"} placeholder={legacyEmail ? "member@example.com" : "010-1234-5678"} pattern={legacyEmail ? undefined : "01[016789]-?[0-9]{3,4}-?[0-9]{4}"} value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label>
-        <label>비밀번호<input name="password" type="password" required minLength={legacyEmail ? 6 : 4} autoComplete="current-password" placeholder="비밀번호 입력" /></label>
+        <label>전화번호<input name="phone" type="tel" required inputMode="tel" autoComplete="username" placeholder="010-1234-5678" value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label>
+        <label>비밀번호<input name="password" type="password" required minLength={4} autoComplete="current-password" placeholder="비밀번호 입력" /></label>
         {errorMessage && <FormError id="login-error" message={errorMessage} />}
-        <button className="cta" disabled={busy}>{busy ? "처리 중…" : legacyEmail ? "이메일로 로그인" : "전화번호로 로그인"}</button>
-        <small>{legacyEmail ? "기존 이메일 계정의 비밀번호를 입력해 주세요." : "운영진에게 안내받은 초기 비밀번호로 로그인한 뒤 새 비밀번호를 설정해 주세요."}</small>
-        <button type="button" className="password-reset-link" onClick={() => { setLegacyEmail((value) => !value); setPhone(""); setErrorMessage(null); }}>{legacyEmail ? "전화번호로 로그인" : "기존 이메일 계정 로그인"}</button>
+        <button className="cta" disabled={busy}>{busy ? "로그인 중…" : "전화번호로 로그인"}</button>
+        <small>초기 비밀번호로 로그인한 뒤에는 새 비밀번호를 설정해 주세요.</small>
       </form>
-      <div className="auth-divider"><span>또는</span></div>
-      <button type="button" className="social kakao" disabled={busy} onClick={() => onSignIn("kakao")}><span>●</span> 카카오로 로그인</button>
-      <button type="button" className="social google" disabled={busy} onClick={() => onSignIn("google")}><span>G</span> Google로 로그인</button>
-      <small>카카오·Google 로그인은 마이페이지에서 미리 연결한 회원만 사용할 수 있습니다.</small>
-    </div>
+      <p className="form-description">로그인 상태는 이 브라우저에 저장되어 새로고침하거나 다시 방문해도 유지됩니다. 공용 기기에서는 사용 후 로그아웃해 주세요.</p>
+        </div>
   </div>;
 }
 
-function AccountModal({ user, profile, busy, onClose, onLink, onSignOut }: { user: User; profile: Profile; busy: boolean; onClose: () => void; onLink: (provider: "google" | "kakao") => void; onSignOut: () => Promise<void> }) {
+function AccountModal({ profile, busy, onClose, onSignOut }: { profile: Profile; busy: boolean; onClose: () => void; onSignOut: () => Promise<void> }) {
   const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
-  const providers = new Set((user.identities ?? []).map((identity) => identity.provider));
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">간편 로그인 계정을 연결하면 다음부터 해당 계정으로도 로그인할 수 있습니다.</p><button type="button" className="social kakao" disabled={busy || providers.has("custom:kakao")} onClick={() => onLink("kakao")}><Link2 size={17} /> {providers.has("custom:kakao") ? "카카오 연결됨" : "카카오 계정 연결"}</button><button type="button" className="social google" disabled={busy || providers.has("google")} onClick={() => onLink("google")}><Link2 size={17} /> {providers.has("google") ? "Google 연결됨" : "Google 계정 연결"}</button><button type="button" className="cta secondary" onClick={() => void onSignOut()}><LogOut size={17} /> 로그아웃</button></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">등록된 전화번호와 비밀번호로 로그인합니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요.</p><button type="button" className="cta secondary" disabled={busy} onClick={() => void onSignOut()}><LogOut size={17} /> {busy ? "로그아웃 중…" : "로그아웃"}</button></div></div>;
 }
 
 function UnlinkedAccountModal({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => Promise<void> }) {

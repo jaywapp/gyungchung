@@ -137,7 +137,6 @@ textarea:focus-visible,
 .pin,
 .video-banner small,
 .mom-candidates span,
-.auth-divider,
 .event-team-badge,
 footer {
   font-family: var(--font-display), var(--font-sans), sans-serif;
@@ -434,7 +433,6 @@ footer a {
    stays tight to the baseline at any target size. */
 .text-link,
 .panel-link,
-.password-reset-link,
 .schedule-foot button,
 .schedule-empty button {
   display: inline-flex;
@@ -456,12 +454,6 @@ footer a {
   margin-top: auto;
   align-self: flex-start;
   font-size: 12px;
-}
-
-.password-reset-link {
-  display: flex;
-  width: max-content;
-  margin: 15px auto 0;
 }
 
 .schedule-foot button,
@@ -4990,43 +4982,6 @@ td { font-weight: 800; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-}
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0 10px;
-  color: var(--muted);
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-
-.social {
-  width: 100%;
-  height: 52px;
-  margin-top: 10px;
-  border: 0;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.social span { margin-right: 9px; }
-
-.social.kakao {
-  background: var(--kakao);
-  color: var(--kakao-ink);
-}
-
-.social.google {
-  border: 1px solid var(--line);
-  background: var(--surface);
 }
 
 .oauth-consent-page {
