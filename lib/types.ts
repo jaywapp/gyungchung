@@ -238,6 +238,9 @@ export interface FeedbackFeedItem {
   body: string;
   status: Feedback["status"];
   officer_response: string | null;
+  github_issue_number: number | null;
+  github_issue_url: string | null;
+  github_issue_state: "open" | "closed" | null;
   created_at: string;
 }
 

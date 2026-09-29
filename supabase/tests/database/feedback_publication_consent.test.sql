@@ -58,13 +58,13 @@ select results_eq(
   $$,
   $$
     values
-      ('system'::text, true, false, false, true, 'not_requested'::text),
-      ('system'::text, false, false, false, true, 'not_requested'::text),
+      ('system'::text, true, true, true, true, 'pending'::text),
+      ('system'::text, false, true, true, true, 'pending'::text),
       ('system'::text, true, false, false, true, 'not_requested'::text),
       ('operation'::text, true, false, false, true, 'not_requested'::text),
       ('operation'::text, false, false, false, true, 'not_requested'::text)
   $$,
-  'new feedback cannot be published to GitHub regardless of legacy consent fields'
+  'anonymous and identified system feedback require consent while general feedback remains internal'
 );
 
 select * from finish();

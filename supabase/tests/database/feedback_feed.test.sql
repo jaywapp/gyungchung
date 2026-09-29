@@ -1,6 +1,6 @@
 begin;
 
-select plan(8);
+select plan(9);
 
 insert into public.profiles (id, name, phone, role, fee_plan, status)
 values
@@ -45,6 +45,19 @@ where id = '89120000-0000-0000-0000-000000000001';
 select is((select status::text || ':' || officer_response from public.feedback_feed
   where feedback_id = '89120000-0000-0000-0000-000000000001'), 'resolved:Completed',
   'status and manager answer stay in sync');
+
+update public.feedback
+set publish_to_github = true,
+    github_publication_consented_at = now(),
+    github_publication_status = 'published',
+    github_issue_number = 999999,
+    github_issue_url = 'https://github.com/jaywapp/gyungchung/issues/999999',
+    github_issue_state = 'open'
+where id = '89120000-0000-0000-0000-000000000001';
+select is((select github_issue_number::text || ':' || github_issue_state
+  from public.feedback_feed
+  where feedback_id = '89120000-0000-0000-0000-000000000001'), '999999:open',
+  'GitHub issue metadata stays in sync with the member feed');
 
 select * from finish();
 rollback;
