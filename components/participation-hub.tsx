@@ -14,6 +14,7 @@ import ConfirmDialog from "@/components/confirm-dialog";
 import { createSubmittedAnswers, findFirstMissingRequiredQuestion, getRequiredQuestionIdFromRpcError, type ParticipationAnswerValue } from "@/lib/participation-validation";
 import { canReviewParticipationAnswers, formatParticipationAnswer, indexOwnSubmissions } from "@/lib/submission-history";
 import { parseParticipationResults } from "@/lib/participation-results";
+import { formatDeadline, isParticipationClosed } from "@/lib/participation-deadline";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
@@ -181,10 +182,11 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
           const submission = ownSubmissions.get(form.id);
           const isDone = Boolean(submission);
           const canManageForm = manageableKinds.includes(form.kind);
-          return <article className="participation-card" key={form.id}>
+          const isClosed = isParticipationClosed(form);
+          return <article className={`participation-card${isClosed ? " closed" : ""}`} key={form.id}>
             <div className="participation-icon"><Icon /></div>
-            <div className="participation-copy"><small>{kindMeta[form.kind].label} · {form.status === "open" ? "진행 중" : "마감"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
-            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}{form.status === "closed" && form.show_results && <button type="button" className="text-link" onClick={() => void openResults(form)} disabled={resultsLoadingId === form.id}>{resultsLoadingId === form.id ? "결과 불러오는 중…" : "결과 보기"}</button>}{isDone ? <button type="button" className="done-button" onClick={() => setReviewId(form.id)}><Check size={16} /> 내 응답 보기</button> : <button className="cta small" disabled={form.status !== "open" || Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => openForm(form)}>{form.status === "open" ? "참여하기" : "마감됨"}</button>}{membershipRestriction && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
+            <div className="participation-copy"><small>{kindMeta[form.kind].label} · {isClosed ? "마감" : "진행 중"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
+            <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}{form.status === "closed" && form.show_results && <button type="button" className="text-link" onClick={() => void openResults(form)} disabled={resultsLoadingId === form.id}>{resultsLoadingId === form.id ? "결과 불러오는 중…" : "결과 보기"}</button>}{isDone ? <button type="button" className="done-button" onClick={() => setReviewId(form.id)}><Check size={16} /> 내 응답 보기</button> : !isClosed && <button className="cta small" disabled={Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => openForm(form)}>참여하기</button>}{membershipRestriction && !isClosed && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
           </article>;
         })}
         {forms.length === 0 && <Empty icon={<Vote />} title="현재 공개된 참여 항목이 없습니다" description="새 선거, 투표 또는 설문이 열리면 이곳에 표시됩니다." />}
@@ -231,13 +233,6 @@ function QuestionField({ question, index, value, error, onChange }: { question: 
     {question.type === "rating" && <div className="rating-row">{Array.from({ length: (question.max_value ?? 5) - (question.min_value ?? 1) + 1 }, (_, i) => i + (question.min_value ?? 1)).map((score) => <label key={score}><input type="radio" name={question.id} required={required} value={score} checked={value === score} onChange={(event) => onChange(event.target.value)} /><span>{score}</span></label>)}</div>}
     {error && <p id={errorId} className="question-error" role="alert">{error}</p>}
   </fieldset>;
-}
-
-function formatDeadline(value: string) {
-  const deadline = new Date(value);
-  const remainingDays = Math.ceil((deadline.getTime() - Date.now()) / 86_400_000);
-  const relative = remainingDays < 0 ? "마감" : remainingDays === 0 ? "오늘 마감" : `D-${remainingDays}`;
-  return `${deadline.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", weekday: "short" })} ${deadline.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })} 마감 · ${relative}`;
 }
 
 function formatSubmittedAt(value: string) {
