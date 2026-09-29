@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export type Section = "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "admin";
+export type Section = "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "updates" | "admin";
 
 const sections: Record<Section, { title: string; description: string; indexed?: false }> = {
   members: { title: "회원 | 경충FC", description: "승인된 경충FC 회원 명단을 확인합니다." },
@@ -10,6 +10,7 @@ const sections: Record<Section, { title: string; description: string; indexed?: 
   rankings: { title: "랭킹 | 경충FC", description: "출석, 회비, 득점 및 MOM 기록으로 집계한 경충FC 클럽 랭킹입니다." },
   feedback: { title: "사용자 의견 | 경충FC", description: "경충FC 운영과 시스템에 관한 의견을 전달합니다." },
   participation: { title: "투표·설문 | 경충FC", description: "경충FC 선거, 의사결정 투표와 설문에 참여합니다." },
+  updates: { title: "업데이트 노트 | 경충FC", description: "경충FC 사이트에 새로 추가되거나 개선된 기능을 날짜순으로 확인합니다." },
   admin: { title: "운영 관리 | 경충FC", description: "경충FC 운영진 전용 관리 화면입니다.", indexed: false },
 };
 
