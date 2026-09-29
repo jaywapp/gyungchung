@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, ExternalLink, Github, Lightbulb, Link2, MessageSquareText, Pencil, Send, Trash2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { CheckCircle2, ChevronDown, ExternalLink, Github, Lightbulb, Link2, MessageSquareText, Pencil, Send, Trash2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { Feedback, FeedbackFeedItem, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
@@ -30,6 +30,14 @@ const statusLabels: Record<Feedback["status"], string> = {
   closed: "종결",
 };
 
+/** The list grows ten titles at a time instead of rendering every report at once. */
+const PAGE_SIZE = 10;
+
+function ShowMore({ total, visible, onMore }: { total: number; visible: number; onMore: () => void }) {
+  if (total <= visible) return null;
+  return <button type="button" className="show-more" onClick={onMore}>더 보기 <small>남은 {total - visible}건</small></button>;
+}
+
 function FeedbackCard({ item, visibility, editable, publication, saving, onEdit, onDelete, onRetryPublish }: {
   item: FeedbackCardData;
   visibility: string;
@@ -43,8 +51,10 @@ function FeedbackCard({ item, visibility, editable, publication, saving, onEdit,
   const answer = item.officer_response ? splitResponseLinks(item.officer_response) : null;
   // The card already links its own GitHub issue, so the answer does not repeat it.
   const answerLinks = answer?.links.filter((link) => link.url !== item.github_issue_url) ?? [];
+  const detailId = useId();
+  const [open, setOpen] = useState(false);
   return (
-    <article className="feedback-card">
+    <article className={"feedback-card" + (open ? " open" : "")}>
       <div>
         <span className="feedback-statuses">
           <span className={"status " + item.status}>{statusLabels[item.status]}</span>
@@ -57,14 +67,18 @@ function FeedbackCard({ item, visibility, editable, publication, saving, onEdit,
           <button type="button" aria-label={item.title + " 삭제"} onClick={() => onDelete(item.id, item.title)}><Trash2 size={16} /></button>
         </span>}
       </div>
-      <h3>{item.title}</h3>
+      {/* The list reads as titles; each opens in place to its body, issue link and answer. */}
+      <h3><button type="button" className="feedback-toggle" aria-expanded={open} aria-controls={detailId} onClick={() => setOpen((value) => !value)}><span>{item.title}</span>{answer && !open && <small>답변 있음</small>}<ChevronDown size={18} aria-hidden="true" /></button></h3>
+      <div id={detailId} className="feedback-detail" hidden={!open}>
       <p>{item.body}</p>
       {item.github_issue_url && <a className="github-issue-link" href={item.github_issue_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub Issue #{item.github_issue_number} <ExternalLink size={14} /></a>}
+      {answer && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>AI 답변</b>{answer.body}{answerLinks.length > 0 && <span className="answer-links">{answerLinks.map((link) => <a key={link.url} className="github-issue-link" href={link.url} target="_blank" rel="noreferrer">{link.label.startsWith("GitHub") ? <Github size={16} /> : <Link2 size={16} />} {link.label} <ExternalLink size={14} /></a>)}</span>}</span></div>}
+      </div>
+      {/* A failed publication needs the retry even while the card is folded. */}
       {publication?.publish_to_github && !publication.github_issue_url && <div className={"github-publication-state " + publication.github_publication_status}>
         <p role={publication.github_publication_status === "failed" ? "alert" : "status"}>{publication.github_publication_status === "failed" ? publication.github_publication_error ?? "GitHub 공개 등록에 실패했습니다. 원본 제보는 접수되어 있습니다." : "GitHub 공개 등록이 아직 완료되지 않았습니다. 원본 제보는 접수되어 있습니다."}</p>
         <button type="button" className="github-retry" disabled={saving} onClick={() => onRetryPublish(item.id)}><Github size={16} /> GitHub 공개 등록 다시 시도</button>
       </div>}
-      {answer && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>AI 답변</b>{answer.body}{answerLinks.length > 0 && <span className="answer-links">{answerLinks.map((link) => <a key={link.url} className="github-issue-link" href={link.url} target="_blank" rel="noreferrer">{link.label.startsWith("GitHub") ? <Github size={16} /> : <Link2 size={16} />} {link.label} <ExternalLink size={14} /></a>)}</span>}</span></div>}
     </article>
   );
 }
@@ -93,6 +107,7 @@ export default function FeedbackHub({ user, profile, feedback, feedbackFeed, sup
   const [shareWithMembers, setShareWithMembers] = useState(true);
   const [githubConsent, setGithubConsent] = useState(false);
   const [historyTab, setHistoryTab] = useState<"shared" | "mine">("shared");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const syncedIssuesRef = useRef("");
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
@@ -233,15 +248,15 @@ export default function FeedbackHub({ user, profile, feedback, feedbackFeed, sup
         <div className="voice-history">
           <div className="section-heading compact"><div><h2>제보 목록</h2></div>{!loading && !loadError && <span>{historyTab === "shared" ? feedbackFeed.length : myFeedback.length}건</span>}</div>
           <div className="feedback-tabs" role="group" aria-label="제보 목록 선택">
-            <button type="button" aria-pressed={historyTab === "shared"} onClick={() => setHistoryTab("shared")}>회원 제보</button>
-            <button type="button" aria-pressed={historyTab === "mine"} onClick={() => setHistoryTab("mine")}>내 제보</button>
+            <button type="button" aria-pressed={historyTab === "shared"} onClick={() => { setHistoryTab("shared"); setVisibleCount(PAGE_SIZE); }}>회원 제보</button>
+            <button type="button" aria-pressed={historyTab === "mine"} onClick={() => { setHistoryTab("mine"); setVisibleCount(PAGE_SIZE); }}>내 제보</button>
           </div>
           {loading ? <SectionSkeleton label="제보 목록을 불러오는 중" /> : loadError ? <LoadError onRetry={onRetry} /> : historyTab === "shared" ? (
             !user || profile?.status !== "active" ? <Empty icon={<MessageSquareText />} title="회원 제보는 활동 회원에게 공개됩니다" description="로그인과 회원 승인이 완료되면 목록을 볼 수 있습니다." /> :
             feedbackFeed.length === 0 ? <Empty icon={<MessageSquareText />} title="공개된 제보가 없습니다" description="첫 제보를 남겨 주세요." /> :
-            feedbackFeed.map((item) => <FeedbackCard key={item.feedback_id} item={{ ...item, id: item.feedback_id }} visibility="회원 공개" editable={canManage ? feedback.find((source) => source.id === item.feedback_id) : undefined} saving={saving} onEdit={onEdit} onDelete={onDelete} onRetryPublish={(id) => void retryGithubPublish(id)} />)
+            <>{feedbackFeed.slice(0, visibleCount).map((item) => <FeedbackCard key={item.feedback_id} item={{ ...item, id: item.feedback_id }} visibility="회원 공개" editable={canManage ? feedback.find((source) => source.id === item.feedback_id) : undefined} saving={saving} onEdit={onEdit} onDelete={onDelete} onRetryPublish={(id) => void retryGithubPublish(id)} />)}<ShowMore total={feedbackFeed.length} visible={visibleCount} onMore={() => setVisibleCount((count) => count + PAGE_SIZE)} /></>
           ) : myFeedback.length === 0 ? <Empty icon={<MessageSquareText />} title="아직 접수한 제보가 없습니다" description="작은 아이디어도 팀을 더 좋게 만듭니다." /> :
-            myFeedback.map((item) => <FeedbackCard key={item.id} item={item} visibility={item.share_with_members ? "회원 공개" : "비공개"} editable={canManage ? item : undefined} publication={item} saving={saving} onEdit={onEdit} onDelete={onDelete} onRetryPublish={(id) => void retryGithubPublish(id)} />)}
+            <>{myFeedback.slice(0, visibleCount).map((item) => <FeedbackCard key={item.id} item={item} visibility={item.share_with_members ? "회원 공개" : "비공개"} editable={canManage ? item : undefined} publication={item} saving={saving} onEdit={onEdit} onDelete={onDelete} onRetryPublish={(id) => void retryGithubPublish(id)} />)}<ShowMore total={myFeedback.length} visible={visibleCount} onMore={() => setVisibleCount((count) => count + PAGE_SIZE)} /></>}
         </div>
       </div>
     </section>
