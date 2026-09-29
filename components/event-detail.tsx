@@ -33,6 +33,7 @@ type EventDetailProps = {
   onEdit: (event: Event) => void;
   onManageMatch: (event: Event) => void;
   onManageAttendance: (event: Event) => void;
+  onManageWinners: (event: Event) => void;
   onDelete: (id: string, label: string) => void;
   onAttendance: (status: Attendance["status"], eventId?: string) => void;
   onLogin: () => void;
@@ -48,7 +49,7 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
  * dates, so everything that describes a single outing — roster, teams, match
  * results, MOM — is read here instead of being stacked into every list row.
  */
-export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
+export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
   const [votingEvent, setVotingEvent] = useState<Event | null>(null);
   const [openManagementMenuId, setOpenManagementMenuId] = useState<string | null>(null);
   const managementMenuRef = useRef<HTMLDivElement>(null);
@@ -241,7 +242,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
 
         {canManage && <section className={`event-detail-block event-management-block${isPast ? " past-priority" : isStartingSoon ? " attendance-priority" : ""}`} aria-labelledby={`management-heading-${event.id}`}>
           <div className="event-section-heading"><div><h3 id={`management-heading-${event.id}`}>경기 관리</h3><p>{managementHint}</p></div><Trophy size={19} aria-hidden="true" /></div>
-          <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>
+          <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button><button type="button" className="officer-menu-item" onClick={() => onManageWinners(event)}><Trophy size={17} /> 우승 명단</button></div>
         </section>}
 
         {isPast && <section className="event-detail-block mom-vote-section">

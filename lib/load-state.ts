@@ -1,7 +1,7 @@
 export const loadResources = [
   "events", "notices", "forms", "venues",
   "memberDirectory", "profiles", "fees", "guestFees", "attendance", "feedback", "feedbackFeed", "submissions",
-  "rolePermissions", "officerPermissions", "guestPlayers", "rankings", "momVotes", "momResults", "momLeaderboard",
+  "rolePermissions", "officerPermissions", "guestPlayers", "rankings", "winners", "momVotes", "momResults", "momLeaderboard",
 ] as const;
 
 export type LoadResource = typeof loadResources[number];

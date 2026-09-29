@@ -55,6 +55,7 @@ export interface Event {
   capacity: number | null;
   is_competitive: boolean;
   team_mode: "random" | "balanced" | null;
+  weekly_date?: string | null;
   event_guest_players?: EventGuestPlayer[];
   event_teams?: EventTeam[];
   event_matches?: EventMatch[];
