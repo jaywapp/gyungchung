@@ -3582,6 +3582,49 @@ td { font-weight: 800; }
 
 .github-publication-state .github-retry { margin-top: 8px; }
 
+.feedback-privacy-notice {
+  margin: 14px 0 18px;
+  padding: 12px;
+  background: var(--note-bg);
+  color: var(--note-ink);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.feedback-tabs {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.feedback-tabs button {
+  min-height: var(--tap);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.feedback-tabs button[aria-pressed="true"] {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--surface);
+}
+
+.feedback-visibility {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 9px;
+  background: var(--neutral-bg);
+  color: var(--neutral-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .feedback-card {
   padding: 22px 0;
   border-bottom: 1px solid var(--line);

@@ -216,6 +216,7 @@ export interface Feedback {
   title: string;
   body: string;
   is_anonymous: boolean;
+  share_with_members: boolean;
   status: "received" | "reviewing" | "resolved" | "closed";
   officer_response: string | null;
   publish_to_github: boolean;
@@ -227,6 +228,19 @@ export interface Feedback {
   github_issue_url: string | null;
   github_issue_state: "open" | "closed" | null;
   github_issue_closed_at: string | null;
+  created_at: string;
+}
+
+export interface FeedbackFeedItem {
+  feedback_id: string;
+  category: Feedback["category"];
+  title: string;
+  body: string;
+  status: Feedback["status"];
+  officer_response: string | null;
+  github_issue_number: number | null;
+  github_issue_url: string | null;
+  github_issue_state: "open" | "closed" | null;
   created_at: string;
 }
 
