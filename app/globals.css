@@ -311,10 +311,7 @@ footer {
 /* --------------------------------------------------------------------------
    Shell — top bar, navigation, footer
    -------------------------------------------------------------------------- */
-.page {
-  min-height: 100dvh;
-  background: linear-gradient(90deg, transparent 0, transparent 6.45%, var(--line) 6.5%, transparent 6.55%);
-}
+.page { min-height: 100dvh; }
 
 .topbar {
   position: sticky;
@@ -370,9 +367,9 @@ footer {
 }
 
 .brand-copy strong {
-  font-size: 25px;
+  font-size: 28px;
   font-weight: 900;
-  letter-spacing: -.03em;
+  letter-spacing: -.02em;
 }
 
 .brand-copy small { color: var(--muted); }
@@ -535,7 +532,7 @@ footer a {
   height: var(--tap);
   min-height: var(--tap);
   padding: 0 17px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .cta.secondary {
@@ -652,7 +649,7 @@ footer a {
 .empty h2 {
   margin-bottom: 0;
   color: var(--ink);
-  font-size: 21px;
+  font-size: 20px;
 }
 
 .empty.error > svg { color: var(--danger-ink); }
@@ -799,7 +796,7 @@ footer a {
 }
 
 .lead-row strong {
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.15;
   letter-spacing: .06em;
 }
@@ -885,7 +882,7 @@ footer a {
 }
 
 .schedule-head strong {
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0;
 }
 
@@ -907,7 +904,7 @@ footer a {
 }
 
 .schedule-date small {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -919,7 +916,7 @@ footer a {
 
 .schedule-date span {
   margin-top: 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -932,9 +929,9 @@ footer a {
 
 .schedule-copy h2 {
   margin: 8px 0 24px;
-  font-size: 29px;
+  font-size: 28px;
   line-height: 1.12;
-  letter-spacing: -.035em;
+  letter-spacing: -.02em;
 }
 
 .schedule-copy dl {
@@ -1037,8 +1034,8 @@ footer a {
 
 .schedule-empty h2 {
   margin: 8px 0 10px;
-  font-size: 30px;
-  letter-spacing: -.035em;
+  font-size: 28px;
+  letter-spacing: -.02em;
 }
 
 .schedule-empty p {
@@ -1131,12 +1128,12 @@ footer a {
 
 .section-heading h2 {
   margin: 8px 0 0;
-  font-size: 36px;
-  letter-spacing: -.04em;
+  font-size: 32px;
+  letter-spacing: -.02em;
 }
 
 .section-heading.compact { margin-bottom: 15px; }
-.section-heading.compact h2 { font-size: 27px; }
+.section-heading.compact h2 { font-size: 28px; }
 
 .panel-grid {
   display: grid;
@@ -1145,7 +1142,6 @@ footer a {
 }
 
 .panel {
-  min-height: 270px;
   display: flex;
   flex-direction: column;
   padding: 28px;
@@ -1179,7 +1175,7 @@ footer a {
 
 .panel-title h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .panel > p {
@@ -1189,7 +1185,7 @@ footer a {
 
 .panel-headline {
   margin: 24px 0 0;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 900;
   line-height: 1.25;
 }
@@ -1291,7 +1287,7 @@ footer a {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 17px;
+  font-size: 16px;
   letter-spacing: -.02em;
 }
 
@@ -1314,7 +1310,7 @@ footer a {
   padding: 0 16px;
   border: 1px solid var(--ink);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .rsvp-control.detail-mode .rsvp-actions button.primary {
@@ -1365,7 +1361,7 @@ footer a {
 }
 
 .rsvp-schedule > time {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 900;
 }
 
@@ -1460,13 +1456,21 @@ footer a {
 
 .fee-amount {
   margin: 28px 0 10px;
-  font-size: 29px;
+  font-size: 28px;
   font-weight: 900;
+}
+
+/* An empty panel says so in body-size grey, never at headline size. */
+.panel-empty {
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .fee-panel-note {
   margin: 10px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -1519,7 +1523,7 @@ footer a {
 }
 
 .fee-standing-figure span {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
   line-height: 1.5;
 }
@@ -1603,7 +1607,7 @@ footer a {
 
 .fee-month-head span {
   margin-left: auto;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -1651,7 +1655,7 @@ footer a {
   gap: 3px;
 }
 
-.fee-entry-basis b { font-size: 15px; }
+.fee-entry-basis b { font-size: 16px; }
 
 .fee-entry-basis small {
   color: var(--muted);
@@ -1660,7 +1664,7 @@ footer a {
 }
 
 .fee-entry-amount {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
   white-space: nowrap;
 }
@@ -1671,20 +1675,26 @@ footer a {
   font-weight: 800;
 }
 
+/* Title, filter and the register action share one row; totals sit below it. */
 .fee-ledger-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.fee-ledger-head h2 {
+  margin: 0 auto 0 0;
+  font-size: 20px;
+  letter-spacing: -.02em;
 }
 
 .fee-ledger-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, auto));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
-  margin: 0;
+  margin: 0 0 22px;
   border: 1px solid var(--line);
   background: var(--line);
   border-radius: var(--radius-card);
@@ -1701,7 +1711,7 @@ footer a {
 
 .fee-ledger-summary dd {
   margin: 0;
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 900;
 }
 
@@ -1757,7 +1767,7 @@ footer a {
   background: var(--highlight);
   color: var(--on-highlight);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
   letter-spacing: normal;
 }
@@ -1790,7 +1800,7 @@ footer a {
   margin-left: auto;
   color: var(--muted);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   letter-spacing: normal;
 }
@@ -1836,7 +1846,7 @@ footer a {
 }
 
 .video-banner small { letter-spacing: .16em; }
-.video-banner b { font-size: 23px; }
+.video-banner b { font-size: 20px; }
 
 .video-banner > svg {
   width: 30px;
@@ -1858,14 +1868,14 @@ footer a {
 
 .page-intro h1 {
   margin: 17px 0 20px;
-  font-size: clamp(46px, 6vw, 92px);
+  font-size: clamp(32px, 5vw, 56px);
   line-height: 1.02;
-  letter-spacing: -.045em;
+  letter-spacing: -.02em;
 }
 
 .page-intro p {
   color: var(--body);
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.7;
 }
 
@@ -1884,7 +1894,7 @@ footer a {
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -2025,7 +2035,7 @@ footer a {
 
 .member-card h2 {
   margin: 7px 0;
-  font-size: 26px;
+  font-size: 28px;
 }
 
 .member-card p { color: var(--muted); }
@@ -2097,14 +2107,37 @@ td { font-weight: 800; }
 
 .ranking-year { display: inline-flex; align-items: center; gap: 12px; margin: 0 0 28px; font-weight: 800; }
 .ranking-year select { min-height: var(--tap); padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); }
-.ranking-fair-play { padding: 24px 0; border-top: 1px solid var(--line); }
-.ranking-fair-play h2 { margin: 0 0 8px; }
-.ranking-fair-play p { margin: 0; color: var(--muted); }
+/* Three award tables side by side on wide screens so each stays a compact
+   card; the fair-play award spans the row beneath them. */
+@media (min-width: 1051px) {
+  .ranking-layout { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+  .ranking-fair-play { grid-column: 1 / -1; }
+}
 
-.ranking-table tbody tr:first-child .rank-badge {
+.ranking-fair-play .empty { padding: 36px 20px; }
+
+/* Every first place carries the highlight, so joint winners match. */
+.rank-badge.top {
   background: var(--highlight);
   color: var(--on-highlight);
 }
+
+.rank-badge.tied {
+  display: inline-grid;
+  width: auto;
+  min-width: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+}
+
+.ranking-table th[scope="row"] {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.ranking-table td b { font-variant-numeric: tabular-nums; }
 
 /* Notices */
 .notice-list { border-top: 1px solid var(--line); }
@@ -2141,7 +2174,7 @@ td { font-weight: 800; }
   max-width: 620px;
   margin: -6px 0 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -2155,7 +2188,7 @@ td { font-weight: 800; }
 
 .notice-list h2 {
   margin: 8px 0;
-  font-size: 25px;
+  font-size: 28px;
 }
 
 .notice-list p {
@@ -2178,12 +2211,12 @@ td { font-weight: 800; }
 
 .updates-heading h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .updates-heading > span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -2211,7 +2244,7 @@ td { font-weight: 800; }
 .updates-date time {
   color: var(--ink);
   font-family: var(--font-display), var(--font-sans), sans-serif;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 900;
 }
 
@@ -2253,7 +2286,7 @@ td { font-weight: 800; }
 
 .updates-entry h3 {
   margin: 0 0 12px;
-  font-size: clamp(25px, 3vw, 34px);
+  font-size: clamp(20px, 3vw, 28px);
   line-height: 1.25;
 }
 
@@ -2305,7 +2338,7 @@ td { font-weight: 800; }
 
 .updates-sources a {
   color: var(--brand);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
   text-underline-offset: 3px;
 }
@@ -2481,8 +2514,8 @@ td { font-weight: 800; }
 
 .event-focus-head h2 {
   margin: 0;
-  font-size: 26px;
-  letter-spacing: -.03em;
+  font-size: 28px;
+  letter-spacing: -.02em;
 }
 
 .event-focus-head span {
@@ -2604,7 +2637,7 @@ td { font-weight: 800; }
 }
 
 .event-date span {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -2614,9 +2647,9 @@ td { font-weight: 800; }
 
 .event-info h2 {
   margin: 7px 0 0;
-  font-size: clamp(25px, 2.5vw, 34px);
+  font-size: clamp(20px, 2.5vw, 28px);
   line-height: 1.14;
-  letter-spacing: -.035em;
+  letter-spacing: -.02em;
 }
 
 .event-card-schedule {
@@ -2698,7 +2731,7 @@ td { font-weight: 800; }
 
 .event-card-section-heading h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   letter-spacing: -.02em;
 }
 
@@ -2729,7 +2762,7 @@ td { font-weight: 800; }
 }
 
 .event-card-attendance-figure span {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
 }
 
@@ -2796,7 +2829,7 @@ td { font-weight: 800; }
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   cursor: pointer;
   border-radius: var(--radius-control);
@@ -2902,7 +2935,7 @@ td { font-weight: 800; }
 
 .event-match-heading span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .event-match {
@@ -2913,7 +2946,7 @@ td { font-weight: 800; }
 
 .event-match > div span {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -2922,7 +2955,7 @@ td { font-weight: 800; }
 .event-match > p {
   margin: 7px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -2949,7 +2982,7 @@ td { font-weight: 800; }
 
 .event-match-scorer-group > b {
   color: var(--brand);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .event-match-scorer {
@@ -2959,7 +2992,7 @@ td { font-weight: 800; }
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -3055,20 +3088,20 @@ td { font-weight: 800; }
   align-items: baseline;
   gap: 12px;
   margin: 13px 0 10px;
-  font-size: clamp(34px, 4vw, 58px);
+  font-size: clamp(32px, 4vw, 56px);
   line-height: 1.02;
-  letter-spacing: -.045em;
+  letter-spacing: -.02em;
 }
 
 .detail-headline h1 span {
-  font-size: clamp(17px, 1.7vw, 23px);
+  font-size: clamp(16px, 1.7vw, 20px);
   letter-spacing: -.02em;
 }
 
 .detail-headline p {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -3104,9 +3137,9 @@ td { font-weight: 800; }
 
 .event-detail-head h2 {
   margin: 9px 0 11px;
-  font-size: clamp(28px, 3vw, 40px);
+  font-size: clamp(20px, 3vw, 28px);
   line-height: 1.12;
-  letter-spacing: -.035em;
+  letter-spacing: -.02em;
 }
 
 .event-detail-schedule {
@@ -3115,7 +3148,7 @@ td { font-weight: 800; }
   align-items: center;
   gap: 8px 18px;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
 }
 
@@ -3201,7 +3234,7 @@ td { font-weight: 800; }
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   text-align: left;
   cursor: pointer;
@@ -3223,7 +3256,7 @@ td { font-weight: 800; }
 .event-detail-note {
   margin: 12px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -3243,7 +3276,7 @@ td { font-weight: 800; }
   align-items: baseline;
   gap: 10px;
   margin: 0 0 16px;
-  font-size: 19px;
+  font-size: 20px;
   letter-spacing: -.02em;
 }
 
@@ -3257,7 +3290,7 @@ td { font-weight: 800; }
 
 .event-section-heading h3 {
   margin: 0;
-  font-size: 19px;
+  font-size: 20px;
   letter-spacing: -.02em;
 }
 
@@ -3302,7 +3335,7 @@ td { font-weight: 800; }
 
 .attendance-summary-figure > b {
   color: var(--brand);
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
@@ -3364,7 +3397,7 @@ td { font-weight: 800; }
   gap: 8px;
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -3378,13 +3411,13 @@ td { font-weight: 800; }
   max-width: 320px;
   margin: 0 0 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
 .attendee-meter b {
   color: var(--brand);
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .attendee-meter-track {
@@ -3446,7 +3479,7 @@ td { font-weight: 800; }
   min-width: 0;
 }
 
-.attendee-name b { font-size: 15px; }
+.attendee-name b { font-size: 16px; }
 
 .attendee-state {
   flex: none;
@@ -3495,7 +3528,7 @@ td { font-weight: 800; }
   display: flex;
   align-items: baseline;
   gap: 7px;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 900;
   line-height: 1;
 }
@@ -3555,7 +3588,7 @@ td { font-weight: 800; }
   background: var(--highlight);
   color: var(--on-highlight);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 600;
   letter-spacing: 0;
@@ -3576,7 +3609,7 @@ td { font-weight: 800; }
   padding: 2px 6px;
   background: var(--navy-badge);
   color: var(--on-navy);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0;
   border-radius: var(--radius-pill);
 }
@@ -3615,7 +3648,7 @@ td { font-weight: 800; }
   display: flex;
   align-items: baseline;
   gap: 9px;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .detail-match-score strong {
@@ -3672,7 +3705,7 @@ td { font-weight: 800; }
 
 .detail-match-scorers em {
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .mom-podium {
@@ -3701,7 +3734,7 @@ td { font-weight: 800; }
 
 .mom-podium span {
   flex: 1;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
 }
 
@@ -3719,6 +3752,17 @@ td { font-weight: 800; }
   grid-template-columns: minmax(300px, .8fr) minmax(360px, 1.2fr);
   gap: 28px;
   align-items: start;
+}
+
+/* On wide screens the form rides along beside a long history instead of
+   leaving an empty column; it scrolls inside itself if it outgrows the view. */
+@media (min-width: 761px) {
+  .voice-form {
+    position: sticky;
+    top: 124px;
+    max-height: calc(100dvh - 148px);
+    overflow-y: auto;
+  }
 }
 
 .voice-form,
@@ -3870,7 +3914,7 @@ td { font-weight: 800; }
 
 .github-publication-panel dt {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -3890,7 +3934,7 @@ td { font-weight: 800; }
   padding: 10px;
   background: var(--warn-bg);
   color: var(--warn-ink);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.55;
 }
@@ -3977,7 +4021,7 @@ td { font-weight: 800; }
   border: 1px solid var(--line);
   background: var(--surface-sunken);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   cursor: pointer;
   border-radius: var(--radius-control);
@@ -3995,7 +4039,7 @@ td { font-weight: 800; }
   padding: 6px 9px;
   background: var(--neutral-bg);
   color: var(--neutral-ink);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   border-radius: var(--radius-pill);
 }
@@ -4020,13 +4064,69 @@ td { font-weight: 800; }
 
 .feedback-card small { color: var(--muted); }
 
-.feedback-card h3 { margin: 14px 0 6px; }
+.feedback-card h3 { margin: 10px 0 0; }
 
-.feedback-card > p {
+/* The title is the fold control: the whole row opens the report in place. */
+.feedback-toggle {
+  width: 100%;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.feedback-toggle > span { flex: 1; min-width: 0; }
+
+.feedback-toggle small {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feedback-toggle svg {
+  flex: none;
+  color: var(--muted);
+  transition: transform .15s;
+}
+
+.feedback-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+.feedback-detail > p {
   color: var(--body);
   line-height: 1.65;
   white-space: pre-wrap;
 }
+
+.show-more {
+  width: 100%;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.show-more small { color: var(--muted); font-size: 14px; font-weight: 600; }
 
 .officer-answer {
   display: flex;
@@ -4106,7 +4206,7 @@ td { font-weight: 800; }
 
 .participation-copy h2 {
   margin: 7px 0;
-  font-size: 24px;
+  font-size: 28px;
 }
 
 .participation-copy p {
@@ -4149,7 +4249,7 @@ td { font-weight: 800; }
 }
 
 .participation-results > header { align-items: flex-start; }
-.participation-results h2 { margin: 5px 0; font-size: 25px; }
+.participation-results h2 { margin: 5px 0; font-size: 28px; }
 .participation-results > header p { margin: 0; color: var(--muted); }
 .participation-result-list { display: grid; gap: 14px; margin-top: 24px; }
 .participation-result-card { padding: 18px; background: var(--surface-sunken); border-radius: var(--radius-inner); }
@@ -4372,19 +4472,25 @@ td { font-weight: 800; }
   overflow-x: auto;
 }
 
+/* Second-level tabs are underlined so they read as a level below the filled
+   group buttons above them. */
 .admin-tabs button {
-  padding: 15px 20px;
+  margin-bottom: -1px;
+  padding: 14px 16px;
   border: 0;
+  border-bottom: 3px solid transparent;
   background: none;
-  font-weight: 900;
+  color: var(--muted);
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
-  border-radius: 10px 10px 0 0;
 }
 
+.admin-tabs button:hover { color: var(--ink); }
+
 .admin-tabs button[aria-pressed="true"] {
-  background: var(--primary);
-  color: var(--on-primary);
+  border-bottom-color: var(--brand);
+  color: var(--ink);
 }
 
 .admin-tab-badge {
@@ -4397,7 +4503,7 @@ td { font-weight: 800; }
   border-radius: 999px;
   background: var(--danger-solid);
   color: var(--on-navy);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
 }
 
@@ -4453,6 +4559,15 @@ td { font-weight: 800; }
   flex-direction: column;
   gap: 5px;
 }
+
+.admin-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.admin-row-title .status { padding: 3px 9px; }
 
 .admin-row small { color: var(--muted); }
 
@@ -4541,7 +4656,7 @@ td { font-weight: 800; }
 
 .permission-review > header > span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -4654,7 +4769,7 @@ td { font-weight: 800; }
   gap: 6px;
   border-radius: 9px;
   color: var(--body);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -4917,7 +5032,7 @@ td { font-weight: 800; }
   padding: 5px 8px;
   border: 1px solid var(--line);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   border-radius: var(--radius-pill);
 }
@@ -4991,7 +5106,7 @@ td { font-weight: 800; }
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -5001,7 +5116,7 @@ td { font-weight: 800; }
   padding: 3px 6px;
   background: var(--highlight);
   color: var(--on-highlight);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   letter-spacing: 0;
   border-radius: var(--radius-pill);
@@ -5047,7 +5162,7 @@ td { font-weight: 800; }
 
 .team-score-stepper span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -5080,7 +5195,7 @@ td { font-weight: 800; }
 
 .team-record-heading > strong {
   color: var(--brand);
-  font-size: 18px;
+  font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5164,7 +5279,7 @@ td { font-weight: 800; }
 .team-rating-control b {
   margin-left: 5px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -5238,7 +5353,7 @@ td { font-weight: 800; }
 
 .match-score-total > small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -5270,7 +5385,7 @@ td { font-weight: 800; }
 
 .match-score-total em {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 800;
   white-space: nowrap;
@@ -5299,7 +5414,7 @@ td { font-weight: 800; }
 .match-lineup-editor > header small,
 .match-lineup-editor > header > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -5340,7 +5455,7 @@ td { font-weight: 800; }
 
 .match-lineup-player small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .match-lineup-player select {
@@ -5425,7 +5540,7 @@ td { font-weight: 800; }
      Latin display faces, so a Latin-tuned tight leading (.95) makes wrapped
      two-line Korean titles overlap. 1.15 keeps the tight look with headroom. */
   line-height: 1.15;
-  letter-spacing: -.04em;
+  letter-spacing: -.02em;
 }
 
 .login-modal p {
@@ -5549,9 +5664,9 @@ td { font-weight: 800; }
 
 .oauth-consent-card h1 {
   margin: 18px 0;
-  font-size: clamp(38px, 8vw, 60px);
+  font-size: clamp(32px, 8vw, 56px);
   line-height: 1.08;
-  letter-spacing: -.05em;
+  letter-spacing: -.02em;
 }
 
 .oauth-consent-card > p:not(.eyebrow) {
@@ -5791,17 +5906,17 @@ td { font-weight: 800; }
 
 .attendance-summary-head .eyebrow {
   color: var(--brand);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .attendance-summary-head h3 {
   margin: 5px 0 0;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .attendance-summary-head > strong {
   color: var(--brand);
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -5830,7 +5945,7 @@ td { font-weight: 800; }
 
 .attendance-summary-stats span {
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   border-radius: var(--radius-pill);
 }
@@ -5879,7 +5994,7 @@ td { font-weight: 800; }
 
 .attendance-group-heading b {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: .06em;
 }
@@ -5988,7 +6103,7 @@ td { font-weight: 800; }
 
 .attendance-member small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -6024,7 +6139,7 @@ td { font-weight: 800; }
   min-height: var(--tap);
   cursor: pointer;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: .06em;
 }
@@ -6076,7 +6191,7 @@ td { font-weight: 800; }
   margin: 18px 0;
   font-size: 48px;
   line-height: 1.15;
-  letter-spacing: -.04em;
+  letter-spacing: -.02em;
 }
 
 .password-card > p {
@@ -6106,7 +6221,7 @@ td { font-weight: 800; }
   .nav { gap: 15px; }
 
   .nav a {
-    font-size: 13px;
+    font-size: 14px;
     white-space: nowrap;
   }
 }
@@ -6237,7 +6352,7 @@ td { font-weight: 800; }
   .schedule-main { grid-template-columns: 105px 1fr; }
   .schedule-date b { font-size: 54px; }
   .schedule-copy { padding: 25px 20px 20px; }
-  .schedule-copy h2 { font-size: 24px; }
+  .schedule-copy h2 { font-size: 28px; }
   .schedule-copy dl { grid-template-columns: 1fr; }
 
   .schedule-foot {
@@ -6263,7 +6378,7 @@ td { font-weight: 800; }
   .panel-grid { grid-template-columns: 1fr; }
   .panel-grid .panel:first-child { grid-column: auto; }
   .video-banner { padding: 25px 5vw; }
-  .video-banner b { font-size: 17px; }
+  .video-banner b { font-size: 16px; }
   .member-grid { grid-template-columns: 1fr 1fr; }
   .page-management-actions { justify-content: flex-start; }
 
@@ -6355,7 +6470,7 @@ td { font-weight: 800; }
   .event-card-chip.unassigned { min-height: var(--tap); }
   .event-date { padding-right: 12px; }
   .event-date b { font-size: 34px; }
-  .event-info h2 { font-size: 24px; }
+  .event-info h2 { font-size: 28px; }
   .event-card-section { padding-top: 14px; }
   .event-card-attendance-figure { align-items: flex-start; flex-direction: column; gap: 3px; }
   .event-card-management .officer-menu-item { flex: 1 1 140px; max-width: none; }
@@ -6374,7 +6489,7 @@ td { font-weight: 800; }
   }
 
   .participation-actions .restriction-reason { max-width: none; text-align: left; }
-  .event-focus-head h2 { font-size: 22px; }
+  .event-focus-head h2 { font-size: 20px; }
   .officer-menu { justify-content: stretch; }
 
   .officer-menu-item {
@@ -6445,10 +6560,10 @@ td { font-weight: 800; }
   .editor { padding: 40px 25px 30px; }
 
   .login-modal h2,
-  .editor h2 { font-size: 40px; } /* line-height 1.15 inherited from base rule above */
+  .editor h2 { font-size: 32px; } /* line-height 1.15 inherited from base rule above */
 
   .password-card { padding: 40px 25px 30px; }
-  .password-card h1 { font-size: 40px; }
+  .password-card h1 { font-size: 32px; }
 
   footer {
     flex-direction: column;

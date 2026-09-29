@@ -22,6 +22,21 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-09-30-readability-pass",
+    date: "2026-09-30",
+    source: "request",
+    title: "랭킹과 제보 목록을 더 빨리 훑어볼 수 있습니다",
+    summary: "글자 크기 단계를 정리하고, 목록이 길어지는 화면을 짧게 접었습니다.",
+    changes: [
+      { kind: "improved", text: "공동 순위는 같은 배지에 'T1'처럼 표시하고, 연간 랭킹 세 부문을 넓은 화면에서 나란히 보여줍니다." },
+      { kind: "improved", text: "제보 목록은 제목만 먼저 보이고 눌러서 펼치며, 10건씩 더 불러옵니다. 넓은 화면에서는 입력 폼이 스크롤을 따라옵니다." },
+      { kind: "improved", text: "빈 회비 카드와 페어플레이어 섹션을 작은 안내로 바꾸고, 마이페이지 로그아웃 버튼을 보조 버튼 모양으로 바꿨습니다." },
+      { kind: "improved", text: "글자 크기를 12·14·16·20·28·48px 단계로 정리하고, 페이지 왼쪽의 세로선을 없앴습니다." },
+      { kind: "improved", text: "운영 관리 화면의 하위 탭을 밑줄형으로 바꾸고, 직책과 상태를 배지로 보여줍니다. 회비 화면은 제목·필터·등록을 한 줄에 모았습니다." },
+    ],
+    pullRequests: [166],
+  },
+  {
     id: "2026-09-30-ui-feedback",
     date: "2026-09-30",
     source: "request",
