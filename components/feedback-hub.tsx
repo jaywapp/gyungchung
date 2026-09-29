@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, ExternalLink, Github, Lightbulb, MessageSquareText, Pencil, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Github, Lightbulb, Link2, MessageSquareText, Pencil, Send, Trash2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { Feedback, FeedbackFeedItem, Profile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
@@ -9,6 +9,7 @@ import { showError, toErrorMessage, type ToastHandler } from "@/lib/ui-feedback"
 import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { AccountConnectionNotice, Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 import { buildGithubPublicationPreview } from "@/supabase/functions/_shared/feedback-publication";
+import { splitResponseLinks } from "@/lib/response-links";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 type FeedbackCardData = Pick<Feedback, "id" | "category" | "title" | "body" | "status" | "officer_response" | "created_at" | "github_issue_number" | "github_issue_url" | "github_issue_state">;
@@ -39,6 +40,9 @@ function FeedbackCard({ item, visibility, editable, publication, saving, onEdit,
   onDelete: (id: string, label: string) => void;
   onRetryPublish: (id: string) => void;
 }) {
+  const answer = item.officer_response ? splitResponseLinks(item.officer_response) : null;
+  // The card already links its own GitHub issue, so the answer does not repeat it.
+  const answerLinks = answer?.links.filter((link) => link.url !== item.github_issue_url) ?? [];
   return (
     <article className="feedback-card">
       <div>
@@ -60,7 +64,7 @@ function FeedbackCard({ item, visibility, editable, publication, saving, onEdit,
         <p role={publication.github_publication_status === "failed" ? "alert" : "status"}>{publication.github_publication_status === "failed" ? publication.github_publication_error ?? "GitHub 공개 등록에 실패했습니다. 원본 제보는 접수되어 있습니다." : "GitHub 공개 등록이 아직 완료되지 않았습니다. 원본 제보는 접수되어 있습니다."}</p>
         <button type="button" className="github-retry" disabled={saving} onClick={() => onRetryPublish(item.id)}><Github size={16} /> GitHub 공개 등록 다시 시도</button>
       </div>}
-      {item.officer_response && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>운영진 답변</b>{item.officer_response}</span></div>}
+      {answer && <div className="officer-answer"><CheckCircle2 size={18} /><span><b>AI 답변</b>{answer.body}{answerLinks.length > 0 && <span className="answer-links">{answerLinks.map((link) => <a key={link.url} className="github-issue-link" href={link.url} target="_blank" rel="noreferrer">{link.label.startsWith("GitHub") ? <Github size={16} /> : <Link2 size={16} />} {link.label} <ExternalLink size={14} /></a>)}</span>}</span></div>}
     </article>
   );
 }
@@ -183,7 +187,7 @@ export default function FeedbackHub({ user, profile, feedback, feedbackFeed, sup
       <div className="page-intro">
         <span className="eyebrow">MEMBER VOICE</span>
         <h1>의견</h1>
-        <p>제보를 남기고 처리 상태와 운영진 답변을 이곳에서 확인하세요.</p>
+        <p>제보를 남기고 처리 상태와 답변을 이곳에서 확인하세요.</p>
       </div>
       <div className="voice-layout">
         <form className="voice-form" onSubmit={submit}>

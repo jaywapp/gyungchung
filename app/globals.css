@@ -1392,11 +1392,13 @@ footer a {
   font-size: 12px;
 }
 
+/* Spans its container: inside the pitch card's wrapping row it takes a line
+   of its own below the counts. */
 .capacity-status {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   gap: 3px;
-  width: fit-content;
+  width: 100%;
   padding: 9px 11px;
   border-left: var(--accent-bar) solid var(--brand);
   background: var(--surface-sunken);
@@ -1867,6 +1869,26 @@ footer a {
   line-height: 1.7;
 }
 
+.fee-rule-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fee-rule-badges li {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .page-management-actions {
   display: flex;
   justify-content: flex-end;
@@ -2206,6 +2228,27 @@ td { font-weight: 800; }
   min-width: 0;
   padding-left: 30px;
   border-left: 3px solid var(--brand);
+}
+
+/* Origin of a change. Colour tells the two apart at a glance, the word says
+   which is which; both pairs clear 4.5:1 in either theme. */
+.updates-source {
+  display: inline-flex;
+  margin-bottom: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.updates-source.feedback {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.updates-source.request {
+  background: var(--navy-badge);
+  color: var(--on-navy);
 }
 
 .updates-entry h3 {
@@ -3999,7 +4042,19 @@ td { font-weight: 800; }
   flex-direction: column;
   gap: 5px;
   line-height: 1.55;
+  white-space: pre-wrap;
 }
+
+/* Links pulled out of the answer text sit below it as the same badges the
+   card uses for its GitHub issue. */
+.officer-answer .answer-links {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  white-space: normal;
+}
+
+.officer-answer .answer-links .github-issue-link { margin-top: 4px; }
 
 /* --------------------------------------------------------------------------
    Participation
