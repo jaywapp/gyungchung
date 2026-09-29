@@ -34,7 +34,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "improved", text: "글자 크기를 12·14·16·20·28·48px 단계로 정리하고, 페이지 왼쪽의 세로선을 없앴습니다." },
       { kind: "improved", text: "운영 관리 화면의 하위 탭을 밑줄형으로 바꾸고, 직책과 상태를 배지로 보여줍니다. 회비 화면은 제목·필터·등록을 한 줄에 모았습니다." },
     ],
-    pullRequests: [],
+    pullRequests: [166],
   },
   {
     id: "2026-09-30-ui-feedback",
