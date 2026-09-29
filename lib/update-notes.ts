@@ -1,5 +1,19 @@
+/**
+ * Where a change came from: "feedback" when its PR closed an issue labelled
+ * 제보, "request" for everything the team asked for directly.
+ */
+export type UpdateSource = "feedback" | "request";
+
+export const updateSourceLabels: Record<UpdateSource, string> = {
+  feedback: "제보",
+  request: "직접 요청",
+};
+
 export type UpdateNote = {
+  /** Stable list key; several notes can share a date. */
+  id: string;
   date: string;
+  source: UpdateSource;
   title: string;
   summary: string;
   changes: { kind: "added" | "improved"; text: string }[];
@@ -8,7 +22,37 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-09-30-ui-feedback",
+    date: "2026-09-30",
+    source: "request",
+    title: "회비 기준과 제보 답변을 읽기 쉽게 정리했습니다",
+    summary: "운영 화면에서 받은 의견을 반영해 정보가 한눈에 들어오도록 다듬었습니다.",
+    changes: [
+      { kind: "improved", text: "홈의 참석 인원 현황이 카드 너비에 맞춰 표시됩니다." },
+      { kind: "improved", text: "회비 화면 설명을 줄이고, 관리자·일반회원·참여 회비 기준을 배지로 보여줍니다." },
+      { kind: "improved", text: "제보 목록의 답변을 'AI 답변'으로 표시하고, 답변 속 링크는 본문 아래 배지로 따로 모았습니다." },
+      { kind: "added", text: "업데이트 노트에 변경의 출처를 '제보'와 '직접 요청' 배지로 표시합니다." },
+    ],
+    pullRequests: [165],
+  },
+  {
+    id: "2026-09-30-light-dark-theme",
+    date: "2026-09-30",
+    source: "request",
+    title: "밝은 화면과 어두운 화면을 고를 수 있습니다",
+    summary: "새 글꼴과 색 체계로 화면을 다듬고, 기기 설정에 맞춰 어두운 화면도 제공합니다.",
+    changes: [
+      { kind: "added", text: "마이페이지에서 라이트·다크·시스템 화면 테마를 고를 수 있으며, 선택은 이 브라우저에 저장됩니다." },
+      { kind: "improved", text: "한글 글꼴을 Pretendard로 통일하고, 한글 라벨의 글자 간격이 벌어지지 않도록 했습니다." },
+      { kind: "improved", text: "마감일이 지난 투표·설문은 '마감'으로 표시하고 참여 버튼을 숨깁니다." },
+      { kind: "improved", text: "회원 카드의 강퇴 버튼을 ⋯ 메뉴 안으로 옮기고, 의견 페이지 제목을 메뉴와 같은 '의견'으로 맞췄습니다." },
+    ],
+    pullRequests: [164],
+  },
+  {
+    id: "2026-09-29-in-app-feedback",
     date: "2026-09-29",
+    source: "request",
     title: "제보를 클럽하우스에서 확인할 수 있습니다",
     summary: "의견을 남긴 뒤 처리 상황과 운영진 답변을 한곳에서 볼 수 있습니다.",
     changes: [
@@ -18,7 +62,9 @@ export const updateNotes: UpdateNote[] = [
     pullRequests: [162],
   },
   {
+    id: "2026-09-29-weekly-schedule-awards",
     date: "2026-09-29",
+    source: "feedback",
     title: "매주 만나는 일정, 쌓이는 시즌 기록",
     summary: "정기 일정부터 출석과 연말 랭킹까지 이어지도록 바꿨습니다.",
     changes: [
@@ -30,7 +76,9 @@ export const updateNotes: UpdateNote[] = [
     pullRequests: [161],
   },
   {
+    id: "2026-09-09-login-usability",
     date: "2026-09-09",
+    source: "request",
     title: "로그인과 화면 사용성을 다듬었습니다",
     summary: "회원이 다시 방문하거나 작은 화면에서 사용할 때 겪던 불편을 줄였습니다.",
     changes: [
@@ -41,7 +89,9 @@ export const updateNotes: UpdateNote[] = [
     pullRequests: [154, 152],
   },
   {
+    id: "2026-08-22-events-attendance",
     date: "2026-08-22",
+    source: "request",
     title: "일정과 참석 확인이 쉬워졌습니다",
     summary: "운동 날짜와 참석 상태를 중심으로 일정 화면을 다시 정리했습니다.",
     changes: [
@@ -52,7 +102,9 @@ export const updateNotes: UpdateNote[] = [
     pullRequests: [148, 138, 137],
   },
   {
+    id: "2026-08-21-participation-records",
     date: "2026-08-21",
+    source: "request",
     title: "참여 기록을 이어서 볼 수 있습니다",
     summary: "투표와 설문을 작성하고 결과를 확인하는 흐름을 보완했습니다.",
     changes: [

@@ -11,6 +11,7 @@ import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, Fe
 import type { EditorConfig } from "@/components/admin-console";
 import WinnerEditor from "@/components/winner-editor";
 import ThemeSwitch from "@/components/theme-switch";
+import { FEE_AMOUNTS, feeRuleBadges, formatWon } from "@/lib/fee-rules";
 import { buildSeasonRankings, type EventWinningMember } from "@/lib/season-rankings";
 import { editorScopes, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus } from "@/lib/attendance";
@@ -455,7 +456,7 @@ function Home({ upcoming, notice, feeStanding, goingCount, memberCount, user, pr
     </div></section><a className="video-banner" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer"><span className="play"><Youtube /></span><span><small>GYUNGCHUNG FILM</small><b>구장에서 기록한 경충FC의 플레이를 만나보세요.</b></span><ChevronRight /></a></>;
 }
 
-function PageIntro({ kicker, title, description }: { kicker: string; title: string; description: string }) { return <div className="page-intro"><span className="eyebrow">{kicker}</span><h1>{title}</h1><p>{description}</p></div>; }
+function PageIntro({ kicker, title, description, children }: { kicker: string; title: string; description: string; children?: React.ReactNode }) { return <div className="page-intro"><span className="eyebrow">{kicker}</span><h1>{title}</h1><p>{description}</p>{children}</div>; }
 function MemberRestrictionNotice({ restriction, resource }: { restriction: ReturnType<typeof getMembershipRestriction>; resource: string }) {
   if (!restriction) return null;
   const copy = getMembershipRestrictionCopy(restriction);
@@ -475,7 +476,7 @@ function Members({ profiles, profile, user, loading, loadError, canManage, onEdi
    Each audience now gets the screen its data can actually answer. */
 function Fees({ fees, profiles, profile, events, user, loading, loadError, canManage, onCreate, onEdit, onDelete, onLogin, onRetry, onAsk }: { fees: Fee[]; profiles: Profile[]; profile: Profile | null; events: Event[]; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onLogin: () => void; onRetry: () => void; onAsk: () => void }) {
   const myFees = useMemo(() => fees.filter((fee) => fee.member_id === profile?.id), [fees, profile?.id]);
-  const intro = <PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description={!user ? "회원에게만 공개하는 정보입니다." : canManage ? "회원별 납부 상태를 확인하고 회비를 등록·수정합니다. 관리자 월 15,000원, 일반회원 월 30,000원 또는 참여 시 10,000원을 적용합니다." : "내가 낸 회비와 아직 남은 회비를 월별로 확인합니다."} />;
+  const intro = <PageIntro kicker="MEMBERSHIP FEE" title="회비 현황" description={!user ? "회원에게만 공개하는 정보입니다." : canManage ? "회원별 납부 상태를 확인하고 회비를 등록·수정합니다." : "내가 낸 회비와 아직 남은 회비를 월별로 확인합니다."}>{user && canManage && <ul className="fee-rule-badges" aria-label="회비 기준">{feeRuleBadges.map((rule) => <li key={rule}>{rule}</li>)}</ul>}</PageIntro>;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="회비 내역을 불러오는 중" /></section>;
   if (!user) return <section className="content">{intro}<LoginGate icon={<CircleDollarSign />} title="로그인 후 회비를 확인하세요" description="납부 내역은 본인과 회비 담당 운영진에게만 공개합니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
@@ -554,9 +555,9 @@ function summarizeFees(rows: Fee[]): FeeStanding {
 /** Standard dues by account type, mirroring the amount the fee editor applies. */
 function feePlan(profile: Profile | null | undefined) {
   if (!profile) return null;
-  if (profile.role === "manager") return { label: "관리자 월회비", amount: 15000, note: "직책과 무관하게 매월 15,000원" };
-  if (profile.fee_plan === "per_event") return { label: "참여비", amount: 10000, note: "참여한 일정마다 10,000원" };
-  return { label: "월회비", amount: 30000, note: "매월 30,000원" };
+  if (profile.role === "manager") return { label: "관리자 월회비", amount: FEE_AMOUNTS.managerMonthly, note: `직책과 무관하게 매월 ${formatWon(FEE_AMOUNTS.managerMonthly)}` };
+  if (profile.fee_plan === "per_event") return { label: "참여비", amount: FEE_AMOUNTS.perEvent, note: `참여한 일정마다 ${formatWon(FEE_AMOUNTS.perEvent)}` };
+  return { label: "월회비", amount: FEE_AMOUNTS.memberMonthly, note: `매월 ${formatWon(FEE_AMOUNTS.memberMonthly)}` };
 }
 function formatFeeMonth(month: string) { const [year, value] = month.slice(0, 7).split("-"); return `${year}년 ${Number(value)}월`; }
 /** A participation fee belongs to a schedule, a monthly fee to a month — naming the source is what makes five rows in one month readable. */
