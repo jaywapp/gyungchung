@@ -4042,7 +4042,8 @@ td { font-weight: 800; }
   flex-direction: column;
   gap: 5px;
   line-height: 1.55;
-  white-space: pre-wrap;
+  /* Answers are stored as line-broken lists; keep the breaks, fold stray spaces. */
+  white-space: pre-line;
 }
 
 /* Links pulled out of the answer text sit below it as the same badges the
