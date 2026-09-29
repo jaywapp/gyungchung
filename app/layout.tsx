@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import { Archivo } from "next/font/google";
+import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./globals.css";
+import { themeInitScript } from "@/lib/theme";
 
 /**
- * The identity-carrying type in this design — crest, eyebrows, date numerals,
- * uppercase labels — is all Latin, so that role gets a self-hosted face.
- * Korean body text stays on an explicit platform stack: a Korean webfont's
- * unicode-range split costs ~96kB of gzipped CSS on every first paint, which
- * is not worth it for glyphs every target device already renders well.
+ * Korean text runs on Pretendard Variable, self-hosted through its dynamic
+ * subset: the stylesheet is ~13kB gzipped and the browser only fetches the
+ * unicode-range slices a page actually renders, instead of the 2MB full face.
+ * Archivo stays the display face, and only for uppercase Latin labels and
+ * numerals — see the label rules at the top of globals.css.
  */
 const display = Archivo({
   subsets: ["latin"],
@@ -32,8 +34,12 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // data-theme is set by the inline script before hydration, so the server markup never matches it.
   return (
-    <html lang="ko" className={display.variable}>
+    <html lang="ko" className={display.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

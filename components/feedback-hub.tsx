@@ -182,7 +182,7 @@ export default function FeedbackHub({ user, profile, feedback, feedbackFeed, sup
     <section className="content">
       <div className="page-intro">
         <span className="eyebrow">MEMBER VOICE</span>
-        <h1>사용자 제보</h1>
+        <h1>의견</h1>
         <p>제보를 남기고 처리 상태와 운영진 답변을 이곳에서 확인하세요.</p>
       </div>
       <div className="voice-layout">
