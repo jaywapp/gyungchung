@@ -34,3 +34,11 @@ export function formatEventDateKey(key: string) {
   const date = parseEventDateKey(key);
   return date ? `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일` : key;
 }
+
+export function isWeeklyScheduleEvent(event: { title: string; starts_at: string; weekly_date?: string | null }) {
+  if (event.weekly_date) return true;
+  if (event.title !== "주말 정기 풋살") return false;
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date(event.starts_at));
+  return parts.some((part) => part.type === "weekday" && part.value === "Sun")
+    && parts.some((part) => part.type === "hour" && part.value === "08");
+}

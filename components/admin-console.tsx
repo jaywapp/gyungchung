@@ -9,7 +9,7 @@ import { editorScopes, tableScopes, toErrorMessage, userError, type ReloadHandle
 import { getCheckInStatus, isCheckedIn } from "@/lib/attendance";
 import { applyAttendanceSaveSuccesses, buildAttendanceSaveItems, reconcileAttendanceSaveResults, type AttendanceSaveFailure, type AttendanceSaveRpcResult } from "@/lib/attendance-save";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
-import { eventDatePath } from "@/lib/event-date";
+import { eventDatePath, isWeeklyScheduleEvent } from "@/lib/event-date";
 import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
 import { filterAdminRows } from "@/lib/admin-list-filters";
 import { applyPermissionBatch, updatePendingPermissionChanges, type PendingPermissionChange } from "@/lib/permission-batch.mjs";
@@ -44,7 +44,6 @@ const checkInStatusLabels: Record<NonNullable<Attendance["check_in_status"]>, st
    constraint migration lands, so read it through rosterPosition. */
 const rosterPositions = ["GK", "DF", "MF", "FW", "ANY"] as const;
 const rosterPosition = (position: string | null | undefined) => rosterPositions.find((code) => code === position) ?? "ANY";
-const checkInStatusOrder: Array<NonNullable<Attendance["check_in_status"]>> = ["absent", "late", "present"];
 
 const permissionLabels: Record<string, string> = {
   "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
@@ -97,7 +96,10 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     setDeleting(true);
-    const { error } = await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id);
+    const weeklyEvent = pendingDelete.table === "events" && events.some((event) => event.id === pendingDelete.id && isWeeklyScheduleEvent(event));
+    const { error } = weeklyEvent
+      ? await supabase.rpc("cancel_weekly_event", { target_event_id: pendingDelete.id })
+      : await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id);
     const scope = tableScopes[pendingDelete.table] ?? "all";
     setDeleting(false); setPendingDelete(null);
     if (error) return toast(toErrorMessage(error), "error");
@@ -394,12 +396,6 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const [attendanceSaveReport, setAttendanceSaveReport] = useState<{ savedCount: number; failures: AttendanceSaveFailure[] } | null>(null);
   const pendingAttendanceSaveItems = buildAttendanceSaveItems(activeProfiles.map((profile) => profile.id), eventAttendance, attendanceStatuses, savedAttendanceStatuses, attendanceNormalizationPendingIds);
   const attendanceStatusFor = (profile: Profile) => attendanceStatuses[profile.id] ?? null;
-  const cycleAttendanceStatus = (profileId: string) => setAttendanceStatuses((current) => {
-    const currentStatus = current[profileId] ?? null;
-    const currentIndex = currentStatus ? checkInStatusOrder.indexOf(currentStatus) : -1;
-    const nextStatus = checkInStatusOrder[(currentIndex + 1) % checkInStatusOrder.length];
-    return { ...current, [profileId]: nextStatus };
-  });
   const attendanceFailureByMember = new Map((attendanceSaveReport?.failures ?? []).map((failure) => [failure.memberId, failure.message]));
   const hasRecordedWalkIns = walkInProfiles.some((profile) => attendanceStatusFor(profile) !== null);
   const attendanceScope = activeProfiles.filter((profile) => scheduledProfiles.some((scheduled) => scheduled.id === profile.id) || attendanceStatusFor(profile) !== null);
@@ -414,12 +410,9 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const renderAttendanceRow = (profile: Profile) => {
     const record = attendanceRecordFor(profile);
     const status = attendanceStatusFor(profile);
-    const currentIndex = status ? checkInStatusOrder.indexOf(status) : -1;
-    const nextStatus = checkInStatusOrder[(currentIndex + 1) % checkInStatusOrder.length];
-    const statusLabel = status ? checkInStatusLabels[status] : "미체크";
     const responseLabel = record?.status === "going" ? "참석 예정" : record?.status === "not_going" ? "불참 응답" : record?.status === "undecided" ? "미응답" : "현장 추가 가능";
     const failureMessage = attendanceFailureByMember.get(profile.id);
-    return <div className={`attendance-row attendance-row-${status ?? "pending"}${failureMessage ? " attendance-row-failed" : ""}`} key={profile.id} role="group" aria-label={`${profile.name} 출석 상태`}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{failureMessage ? "저장 실패 · 재시도 필요" : responseLabel}</small></span><input type="hidden" name={`check_in_status_${profile.id}`} value={status ?? ""} readOnly /><button type="button" className="attendance-status-toggle" onClick={() => cycleAttendanceStatus(profile.id)} aria-label={`${profile.name} 상태 ${statusLabel}. 클릭하면 ${checkInStatusLabels[nextStatus]}으로 변경`}>{statusLabel}</button></div>;
+    return <div className={`attendance-row attendance-row-${status ?? "pending"}${failureMessage ? " attendance-row-failed" : ""}`} key={profile.id} role="group" aria-label={`${profile.name} 출석 상태`}><span className="attendance-avatar" aria-hidden="true">{profile.name.slice(0, 1)}</span><span className="attendance-member"><b>{profile.name}</b><small>{failureMessage ? "저장 실패 · 재시도 필요" : responseLabel}</small></span><input type="hidden" name={`check_in_status_${profile.id}`} value={status ?? ""} readOnly /><div className="attendance-choice" role="group" aria-label={`${profile.name} 출석 상태 선택`}>{(["present", "late", "absent"] as const).map((choice) => <button key={choice} type="button" className={status === choice ? "active" : ""} aria-pressed={status === choice} onClick={() => setAttendanceStatuses((current) => ({ ...current, [profile.id]: current[profile.id] === choice ? null : choice }))}>{checkInStatusLabels[choice]}</button>)}</div></div>;
   };
   const [venue, setVenue] = useState(String(row.venue ?? ""));
   const [address, setAddress] = useState(String(row.address ?? ""));
@@ -789,7 +782,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
         <div className="attendance-summary-stats"><span className="attendance-stat-present">{attendancePresentCount} 출석</span><span className="attendance-stat-late">{attendanceLateCount} 지각</span><span className="attendance-stat-absent">{attendanceAbsentCount} 결석</span></div>
       </section>
       <label className="attendance-search"><span className="sr-only">회원 검색</span><input type="search" value={attendanceQuery} onChange={(event) => setAttendanceQuery(event.target.value)} placeholder="이름 검색" /></label>
-      <p className="form-description attendance-toggle-help">상태 버튼을 누를 때마다 결석 → 지각 → 출석 순서로 바뀝니다.</p>
+      <p className="form-description attendance-toggle-help">회원별 상태를 한 번에 선택하세요. 같은 버튼을 다시 누르면 기록이 해제됩니다.</p>
       <section className="attendance-group">
         <div className="attendance-group-heading"><b>참석 예정</b><span>{scheduledProfiles.length}명</span></div>
         <div className="attendance-status-grid">{filteredScheduledProfiles.length > 0 ? filteredScheduledProfiles.map(renderAttendanceRow) : <p className="form-description">{attendanceSearch ? "검색 결과가 없습니다." : "참석 예정으로 답한 회원이 없습니다."}</p>}</div>
