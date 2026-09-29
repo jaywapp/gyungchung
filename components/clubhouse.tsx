@@ -7,13 +7,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LogIn, LogOut, MapPin, Menu, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, MemberRanking, MomLeaderboardEntry, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
+import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
 import type { EditorConfig } from "@/components/admin-console";
+import WinnerEditor from "@/components/winner-editor";
+import { buildSeasonRankings, type EventWinningMember } from "@/lib/season-rankings";
 import { editorScopes, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus } from "@/lib/attendance";
 import { getAccountState, getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { getEventCapacity } from "@/lib/event-capacity";
-import { eventDatePath, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
+import { eventDatePath, isWeeklyScheduleEvent, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
 import { applyRsvpStatus, beginRsvpSave, getRsvpCapacityWarning, restoreRsvpStatus } from "@/lib/rsvp";
 import { createPhoneLoginCredentials, getPhoneLoginError } from "@/lib/phone-login";
 import { getLoadErrors, type LoadErrors, type LoadResource } from "@/lib/load-state";
@@ -65,10 +67,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [events, setEvents] = useState<Event[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [rawGuestPlayers, setRawGuestPlayers] = useState<RawGuestPlayer[]>([]);
-  const [rankings, setRankings] = useState<MemberRanking[]>([]);
+  const [winners, setWinners] = useState<EventWinningMember[]>([]);
+  const [winnerEvent, setWinnerEvent] = useState<Event | null>(null);
   const [momVotes, setMomVotes] = useState<EventMomVote[]>([]);
   const [momResults, setMomResults] = useState<EventMomResult[]>([]);
-  const [momLeaderboard, setMomLeaderboard] = useState<MomLeaderboardEntry[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [fees, setFees] = useState<Fee[]>([]);
   const [guestFees, setGuestFees] = useState<GuestFee[]>([]);
@@ -110,7 +112,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (!supabase) { setPublicLoading(false); return; }
     if (showSkeleton) setPublicLoading(true);
     const [eventRes, noticeRes, formRes, venueRes] = await Promise.all([
-      supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at"),
+      supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at"),
       supabase.from("notices").select("id, title, body, is_pinned, created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }),
       supabase.from("venues").select("id, name, address, note, created_at, updated_at").order("name"),
@@ -132,12 +134,12 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     const requestId = ++memberRequestIdRef.current;
     if (!supabase) { setMemberLoading(false); return; }
     if (!currentUser) {
-      setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setRawGuestPlayers([]); setRankings([]); setMomVotes([]); setMomResults([]); setMomLeaderboard([]);
-      setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: { error: null }, profiles: { error: null }, fees: { error: null }, guestFees: { error: null }, attendance: { error: null }, feedback: { error: null }, submissions: { error: null }, rolePermissions: { error: null }, officerPermissions: { error: null }, guestPlayers: { error: null }, rankings: { error: null }, momVotes: { error: null }, momResults: { error: null }, momLeaderboard: { error: null } }) }));
+      setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setRawGuestPlayers([]); setWinners([]); setMomVotes([]); setMomResults([]);
+      setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: { error: null }, profiles: { error: null }, fees: { error: null }, guestFees: { error: null }, attendance: { error: null }, feedback: { error: null }, submissions: { error: null }, rolePermissions: { error: null }, officerPermissions: { error: null }, guestPlayers: { error: null }, winners: { error: null }, momVotes: { error: null }, momResults: { error: null } }) }));
       setMemberLoading(false); return;
     }
     if (showSkeleton) setMemberLoading(true);
-    const [profileRes, allProfileRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, officerPermissionRes, guestRes, rankingRes, momVoteRes, momResultRes, momLeaderboardRes] = await Promise.all([
+    const [profileRes, allProfileRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, submissionRes, permissionRes, officerPermissionRes, guestRes, winnerRes, momVoteRes, momResultRes] = await Promise.all([
       supabase.rpc("get_member_directory"),
       supabase.from("profiles").select("*").order("name"),
       supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }),
@@ -148,10 +150,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       supabase.from("role_permissions").select("role, permission"),
       supabase.from("officer_permissions").select("officer_title, permission"),
       supabase.from("guest_players").select("*"),
-      supabase.rpc("get_member_rankings"),
+      supabase.rpc("get_event_winners"),
       supabase.from("event_mom_votes").select("*"),
       supabase.rpc("get_event_mom_results"),
-      supabase.rpc("get_mom_leaderboard"),
     ]);
     if (requestId !== memberRequestIdRef.current || currentUser.id !== userRef.current?.id) return;
     const privateProfiles = (allProfileRes.data as Profile[] | null) ?? [];
@@ -163,8 +164,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     const ownProfile = privateProfiles.find((profile) => profile.auth_user_id === currentUser.id) ?? null;
     setProfiles(enrichedProfiles);
     setMe(ownProfile);
-    setFees((feeRes.data as unknown as Fee[]) ?? []); setGuestFees((guestFeeRes.data as unknown as GuestFee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setOfficerPermissions((officerPermissionRes.data as OfficerPermission[]) ?? []); setRawGuestPlayers((guestRes.data as RawGuestPlayer[]) ?? []); setRankings((rankingRes.data as MemberRanking[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []); setMomLeaderboard((momLeaderboardRes.data as MomLeaderboardEntry[]) ?? []);
-    setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: profileRes, profiles: allProfileRes, fees: feeRes, guestFees: guestFeeRes, attendance: attendanceRes, feedback: feedbackRes, submissions: submissionRes, rolePermissions: permissionRes, officerPermissions: officerPermissionRes, guestPlayers: guestRes, rankings: rankingRes, momVotes: momVoteRes, momResults: momResultRes, momLeaderboard: momLeaderboardRes }) }));
+    setFees((feeRes.data as unknown as Fee[]) ?? []); setGuestFees((guestFeeRes.data as unknown as GuestFee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setOfficerPermissions((officerPermissionRes.data as OfficerPermission[]) ?? []); setRawGuestPlayers((guestRes.data as RawGuestPlayer[]) ?? []); setWinners((winnerRes.data as EventWinningMember[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []);
+    setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: profileRes, profiles: allProfileRes, fees: feeRes, guestFees: guestFeeRes, attendance: attendanceRes, feedback: feedbackRes, submissions: submissionRes, rolePermissions: permissionRes, officerPermissions: officerPermissionRes, guestPlayers: guestRes, winners: winnerRes, momVotes: momVoteRes, momResults: momResultRes }) }));
     setMemberLoading(false);
   }, [supabase]);
 
@@ -266,7 +267,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const confirmDelete = async () => {
     if (!supabase || !pendingDelete) return;
     setDeleting(true);
-    const { error } = await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id);
+    const weeklyEvent = pendingDelete.table === "events" && events.some((event) => event.id === pendingDelete.id && isWeeklyScheduleEvent(event));
+    const { error } = weeklyEvent
+      ? await supabase.rpc("cancel_weekly_event", { target_event_id: pendingDelete.id })
+      : await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id);
     const scope = tableScopes[pendingDelete.table] ?? "all";
     setDeleting(false); setPendingDelete(null);
     if (error) return showToast(toErrorMessage(error), "error");
@@ -369,15 +373,15 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "home" && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} profile={me} sessionPending={sessionPending} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} onRetryFees={() => void loadMemberData(userRef.current, true)} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
       {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={hasLoadError("fees", "profiles")} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
-      {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
-      {view === "rankings" && <Rankings rankings={rankings} goalEvents={events} momLeaderboard={momLeaderboard} user={user} profile={me} loading={sessionPending || publicLoading} loadError={hasLoadError("events", "rankings", "momLeaderboard")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
+      {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
+      {view === "rankings" && <Rankings events={events} attendance={attendance} winners={winners} profiles={profiles} user={user} profile={me} loading={sessionPending || publicLoading} loadError={hasLoadError("events", "attendance", "winners", "profiles")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
       {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} supabase={supabase} loading={sessionPending} loadError={hasLoadError("feedback", "profiles")} canManage={permissions.has("feedback.manage")} onEdit={(item) => setQuickEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
       {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={hasLoadError("forms", "submissions")} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
       {view === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
       {view === "admin" && sessionPending && <SectionSkeleton />}
       {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} sectionLoadErrors={{ members: hasLoadError("memberDirectory", "profiles"), guests: hasLoadError("guestPlayers"), fees: hasLoadError("fees", "guestFees", "profiles"), notices: noticeLoadError, venues: hasLoadError("venues"), events: eventLoadError, attendance: hasLoadError("events", "attendance"), teams: eventLoadError, feedback: hasLoadError("feedback"), forms: hasLoadError("forms"), permissions: hasLoadError("rolePermissions", "officerPermissions") }} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}
-      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload("member")} toast={showToast} />}
+      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload("member")} toast={showToast} />}
       {children}
     </main>
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
@@ -385,6 +389,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
     {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
+    {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload("member"); }} onError={(message) => showToast(message, "error")} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
@@ -570,6 +575,12 @@ function Notices({ notices, loading, loadError, canManage, onCreate, onEdit, onD
 function MonthCalendar({ events, selectedKey, onSelect }: { events: Event[]; selectedKey: string | null; onSelect: (key: string) => void }) {
   const initialDate = (selectedKey ? parseEventDateKey(selectedKey) : null) ?? new Date();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
+  const [manualMonth, setManualMonth] = useState(false);
+  useEffect(() => {
+    if (manualMonth || !selectedKey) return;
+    const date = parseEventDateKey(selectedKey);
+    if (date) setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+  }, [selectedKey, manualMonth]);
   const days = useMemo(() => {
     const first = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
     const start = new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
@@ -585,31 +596,42 @@ function MonthCalendar({ events, selectedKey, onSelect }: { events: Event[]; sel
       return { date, key, events: eventsByDate.get(key) ?? [] };
     });
   }, [events, visibleMonth]);
-  const moveMonth = (offset: number) => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1));
+  const moveMonth = (offset: number) => { setManualMonth(true); setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1)); };
   const today = new Date();
+  const thisWeekSundayKey = toDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + (7 - today.getDay()) % 7));
   return <section className="month-calendar" aria-labelledby="month-calendar-title">
-    <header><div><small>MONTHLY SCHEDULE</small><h2 id="month-calendar-title">{visibleMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" })}</h2></div><div className="month-calendar-controls"><button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft /></button><button type="button" onClick={() => setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1))}>이번 달</button><button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight /></button></div></header>
+    <header><div><small>MONTHLY SCHEDULE</small><h2 id="month-calendar-title">{visibleMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" })}</h2></div><div className="month-calendar-controls"><button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft /></button><button type="button" onClick={() => { setManualMonth(false); setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }}>이번 달</button><button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight /></button></div></header>
     <div className="month-calendar-scroll scroll-region" tabIndex={0} role="region" aria-label={`${visibleMonth.getFullYear()}년 ${visibleMonth.getMonth() + 1}월 일정 달력`}><div className="month-calendar-grid"><div className="month-calendar-weekdays" aria-hidden="true">{["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-calendar-days">{days.map(({ date, key, events: dayEvents }) => {
       const isToday = date.toDateString() === today.toDateString();
       const marks = <><time dateTime={`${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6, 8)}`}>{date.getDate()}</time>{dayEvents.map((event) => <span key={event.id} className="day-event"><b>{formatTime(event.starts_at)}</b><span>{event.title}</span></span>)}</>;
       if (date.getMonth() !== visibleMonth.getMonth()) return <div key={key} className="outside">{marks}</div>;
       const isSelected = selectedKey === key;
-      return <button key={key} type="button" className={`${isToday ? "today " : ""}${isSelected ? "selected" : ""}`.trim() || undefined} aria-pressed={isSelected} aria-controls={events.length > 0 ? "event-focus" : undefined} aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${date.toLocaleDateString("ko-KR", { weekday: "long" })}${isToday ? " 오늘" : ""} · ${dayEvents.length > 0 ? `일정 ${dayEvents.length}개` : "일정 없음"}`} onClick={() => onSelect(key)}>{marks}</button>;
+      const isThisWeekSunday = key === thisWeekSundayKey;
+      return <button key={key} type="button" className={`${isToday ? "today " : ""}${isSelected ? "selected " : ""}${isThisWeekSunday ? "this-week-sunday" : ""}`.trim() || undefined} aria-pressed={isSelected} aria-controls={events.length > 0 ? "event-focus" : undefined} aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${date.toLocaleDateString("ko-KR", { weekday: "long" })}${isToday ? " 오늘" : ""} · ${dayEvents.length > 0 ? `일정 ${dayEvents.length}개` : "일정 없음"}`} onClick={() => onSelect(key)}>{marks}</button>;
     })}</div></div></div>
   </section>;
 }
 
-function Events({ events, attendance, user, profile, sessionPending, rsvpPendingEventIds, loading, loadError, canManage, onCreate, onEdit, onManageMatch, onManageAttendance, onDelete, onAttendance, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; user: User | null; profile: Profile | null; sessionPending: boolean; rsvpPendingEventIds: Set<string>; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onManageMatch: (event: Event) => void; onManageAttendance: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
+function Events({ events, attendance, user, profile, sessionPending, rsvpPendingEventIds, loading, loadError, canManage, onCreate, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; user: User | null; profile: Profile | null; sessionPending: boolean; rsvpPendingEventIds: Set<string>; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onManageMatch: (event: Event) => void; onManageAttendance: (event: Event) => void; onManageWinners: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
   const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const [todayKey, setTodayKey] = useState(() => toDateKey(new Date()));
+  useEffect(() => { setPickedKey(null); }, [todayKey]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTodayKey(toDateKey(new Date())), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const focusRef = useRef<HTMLElement>(null);
   /** Events arrive after this component mounts, so the default day is derived
       instead of seeded into state: the next upcoming day, or — once the season
       has no dates left — the most recent past one. The summary is never blank. */
   const defaultKey = useMemo(() => {
     const now = Date.now();
-    const fallback = events.find((event) => new Date(event.starts_at).getTime() >= now) ?? events[events.length - 1];
+    const today = parseEventDateKey(todayKey) ?? new Date();
+    const sunday = toDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + (7 - today.getDay()) % 7));
+    const fallback = events.find((event) => toEventDateKey(event.starts_at) === sunday)
+      ?? events.find((event) => new Date(event.starts_at).getTime() >= now) ?? events[events.length - 1];
     return fallback ? toEventDateKey(fallback.starts_at) : null;
-  }, [events]);
+  }, [events, todayKey]);
   const selectedKey = pickedKey ?? defaultKey;
   const selectedDate = selectedKey ? parseEventDateKey(selectedKey) : null;
   /** Events load ordered by start time, so a day holding two of them keeps that order. */
@@ -624,7 +646,7 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
   /* The calendar is the only index of dates; below it exactly one day is
      summarised. Roster, teams, match results and MOM stay on the day page at
      /events/YYYYMMDD so this panel keeps to what fits in a glance. */
-  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<MonthCalendar events={events} selectedKey={selectedKey} onSelect={selectDay} />{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <section ref={focusRef} id="event-focus" className="event-focus" aria-labelledby="event-focus-title">
+  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<MonthCalendar key={todayKey} events={events} selectedKey={selectedKey} onSelect={selectDay} />{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <section ref={focusRef} id="event-focus" className="event-focus" aria-labelledby="event-focus-title">
     <header className="event-focus-head" aria-live="polite"><h2 id="event-focus-title">{selectedDate ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 ${selectedDate.toLocaleDateString("ko-KR", { weekday: "long" })}` : "날짜를 선택해 주세요"}</h2><span>{selectedEvents.length > 0 ? `일정 ${selectedEvents.length}개` : "일정 없음"}</span></header>
     {selectedEvents.length === 0 ? <Empty icon={<CalendarDays />} title="이 날짜에는 일정이 없습니다" description="달력에서 초록색 일정 표시가 있는 날짜를 선택해 주세요." /> : selectedEvents.map((event) => {
       const eventAttendance = attendance.filter((item) => item.event_id === event.id);
@@ -693,7 +715,7 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
           </section>
           {canManage && <section className={`event-card-section event-card-management${isPast ? " past-priority" : isStartingSoon ? " attendance-priority" : ""}`} aria-labelledby={`event-card-management-${event.id}`}>
             <div className="event-card-section-heading"><h3 id={`event-card-management-${event.id}`}>경기 관리</h3><span>{managementHint}</span></div>
-            <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button></div>
+            <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button><button type="button" className="officer-menu-item" aria-label={`우승 명단 · ${event.title}`} onClick={() => onManageWinners(event)}><Trophy size={17} /> 우승 명단</button></div>
           </section>}
         </div>
       </article>;
@@ -701,32 +723,33 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
   </section>}</section>;
 }
 
-function Rankings({ rankings, goalEvents, momLeaderboard, user, profile, loading, loadError, onLogin, onRetry }: { rankings: MemberRanking[]; goalEvents: Event[]; momLeaderboard: MomLeaderboardEntry[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
-  const goalRankings = useMemo(() => {
-    const totals = new Map<string, { member_id: string; member_name: string; goals: number; scoring_event_ids: Set<string> }>();
-    const addGoals = (eventId: string, memberId: string | null, memberName: string, goals: number) => {
-      if (!memberId || goals <= 0) return;
-      const current = totals.get(memberId) ?? { member_id: memberId, member_name: memberName, goals: 0, scoring_event_ids: new Set<string>() };
-      current.member_name = memberName;
-      current.goals += goals;
-      current.scoring_event_ids.add(eventId);
-      totals.set(memberId, current);
-    };
-    goalEvents.forEach((event) => {
-      if (event.event_matches?.length) {
-        event.event_matches.forEach((match) => match.event_match_scorers.forEach((scorer) => addGoals(event.id, scorer.profile_id, scorer.scorer_name, scorer.goals)));
-        return;
-      }
-      event.event_teams?.forEach((team) => team.event_team_members.forEach((member) => addGoals(event.id, member.profile_id, member.participant_name, member.goals)));
-    });
-    return Array.from(totals.values()).map(({ scoring_event_ids, ...ranking }) => ({ ...ranking, scoring_event_count: scoring_event_ids.size })).sort((a, b) => b.goals - a.goals || b.scoring_event_count - a.scoring_event_count || a.member_name.localeCompare(b.member_name, "ko"));
-  }, [goalEvents]);
-  const intro = <PageIntro kicker="CLUB RANKING" title="클럽 랭킹" description="출석·회비 활동과 득점, MOM 기록을 한곳에서 확인합니다. 금액과 개인 연락처는 공개하지 않습니다." />;
-  if (loading) return <section className="content">{intro}<SectionSkeleton label="활동 기록을 불러오는 중" /></section>;
-  if (!user) return <section className="content">{intro}<LoginGate icon={<Shield />} title="로그인 후 클럽 기록을 확인하세요" description="득점과 활동, MOM 기록을 모아 보여주는 회원 전용 대시보드입니다." onLogin={onLogin} /></section>;
+function Rankings({ events, attendance, winners, profiles, user, profile, loading, loadError, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; winners: EventWinningMember[]; profiles: Profile[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
+  const currentYear = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date()));
+  const [year, setYear] = useState(currentYear);
+  const years = [...new Set([currentYear, ...events.map((event) => Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date(event.starts_at))))])].sort((a, b) => b - a);
+  const awards = useMemo(() => buildSeasonRankings(year, events, attendance, winners, profiles), [year, events, attendance, winners, profiles]);
+  const intro = <PageIntro kicker="CLUB RANKING" title="클럽 랭킹" description="올해의 우승, 득점, 출석 기록을 확인하세요." />;
+  if (loading) return <section className="content">{intro}<SectionSkeleton label="랭킹을 불러오는 중" /></section>;
+  if (!user) return <section className="content">{intro}<LoginGate icon={<Shield />} title="로그인 후 클럽 기록을 확인하세요" description="회원 전용 연간 랭킹입니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   if (getMembershipRestriction(profile)) return <section className="content">{intro}<MemberRestrictionNotice restriction={getMembershipRestriction(profile)} resource="활동 랭킹은 활동 회원에게만 공개합니다." /></section>;
-  return <section className="content">{intro}<div className="ranking-layout"><div><div className="section-heading compact"><div><span className="eyebrow">GOAL LEADERS</span><h2>득점 순위</h2></div></div><p className="section-note">경기별 득점 기록을 우선하고, 없는 일정은 팀 종합 기록을 사용해 전체 기간 득점을 합산합니다. 용병 기록은 회원 순위에서 제외합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 누적 득점 순위"><table><caption className="sr-only">회원별 누적 득점 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">득점 일정</th><th scope="col">누적 득점</th></tr></thead><tbody>{goalRankings.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.scoring_event_count}회</td><td><b>{ranking.goals}골</b></td></tr>)}</tbody></table>{goalRankings.length === 0 && <Empty icon={<Shield />} title="아직 득점 기록이 없습니다" description="경기 결과에 회원 득점이 등록되면 순위가 표시됩니다." />}</div></div><div><div className="section-heading compact"><div><span className="eyebrow">ACTIVITY</span><h2>활동 순위</h2></div></div><p className="section-note">실제 출석 1회는 3점, 회비 납부 1개월은 1점으로 집계합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 출석 및 회비 납부 활동 순위"><table><caption className="sr-only">회원별 출석 및 회비 납부 활동 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">실제 출석</th><th scope="col">회비 납부</th><th scope="col">종합 점수</th></tr></thead><tbody>{rankings.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.attendance_count}회</td><td>{ranking.paid_fee_count}개월</td><td><b>{ranking.total_score}점</b></td></tr>)}</tbody></table>{rankings.length === 0 && <Empty icon={<CalendarDays />} title="아직 집계된 기록이 없습니다" description="실제 출석이나 회비 납부 기록이 등록되면 순위가 표시됩니다." />}</div></div><div><div className="section-heading compact"><div><span className="eyebrow">MOM HALL OF FAME</span><h2>MOM 명예의 전당</h2></div></div><p className="section-note">MOM(Man of the Match)은 그날 경기의 최우수 선수입니다. 일정이 끝나면 실제 출석한 회원끼리 본인을 제외하고 한 명씩 투표해 상위 3명을 정합니다.</p><div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label="회원별 MOM 수상 및 득표 순위"><table><caption className="sr-only">회원별 MOM 수상 및 득표 순위</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">1위</th><th scope="col">2위</th><th scope="col">3위</th><th scope="col">득표</th></tr></thead><tbody>{momLeaderboard.map((ranking, index) => <tr key={ranking.member_id}><td><span className="rank-badge">{index + 1}</span></td><th scope="row">{ranking.member_name}</th><td>{ranking.first_place_count}회</td><td>{ranking.second_place_count}회</td><td>{ranking.third_place_count}회</td><td>{ranking.total_votes}표</td></tr>)}</tbody></table>{momLeaderboard.length === 0 && <Empty icon={<Shield />} title="아직 MOM 기록이 없습니다" description="지난 일정에서 MOM 투표가 진행되면 이곳에 집계됩니다." />}</div></div></div></section>;
+  return <section className="content">{intro}
+    <label className="ranking-year">집계 연도 <select value={year} onChange={(event) => setYear(Number(event.target.value))}>{years.map((value) => <option key={value} value={value}>{value}년</option>)}</select></label>
+    <div className="ranking-layout">
+      <SeasonRankingTable title="MVP" description="일정별 최종 우승 명단에 이름이 등록된 횟수입니다." rows={awards.wins} unit="회" />
+      <SeasonRankingTable title="득점왕" description="경기별 득점을 우선하고, 경기 기록이 없는 일정은 팀 기록을 사용합니다." rows={awards.goals} unit="골" />
+      <SeasonRankingTable title="출석왕" description="실제 출석과 지각을 일정당 한 번씩 계산합니다." rows={awards.attendance} unit="회" />
+      <section className="ranking-fair-play"><h2>올해의 페어플레이어</h2><p>연말에 운영진이 선정합니다.</p></section>
+    </div>
+  </section>;
+}
+
+function SeasonRankingTable({ title, description, rows, unit }: { title: string; description: string; rows: ReturnType<typeof buildSeasonRankings>["wins"]; unit: string }) {
+  return <section><div className="section-heading compact"><h2>{title}</h2></div><p className="section-note">{description}</p>
+    <div className="table-wrap ranking-table scroll-region" tabIndex={0} role="region" aria-label={`${title} 상위 5명`}><table><caption className="sr-only">{title} 상위 5명</caption><thead><tr><th scope="col">순위</th><th scope="col">회원</th><th scope="col">기록</th></tr></thead><tbody>{rows.map((row) => <tr key={row.member_id}><td><span className="rank-badge">{row.rank}</span></td><th scope="row">{row.member_name}</th><td><b>{row.count}{unit}</b></td></tr>)}</tbody></table>
+      {rows.length === 0 && <Empty icon={<Trophy />} title="아직 기록이 없습니다" description="운영진이 해당 일정의 기록을 등록하면 순위가 표시됩니다." />}
+    </div>
+  </section>;
 }
 function formatDate(value: string) { return new Date(value).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" }); }
 function formatRelativeDate(value: string) {

@@ -1915,6 +1915,12 @@ td { font-weight: 800; }
   gap: 45px;
 }
 
+.ranking-year { display: inline-flex; align-items: center; gap: 12px; margin: 0 0 28px; font-weight: 800; }
+.ranking-year select { min-height: var(--tap); padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.ranking-fair-play { padding: 24px 0; border-top: 1px solid var(--line); }
+.ranking-fair-play h2 { margin: 0 0 8px; }
+.ranking-fair-play p { margin: 0; color: var(--muted); }
+
 .ranking-table tbody tr:first-child .rank-badge {
   background: var(--green);
   color: var(--navy);
@@ -2071,6 +2077,7 @@ td { font-weight: 800; }
 
 /* The selected day flips to the navy/lime signature pair: readable across the
    whole grid, and distinct from the today ring it can sit on top of. */
+.month-calendar-days > button.this-week-sunday { box-shadow: inset 0 0 0 3px var(--green-text); }
 .month-calendar-days > button.selected { background: var(--navy); }
 .month-calendar-days > button.selected:hover { background: var(--navy); }
 .month-calendar-days > button.selected time { color: var(--surface); }
@@ -5439,41 +5446,15 @@ td { font-weight: 800; }
   font-size: 12px;
 }
 
-.editor .attendance-status-toggle {
-  width: 116px;
-  min-height: var(--tap);
-  margin: 0;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 19px;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 900;
-}
+.attendance-choice { display: flex; gap: 6px; flex-wrap: wrap; }
+.editor .attendance-choice button { min-height: var(--tap); margin: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 800; }
+.editor .attendance-choice button:hover { background: var(--paper); }
+.editor .attendance-choice button.active { background: var(--navy); border-color: var(--navy); color: var(--surface); }
 
-.editor .attendance-status-toggle:hover {
-  background: var(--lime);
-}
-
-.attendance-row-present .attendance-status-toggle {
-  border-color: var(--green);
-  background: var(--ok-bg);
-  color: var(--ok-ink);
-}
-
-.attendance-row-late .attendance-status-toggle {
-  border-color: var(--warn-ink);
-  background: var(--warn-bg);
-  color: var(--warn-ink);
-}
-
-.attendance-row-absent .attendance-status-toggle {
-  border-color: var(--danger-ink);
-  background: var(--danger-bg);
-  color: var(--danger-ink);
-}
+.winner-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 8px; max-height: 45vh; overflow: auto; margin: 16px 0; }
+.editor .winner-option { display: flex; flex-direction: row; align-items: center; gap: 10px; min-height: var(--tap); padding: 10px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.editor .winner-option:has(input:checked) { border-color: var(--green-text); background: var(--ok-bg); }
+.editor .winner-option input { margin: 0; }
 
 .attendance-walk-in {
   margin: 0;
@@ -5517,10 +5498,8 @@ td { font-weight: 800; }
     grid-template-columns: 34px minmax(0, 1fr);
   }
 
-  .editor .attendance-status-toggle {
-    grid-column: 2;
-    width: 100%;
-  }
+  .editor .attendance-choice { grid-column: 2; width: 100%; }
+  .editor .attendance-choice button { flex: 1; }
 }
 /* --------------------------------------------------------------------------
    Standalone auth pages
