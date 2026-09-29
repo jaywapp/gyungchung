@@ -33,7 +33,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "improved", text: "제보 목록의 답변을 'AI 답변'으로 표시하고, 답변 속 링크는 본문 아래 배지로 따로 모았습니다." },
       { kind: "added", text: "업데이트 노트에 변경의 출처를 '제보'와 '직접 요청' 배지로 표시합니다." },
     ],
-    pullRequests: [],
+    pullRequests: [165],
   },
   {
     id: "2026-09-30-light-dark-theme",
