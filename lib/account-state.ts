@@ -1,7 +1,9 @@
 import type { User } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
 
-export function getAccountState(user: User | null, profile: Profile | null) {
+export type AccountState = "signed-out" | "member" | "unlinked";
+
+export function getAccountState(user: User | null, profile: Profile | null): AccountState {
   if (!user) return "signed-out";
   return profile ? "member" : "unlinked";
 }

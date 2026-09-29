@@ -8,7 +8,8 @@ import { getRsvpViewModel, type RsvpStatus } from "@/lib/rsvp";
 import type { Attendance, Profile } from "@/lib/types";
 
 type RsvpControlsProps = {
-  variant?: "standard" | "detail";
+  /** "console" keeps the standard buttons and states, drawn large for the home match console. */
+  variant?: "standard" | "detail" | "console";
   eventTitle: string;
   startsAt: string;
   status: RsvpStatus;
@@ -29,7 +30,7 @@ export function RsvpControls({ variant = "standard", eventTitle, startsAt, statu
   const isDetail = variant === "detail";
   const detailStatusLabel = view.state === "loading" ? "확인 중" : view.state === "signed_out" ? "로그인 필요" : view.state === "unavailable" ? view.label : status === "going" ? "참석 예정" : status === "not_going" ? "불참" : "응답 없음";
 
-  return <div className={`rsvp-control${isDetail ? " detail-mode" : ""} ${view.state}`} aria-busy={isSaving}>
+  return <div className={`rsvp-control${isDetail ? " detail-mode" : variant === "console" ? " console-mode" : ""} ${view.state}`} aria-busy={isSaving}>
     <p id={stateId} className="rsvp-state" role="status" aria-live="polite" aria-atomic="true"><b>{isDetail && status === "going" && <Check size={18} aria-hidden="true" />}{isDetail ? detailStatusLabel : `현재 응답 · ${view.label}`}</b><span>{view.message}</span></p>
     {view.state === "signed_out" && <button type="button" className="cta small rsvp-login" onClick={onLogin}>로그인하고 응답하기</button>}
     {showActions && <div className="rsvp-actions" role="group" aria-label={`${eventTitle} 참석 여부`} aria-describedby={stateId}>
