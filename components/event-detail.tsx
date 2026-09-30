@@ -214,7 +214,7 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
               items[next]?.focus();
             }}>
               <button type="button" role="menuitem" tabIndex={-1} onClick={() => { document.getElementById(`event-management-trigger-${event.id}`)?.focus(); setOpenManagementMenuId(null); onEdit(event); }}><Pencil size={15} /> 일정 수정</button>
-              <button type="button" role="menuitem" tabIndex={-1} onClick={() => { document.getElementById(`event-management-trigger-${event.id}`)?.focus(); setOpenManagementMenuId(null); onDelete(event.id, `${date.getMonth() + 1}월 ${date.getDate()}일 · ${event.title}`); }}><Trash2 size={15} /> 일정 삭제</button>
+              <button type="button" role="menuitem" className="danger" tabIndex={-1} onClick={() => { document.getElementById(`event-management-trigger-${event.id}`)?.focus(); setOpenManagementMenuId(null); onDelete(event.id, `${date.getMonth() + 1}월 ${date.getDate()}일 · ${event.title}`); }}><Trash2 size={15} /> 일정 삭제</button>
             </div>}
           </div>}
         </div>

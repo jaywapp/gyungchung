@@ -22,6 +22,21 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-09-30-match-console",
+    date: "2026-09-30",
+    source: "request",
+    title: "홈에서 바로 다음 경기에 응답할 수 있습니다",
+    summary: "메뉴를 왼쪽과 아래로 옮기고, 로그인하면 홈 첫 화면에서 참석 여부부터 정할 수 있게 바꿨습니다.",
+    changes: [
+      { kind: "improved", text: "로그인 회원의 홈 맨 위에 다음 경기 날짜, 참석·불참 버튼, 정원 칸과 참석자를 한데 모았습니다." },
+      { kind: "added", text: "홈에서 최근 공지, 내 회비, 진행 중인 투표·설문, 시즌 득점·MVP 순위를 함께 볼 수 있습니다." },
+      { kind: "improved", text: "넓은 화면에서는 왼쪽 메뉴, 휴대전화에서는 아래쪽 탭과 더보기 메뉴로 이동합니다. 주 메뉴는 홈·일정·회원·공지·랭킹 다섯 개입니다." },
+      { kind: "improved", text: "회원 목록을 포지션으로 거를 수 있는 작은 카드로 바꾸고, 이름 두 글자와 포지션 색으로 회원을 구분합니다." },
+      { kind: "added", text: "로그인하지 않아도 더보기 메뉴와 왼쪽 메뉴에서 화면 테마를 바꿀 수 있습니다." },
+    ],
+    pullRequests: [168],
+  },
+  {
     id: "2026-09-30-readability-pass",
     date: "2026-09-30",
     source: "request",

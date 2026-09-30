@@ -23,12 +23,22 @@ function applyTheme(preference: ThemePreference) {
   document.documentElement.dataset.theme = resolveTheme(preference, prefersDark);
 }
 
-/** Light · dark · system, stored per browser. "system" keeps following the OS while the page is open. */
-export default function ThemeSwitch() {
+const THEME_EVENT = "gc-theme-change";
+
+/**
+ * Light · dark · system, stored per browser. "system" keeps following the OS while the page is open.
+ * `compact` draws icons only (the sidebar); every instance on the page stays in step.
+ */
+export default function ThemeSwitch({ compact = false }: { compact?: boolean }) {
   const name = useId();
   const [preference, setPreference] = useState<ThemePreference>("system");
 
-  useEffect(() => { setPreference(readPreference()); }, []);
+  useEffect(() => {
+    setPreference(readPreference());
+    const sync = () => setPreference(readPreference());
+    window.addEventListener(THEME_EVENT, sync);
+    return () => window.removeEventListener(THEME_EVENT, sync);
+  }, []);
 
   useEffect(() => {
     if (preference !== "system") return;
@@ -43,13 +53,14 @@ export default function ThemeSwitch() {
     applyTheme(next);
     // Private browsing can refuse storage; the choice still holds for this visit.
     try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch {}
+    window.dispatchEvent(new Event(THEME_EVENT));
   };
 
-  return <fieldset className="theme-switch">
-    <legend>화면 테마</legend>
-    <div>{options.map(({ value, label, icon: Icon }) => <label key={value} className={preference === value ? "selected" : undefined}>
+  return <fieldset className={"theme-switch" + (compact ? " compact" : "")}>
+    <legend className={compact ? "sr-only" : undefined}>화면 테마</legend>
+    <div>{options.map(({ value, label, icon: Icon }) => <label key={value} className={preference === value ? "selected" : undefined} title={compact ? label : undefined}>
       <input type="radio" name={name} value={value} checked={preference === value} onChange={() => choose(value)} />
-      <Icon size={16} aria-hidden="true" /> {label}
+      <Icon size={16} aria-hidden="true" /> {compact ? <span className="sr-only">{label}</span> : label}
     </label>)}</div>
   </fieldset>;
 }

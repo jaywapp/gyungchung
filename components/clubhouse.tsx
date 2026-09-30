@@ -4,13 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LogIn, LogOut, MapPin, Menu, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserMinus, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LogOut, MapPin, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, FeedbackFeedItem, GuestFee, GuestPlayer, Notice, OfficerPermission, OfficerTitle, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
+import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, FeedbackFeedItem, GuestFee, GuestPlayer, Notice, OfficerPermission, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
 import type { EditorConfig } from "@/components/admin-console";
 import WinnerEditor from "@/components/winner-editor";
 import ThemeSwitch from "@/components/theme-switch";
+import MemberHome from "@/components/member-home";
+import MemberDirectory from "@/components/member-directory";
+import { ClubMobileBar, ClubSidebar, ClubTabBar, MoreSheet, tabPaths, type Tab } from "@/components/club-nav";
 import { FEE_AMOUNTS, feeRuleBadges, formatWon } from "@/lib/fee-rules";
 import { buildSeasonRankings, type EventWinningMember } from "@/lib/season-rankings";
 import { editorScopes, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
@@ -32,13 +35,8 @@ const AdminEditor = dynamic(() => import("@/components/admin-console").then((mod
 const ConfirmDialog = dynamic(() => import("@/components/confirm-dialog"));
 const EventDetail = dynamic(() => import("@/components/event-detail"), { loading: () => <SectionSkeleton /> });
 
-type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "updates" | "admin";
 type RawGuestPlayer = Omit<GuestPlayer, "appearance_count">;
-const roleLabels: Record<Profile["role"], string> = { member: "일반 회원", manager: "관리자" };
-const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
 const systemAdminPermissions = ["roles.manage", "officers.manage", "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage", "elections.manage", "polls.manage", "surveys.manage"];
-const navItems: [Tab, string][] = [["home", "홈"], ["members", "회원"], ["fees", "회비"], ["notices", "공지"], ["events", "일정"], ["rankings", "랭킹"], ["feedback", "의견"], ["participation", "참여"], ["updates", "업데이트 노트"]];
-const tabPaths: Record<Tab, string> = { home: "/", members: "/members", fees: "/fees", notices: "/notices", events: "/events", rankings: "/rankings", feedback: "/feedback", participation: "/participation", updates: "/updates", admin: "/admin" };
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
 
 /** Results the auth callback and the OAuth redirect hand back on the URL. */
@@ -58,7 +56,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const tab: Tab = pathTabs.get(pathname) ?? (eventDateKey ? "events" : "home");
   /** Null on a detail route, so no section index renders behind the detail. */
   const view: Tab | null = eventDateKey ? null : tab;
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -233,7 +231,6 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [showToast]);
 
   useEffect(() => () => window.clearTimeout(toastTimerRef.current), []);
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
   const requiresPasswordChange = !memberLoading && Boolean(me?.must_change_password) && pathname !== "/auth/update-password";
   useEffect(() => {
     if (requiresPasswordChange) router.replace("/auth/update-password");
@@ -259,6 +256,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   /** RLS already narrows a regular member to their own rows; an officer reads the club, so the home card still has to filter. */
   const myFees = useMemo(() => fees.filter((fee) => fee.member_id === me?.id), [fees, me?.id]);
   const myStanding = myFees.length > 0 ? summarizeFees(myFees) : null;
+  /** The home ranking module reads the current season, the same data the rankings page uses. */
+  const seasonAwards = useMemo(() => buildSeasonRankings(new Date().getFullYear(), events, attendance, winners, profiles), [events, attendance, winners, profiles]);
   const goingCount = upcoming ? attendance.filter((item) => item.event_id === upcoming.id && item.status === "going").length : 0;
   /** Sections gated behind a session must not flash their signed-out state first. */
   const sessionPending = authLoading || memberLoading;
@@ -266,8 +265,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const eventLoadError = hasLoadError("events");
   const noticeLoadError = hasLoadError("notices");
 
-  const navigate = useCallback((next: Tab) => { setMenuOpen(false); router.push(tabPaths[next]); }, [router]);
-  const navRef = useDialogFocus<HTMLElement>({ onRequestClose: () => setMenuOpen(false), active: menuOpen });
+  const navigate = useCallback((next: Tab) => { setSheetOpen(false); router.push(tabPaths[next]); }, [router]);
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+  const accountSummary = { loading: authLoading, state: accountState, profile: me };
   const confirmDelete = async () => {
     if (!supabase || !pendingDelete) return;
     setDeleting(true);
@@ -363,18 +363,18 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     return <main className="password-page"><section className="password-card"><span className="eyebrow">SECURITY UPDATE</span><h1>비밀번호 변경이 필요합니다</h1><p>안전한 회원 계정 사용을 위해 새 비밀번호 설정 화면으로 이동하고 있습니다.</p></section></main>;
   }
 
-  return <div className="page">
+  return <div className="page shell">
     <a className="skip-link" href="#main">본문 바로가기</a>
-    <header className="topbar">
-      <Link className="brand" href="/" onClick={() => setMenuOpen(false)} aria-label="경충FC 홈"><span className="crest"><span>GC</span></span><span className="brand-copy"><strong>경충FC</strong><small>WEEKEND FUTSAL CLUB</small></span></Link>
-      <nav ref={navRef} tabIndex={-1} id="primary-navigation" className={menuOpen ? "nav open" : "nav"} aria-label="주 메뉴">{navItems.map(([key, label]) => <Link key={key} href={tabPaths[key]} className={tab === key ? "active" : ""} aria-current={pathname === tabPaths[key] ? "page" : tab === key ? "true" : undefined} onClick={() => setMenuOpen(false)}>{label}</Link>)}{isOfficer && <Link href={tabPaths.admin} className={tab === "admin" ? "active" : ""} aria-current={tab === "admin" ? "page" : undefined} onClick={() => setMenuOpen(false)}>관리</Link>}<button type="button" className="nav-close" onClick={() => setMenuOpen(false)}><X size={16} /> 메뉴 닫기</button></nav>
-      <div className="account"><a className="youtube-link" href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer" aria-label="경충FC 유튜브"><Youtube size={20} /></a>{authLoading ? <span className="auth-skeleton" role="status" aria-label="로그인 상태 확인 중" /> : accountState !== "signed-out" ? <button className="login-button" onClick={() => setAccountOpen(true)} aria-label={accountState === "member" ? `${me?.name} · 마이페이지` : "계정 연결 필요"}><UserRound size={16} /> {accountState === "member" ? me?.name : "계정 연결 필요"}</button> : <button className="login-button" onClick={() => setLoginOpen(true)}><LogIn size={16} /> 로그인</button>}<button className="menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} aria-controls="primary-navigation">{menuOpen ? <X /> : <Menu />}</button></div>
-    </header>
+    <ClubSidebar tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
+    <div className="shell-main">
+    <ClubMobileBar account={accountSummary} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
 
     <main id="main">
       {authError && <aside className="approval-banner" role="alert"><AlertCircle /><div><b>로그인 상태를 확인하지 못했습니다</b><p>연결 상태를 확인한 뒤 다시 연결해 주세요.</p><button type="button" className="text-link" onClick={() => window.location.reload()}>다시 연결</button></div></aside>}
       {membershipRestriction && <aside className={`approval-banner ${membershipRestriction}`} role="status"><Shield size={20} /><div><span>{getMembershipRestrictionCopy(membershipRestriction).label}</span><b>{getMembershipRestrictionCopy(membershipRestriction).title}</b><p>{getMembershipRestrictionCopy(membershipRestriction).description}</p></div></aside>}
-      {view === "home" && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} profile={me} sessionPending={sessionPending} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} onRetryFees={() => void loadMemberData(userRef.current, true)} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
+      {view === "home" && authLoading && <section className="content"><SectionSkeleton label="홈을 불러오는 중" /></section>}
+      {view === "home" && !authLoading && user && <MemberHome profile={me} upcoming={upcoming} attendance={attendance} profiles={profiles} notices={notices} forms={forms} feeStanding={myStanding} rankings={seasonAwards} publicLoading={publicLoading} sessionPending={sessionPending} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
+      {view === "home" && !authLoading && !user && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} profile={me} sessionPending={sessionPending} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} onRetryFees={() => void loadMemberData(userRef.current, true)} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
       {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={hasLoadError("fees", "profiles")} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
@@ -391,6 +391,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
 
     <footer><span>경충FC · SINCE 2014</span><span>우리의 주말, 우리의 풋살.</span><a href="https://www.youtube.com/channel/UCR4JmQqbKE21qOMkf7xdYQQ" target="_blank" rel="noreferrer">YOUTUBE <ChevronRight size={14} /></a></footer>
+    </div>
+    <ClubTabBar tab={tab} pathname={pathname} sheetOpen={sheetOpen} onOpenSheet={() => setSheetOpen(true)} />
+    <MoreSheet open={sheetOpen} tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onClose={closeSheet} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
     {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
     {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload("member"); }} onError={(message) => showToast(message, "error")} />}
@@ -469,7 +472,7 @@ function Members({ profiles, profile, user, loading, loadError, canManage, onEdi
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   if (getMembershipRestriction(profile)) return <section className="content">{intro}<MemberRestrictionNotice restriction={getMembershipRestriction(profile)} resource="회원 명단은 활동 회원에게만 공개합니다." /></section>;
   if (profiles.length === 0) return <section className="content">{intro}<Empty icon={<UserRound />} title="공개된 회원이 없습니다" description="가입 승인이 완료된 회원이 생기면 이곳에 표시됩니다." /></section>;
-  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 수정 버튼과 ⋯ 메뉴로 회원을 관리할 수 있습니다.</div>}<div className="member-grid">{profiles.map((profile, index) => <article className="member-card" key={profile.id}><span className="member-number" aria-hidden="true">{profile.jersey_number ?? String(index + 1).padStart(2, "0")}</span><div className="avatar"><UserRound /></div><small>{profile.position ?? "PLAYER"}</small><h2>{profile.name}</h2><p>{profile.jersey_number != null ? `NO. ${profile.jersey_number} · ` : ""}JOINED {new Date(profile.joined_at).getFullYear()}</p>{(canManage || profile.role === "manager" || profile.is_system_admin) && <div className="member-card-foot"><div className="member-badges">{profile.role === "manager" && <span className="admin-badge">{profile.officer_title ? officerTitleLabels[profile.officer_title] : roleLabels.manager}</span>}{profile.is_system_admin && <span className="admin-badge system">시스템 관리자</span>}</div>{canManage && <div className="member-management-actions"><button className="resource-icon-action" aria-label={`${profile.name} 회원 정보 수정`} onClick={() => onEdit(profile)}><Pencil size={16} /></button>{profile.auth_user_id !== user.id && !profile.is_system_admin && <details className="event-management-menu member-more"><summary className="event-management-trigger" aria-label={`${profile.name} 회원 메뉴`}><MoreHorizontal size={18} /></summary><div className="event-management-popover" role="menu"><button type="button" role="menuitem" className="danger" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); onKick(profile); }}><UserMinus size={15} /> 회원 강퇴</button></div></details>}</div>}</div>}</article>)}</div></section>;
+  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 ⋯ 메뉴에서 정보를 수정하거나 회원을 강퇴할 수 있습니다.</div>}<MemberDirectory profiles={profiles} currentUserId={user.id} canManage={canManage} onEdit={onEdit} onKick={onKick} /></section>;
 }
 /* `fees` row-level security hands a regular member only their own rows, so the
    old club-wide table degenerated into their own name repeated once per month.
@@ -695,7 +698,7 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
               <summary className="event-management-trigger" aria-label={`${event.title} 일정 메뉴`}><MoreHorizontal size={20} /></summary>
               <div className="event-management-popover" role="menu">
                 <button type="button" role="menuitem" onClick={() => onEdit(event)}><Pencil size={15} /> 일정 수정</button>
-                <button type="button" role="menuitem" onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={15} /> 일정 삭제</button>
+                <button type="button" role="menuitem" className="danger" onClick={() => onDelete(event.id, `${formatDate(event.starts_at)} · ${event.title}`)}><Trash2 size={15} /> 일정 삭제</button>
               </div>
             </details>}
           </div>
