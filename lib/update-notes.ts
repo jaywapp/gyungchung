@@ -34,7 +34,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "improved", text: "회원 목록을 포지션으로 거를 수 있는 작은 카드로 바꾸고, 이름 두 글자와 포지션 색으로 회원을 구분합니다." },
       { kind: "added", text: "로그인하지 않아도 더보기 메뉴와 왼쪽 메뉴에서 화면 테마를 바꿀 수 있습니다." },
     ],
-    pullRequests: [167],
+    pullRequests: [168],
   },
   {
     id: "2026-09-30-readability-pass",
