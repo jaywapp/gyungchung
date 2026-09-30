@@ -100,7 +100,7 @@ button:focus-visible, .toggle input:focus-visible { outline: 3px solid var(--bra
 .net line { stroke: var(--chalk-splash); stroke-width: 1; }
 .mark { font-family: "Archivo", sans-serif; font-size: 68px; font-weight: 900; font-style: italic; font-stretch: 125%; font-variation-settings: "wdth" 125; letter-spacing: -0.01em; fill: var(--on-splash); }
 .mark.outline { fill: var(--splash); stroke: var(--on-splash); stroke-width: 2; paint-order: stroke; stroke-linejoin: round; }
-.mark.accent { stroke: var(--highlight); }
+.mark.accent { fill: var(--highlight); }
 .tagline { font: 600 10px/1 var(--font-display); letter-spacing: .28em; fill: rgba(255, 255, 255, .62); }
 .ball { fill: var(--highlight); }
 .trail { fill: none; stroke: var(--highlight); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; opacity: .5; }
@@ -132,7 +132,7 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
     <!-- A -->
     <article class="concept" data-concept="a">
       <header><span class="tag">A</span><div><h2>킥오프 궤적</h2><div class="meta">1.8 s · 선택됨</div></div></header>
-      <p class="pitch">웹 첫 화면의 궤적 드로잉을 줄인 버전입니다. 공이 날아와 'GCFC' 밑을 굴러가며 글자를 띄우고, 마침표 자리에 멈춥니다. GC는 채운 글자, FC는 윤곽선이며 F만 라임색으로 강조해 공과 이어지게 했습니다.</p>
+      <p class="pitch">웹 첫 화면의 궤적 드로잉을 줄인 버전입니다. 공이 날아와 'GCFC' 밑을 굴러가며 글자를 띄우고, 마침표 자리에 멈춥니다. GCFC 모두 채운 글자이고, F만 라임색으로 강조해 같은 색의 공과 이어지게 했습니다.</p>
       <div class="stage">
         <div class="fit"><div class="device"><div class="screen-box"><div class="screen"></div></div></div></div>
         <div class="controls"><button class="primary" data-act="play">다시 재생</button><button data-act="first">첫 프레임</button></div>
@@ -253,7 +253,7 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
     screen.appendChild(splash);
     // Knocks the court lines out behind the wordmark once the letters rise.
     const knock = el("rect", { y: baseline - SIZE * 0.82, height: SIZE * 0.98, fill: "var(--splash)" }, svg);
-    const glyphs = [["G", ""], ["C", ""], ["F", " outline accent"], ["C", " outline"]].map(([ch, cls]) => {
+    const glyphs = [["G", ""], ["C", ""], ["F", " accent"], ["C", ""]].map(([ch, cls]) => {
       const t = el("text", { class: "mark" + cls, x: 0, y: baseline }, svg);
       t.textContent = ch;
       return { node: t, w: t.getComputedTextLength() };
