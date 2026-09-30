@@ -20,3 +20,4 @@
 
 - 2026-09-09 전화번호 로그인: [분석](phone-login-20260909-analysis.md), [설계](phone-login-20260909-design.md), [작업](phone-login-20260909-tasks.md)
 - 2026-09-09 운영 인증·DB: [분석](production-auth-db-analysis.md), [설계](production-auth-db-design.md), [실제 검증 결과](production-auth-db-tasks.md)
+- 2026-09-30 갱신 iOS·Android 모바일 앱 기획(매치 콘솔·테마·최신 회원 기능 반영): [분석](mobile-app-analysis.md), [설계](mobile-app-design.md), [작업 계획](mobile-app-tasks.md)
