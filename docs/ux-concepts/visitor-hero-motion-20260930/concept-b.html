@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>히어로 모션 B 전술판</title>
+<meta name="description" content="전술판 위 선수 점들이 포메이션을 바꾸며 슬로건을 한 줄씩 여는 전술판형 히어로 시안">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap">
+<style>
+/* ==========================================================================
+   Visitor hero motion prototype. Tokens are copied verbatim from
+   app/globals.css (:root and :root[data-theme="dark"]); nothing new is
+   introduced except derived line tints built with color-mix from --ink.
+   Layout mirrors the production shell, but viewport media queries are
+   rewritten as container queries on .app so the same DOM can be previewed
+   inside a 390px device frame.
+   ========================================================================== */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f4;
+  --surface: #fff;
+  --surface-sunken: #f6f7f4;
+  --ink: #0e1a26;
+  --body: #3f4b57;
+  --muted: #647180;
+  --line: #e3e6e1;
+  --topbar-bg: rgba(246, 247, 244, .94);
+  --navy: #0b1f33;
+  --on-navy: #fff;
+  --muted-on-navy: #8fa1b3;
+  --pitch: #124a33;
+  --pitch-line: transparent;
+  --on-pitch: #fff;
+  --muted-on-pitch: #b9d6c4;
+  --pitch-divider: rgba(255, 255, 255, .12);
+  --pitch-foot: rgba(0, 0, 0, .16);
+  --watermark-on-navy: rgba(255, 255, 255, .04);
+  --rail-hover: rgba(255, 255, 255, .06);
+  --rail-active: rgba(255, 255, 255, .12);
+  --brand: #157a43;
+  --brand-soft: #e6f5ec;
+  --brand-line: rgba(21, 122, 67, .28);
+  --highlight: #b8f27c;
+  --on-highlight: #0b1f33;
+  --primary: #0b1f33;
+  --on-primary: #fff;
+  --skeleton-a: #e9edf0;
+  --shadow: 0 1px 2px rgba(14, 26, 38, .06), 0 8px 24px rgba(14, 26, 38, .06);
+  --card-edge: transparent;
+  --focus: #ffd84d;
+  --accent-bar: 3px;
+  --tap: 44px;
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --radius-inner: 10px;
+  --radius-pill: 999px;
+  --font-display: "Archivo";
+  /* Pretendard is not loaded in the prototype (artifact CSP); Noto Sans KR
+     is placed right after it so every OS renders the same Hangul face. */
+  --font-sans: "Pretendard Variable", Pretendard, "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  /* derived: decorative line tints (non-text, no contrast requirement) */
+  --chalk: color-mix(in srgb, var(--ink) 16%, transparent);
+  --chalk-strong: color-mix(in srgb, var(--ink) 30%, transparent);
+  --bar-h: 60px;
+  --frame: #1a2530;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0b1622; --surface: #13212f; --surface-sunken: #0f1c2a; --ink: #e6edf3; --body: #b4c2cf; --muted: #8fa1b3; --line: #22324a; --topbar-bg: rgba(11, 22, 34, .94);
+    --navy: #0f1c2a; --on-navy: #e6edf3; --muted-on-navy: #8fa1b3; --pitch: #0f2a1e; --pitch-line: #1e4a34; --on-pitch: #e6edf3; --muted-on-pitch: #9fc2ad;
+    --brand: #b8f27c; --brand-soft: rgba(184, 242, 124, .12); --brand-line: rgba(184, 242, 124, .28); --highlight: #b8f27c; --on-highlight: #0b1f33; --primary: #b8f27c; --on-primary: #0b1f33;
+    --skeleton-a: #18283a; --shadow: none; --card-edge: #22324a; --frame: #2a3a4c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1622; --surface: #13212f; --surface-sunken: #0f1c2a; --ink: #e6edf3; --body: #b4c2cf; --muted: #8fa1b3; --line: #22324a; --topbar-bg: rgba(11, 22, 34, .94);
+  --navy: #0f1c2a; --on-navy: #e6edf3; --muted-on-navy: #8fa1b3; --pitch: #0f2a1e; --pitch-line: #1e4a34; --on-pitch: #e6edf3; --muted-on-pitch: #9fc2ad;
+  --brand: #b8f27c; --brand-soft: rgba(184, 242, 124, .12); --brand-line: rgba(184, 242, 124, .28); --highlight: #b8f27c; --on-highlight: #0b1f33; --primary: #b8f27c; --on-primary: #0b1f33;
+  --skeleton-a: #18283a; --shadow: none; --card-edge: #22324a; --frame: #2a3a4c;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  word-break: keep-all;
+  overflow-x: hidden;
+}
+button, a { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px var(--navy);
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.ic { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* --------------------------------------------------------------------------
+   Prototype bar (review chrome, not part of the product)
+   -------------------------------------------------------------------------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 100;
+  min-height: var(--bar-h);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.proto-name { display: grid; gap: 1px; margin-right: auto; min-width: 0; }
+.proto-name small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.proto-name b { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
+.proto-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.seg { display: inline-flex; padding: 3px; border-radius: var(--radius-control); background: var(--surface-sunken); border: 1px solid var(--line); }
+.seg button, .proto-btn {
+  min-height: 36px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 12px; border: 0; border-radius: 9px; background: none;
+  color: var(--body); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(14, 26, 38, .12); outline: 1px solid var(--card-edge); }
+.seg .ic { width: 16px; height: 16px; }
+.proto-btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.proto-btn[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand-line); }
+.proto-btn.primary { border: 0; background: var(--primary); color: var(--on-primary); }
+.proto-btn .ic { width: 16px; height: 16px; }
+
+/* --------------------------------------------------------------------------
+   Preview viewport: desktop fills the window, mobile sits in a 390px frame
+   -------------------------------------------------------------------------- */
+.viewport { position: relative; }
+.device { width: 100%; }
+.view-mobile { padding: 28px 16px 40px; background: var(--surface-sunken); }
+.view-mobile .device {
+  width: 410px; max-width: 100%;
+  height: min(864px, calc(100dvh - var(--bar-h) - 56px));
+  margin: 0 auto;
+  border: 10px solid var(--frame);
+  border-radius: 46px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: 0 24px 60px rgba(14, 26, 38, .18);
+}
+.view-mobile .app { height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.view-mobile .app::-webkit-scrollbar { display: none; }
+
+/* --------------------------------------------------------------------------
+   App shell (mirrors .page.shell / .club-sidebar / phone bars)
+   -------------------------------------------------------------------------- */
+.app { container: app / inline-size; background: var(--bg); }
+.shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+.shell-main { min-width: 0; display: flex; flex-direction: column; }
+.shell-main > main { flex: 1; }
+
+.club-sidebar {
+  position: sticky; top: var(--bar-h);
+  height: calc(100dvh - var(--bar-h));
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 24px 16px 20px;
+  border-right: 1px solid var(--card-edge);
+  background: var(--navy); color: var(--on-navy);
+  overflow-y: auto;
+}
+.club-crest {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 8px 20px; color: inherit;
+  font-size: 18px; font-weight: 800; letter-spacing: -.02em; text-decoration: none;
+}
+.club-crest span {
+  width: 36px; height: 36px; display: grid; place-items: center;
+  border-radius: var(--radius-inner);
+  background: var(--highlight); color: var(--on-highlight);
+  font-family: var(--font-display), var(--font-sans); font-size: 14px; font-weight: 900;
+}
+.club-sidebar h2 { margin: 16px 12px 4px; color: var(--muted-on-navy); font-size: 12px; font-weight: 600; }
+.club-sidebar ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.club-sidebar ul a {
+  min-height: 42px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  border-radius: var(--radius-control); color: var(--muted-on-navy);
+  font-size: 16px; font-weight: 600; text-decoration: none;
+}
+.club-sidebar ul a:hover { background: var(--rail-hover); color: var(--on-navy); }
+.club-sidebar ul a[aria-current] { background: var(--rail-active); color: var(--on-navy); }
+.club-sidebar ul a[aria-current] .ic { color: var(--highlight); }
+.club-sidebar-foot { display: grid; gap: 12px; margin-top: auto; padding-top: 20px; }
+.account-login {
+  min-height: var(--tap); display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 0 16px; border: 0; border-radius: var(--radius-control); font-weight: 700; cursor: pointer;
+}
+.account-login.side { width: 100%; background: var(--highlight); color: var(--on-highlight); }
+.account-login.bar { min-height: 40px; background: var(--primary); color: var(--on-primary); }
+.club-sidebar-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 10px; font-size: 14px; }
+.club-sidebar-links a { color: var(--muted-on-navy); text-decoration: none; }
+.club-mobile-bar, .club-tab-bar { display: none; }
+
+/* --------------------------------------------------------------------------
+   Hero (mirrors .hero / .hero-copy / .fixture-side)
+   -------------------------------------------------------------------------- */
+.hero { display: grid; grid-template-columns: 57% 43%; min-height: 650px; }
+.hero-copy {
+  min-width: 0;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 72px 5cqw 64px 7.8cqw;
+}
+.eyebrow {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--ink);
+  font-family: var(--font-display), var(--font-sans); font-size: 12px; font-weight: 900; letter-spacing: .18em;
+}
+.eyebrow > span { width: 28px; height: 4px; background: var(--brand); }
+.eyebrow.light { position: relative; margin-bottom: 20px; color: var(--highlight); letter-spacing: .12em; }
+
+/* The motion stage takes the h1's slot and margins. */
+.mstage { position: relative; margin: 25px 0 36px; container-type: inline-size; }
+
+.lead-row {
+  display: grid; grid-template-columns: 130px 1fr; gap: 32px;
+  max-width: 700px; padding-top: 25px; border-top: 1px solid var(--line);
+}
+.lead-row strong {
+  font-family: var(--font-display), var(--font-sans); font-weight: 900;
+  font-size: 20px; line-height: 1.15; letter-spacing: .06em;
+}
+.lead-row p { margin: 0; max-width: 480px; color: var(--body); font-size: 16px; line-height: 1.75; }
+.hero-actions { display: flex; align-items: center; gap: 35px; margin-top: 35px; }
+.cta {
+  height: 54px; padding: 0 24px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  border: 0; border-radius: var(--radius-control);
+  background: var(--primary); color: var(--on-primary);
+  font-weight: 900; white-space: nowrap; cursor: pointer;
+  transition: transform .15s;
+}
+.cta:hover { transform: translateY(-1px); }
+.cta:active { transform: translateY(0) scale(.98); }
+.text-link, .schedule-foot button {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: var(--tap); padding: 10px 0; border: 0; background: none;
+  color: var(--ink); font-weight: 900; cursor: pointer;
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px;
+}
+
+.fixture-side {
+  position: relative; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 62px 5.5cqw 50px; overflow: hidden;
+  background: var(--navy); color: var(--on-navy);
+}
+.giant-number {
+  position: absolute; right: -10px; top: -37px;
+  color: var(--watermark-on-navy);
+  font-family: var(--font-display), var(--font-sans); font-weight: 900; font-size: 270px; line-height: 1;
+}
+.schedule-card {
+  position: relative; max-width: 560px;
+  background: var(--pitch); color: var(--on-pitch);
+  border: 1px solid var(--pitch-line); border-radius: var(--radius-card); overflow: hidden;
+}
+.schedule-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 24px; border-bottom: 1px solid var(--pitch-divider);
+  font-size: 12px; font-weight: 600;
+}
+.schedule-head strong { font-size: 14px; }
+.schedule-main { display: grid; grid-template-columns: 132px 1fr; min-height: 220px; }
+.schedule-date {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--highlight); color: var(--on-highlight);
+}
+.schedule-date small { font-size: 14px; font-weight: 900; }
+.schedule-date b { font-family: var(--font-display), var(--font-sans); font-size: 68px; font-weight: 900; line-height: 1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.schedule-date span { margin-top: 6px; font-size: 14px; font-weight: 900; }
+.schedule-copy { min-width: 0; padding: 30px 28px 24px; }
+.schedule-copy > small { color: var(--highlight); font-family: var(--font-display), var(--font-sans); font-size: 12px; font-weight: 900; letter-spacing: .16em; }
+.schedule-copy h2 { margin: 8px 0 24px; font-size: 28px; line-height: 1.12; letter-spacing: -.02em; }
+.schedule-copy dl { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; margin: 0; }
+.schedule-copy dl div { display: flex; flex-direction: column; gap: 4px; }
+.schedule-copy dt { color: var(--muted-on-pitch); font-size: 12px; font-weight: 600; }
+.schedule-copy dd { margin: 0; font-weight: 900; }
+.map-link {
+  display: flex; align-items: center; gap: 7px; min-height: var(--tap); margin-top: 16px;
+  color: var(--muted-on-pitch); font-size: 12px; font-weight: 800; text-decoration: none;
+}
+.map-link span { flex: 1; }
+.map-link small { color: var(--highlight); white-space: nowrap; font-size: 12px; font-weight: 600; }
+.map-link .ic { width: 15px; height: 15px; }
+.schedule-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 16px 22px; background: var(--pitch-foot); color: var(--on-pitch);
+}
+.schedule-foot > div { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 18px; min-width: 0; }
+.schedule-foot button { flex-shrink: 0; white-space: nowrap; min-width: var(--tap); color: var(--on-pitch); font-size: 12px; }
+.schedule-foot > div > span:not(.capacity-status) { color: var(--muted-on-pitch); font-size: 12px; }
+.schedule-foot > div > span:not(.capacity-status) b { color: var(--on-pitch); }
+.capacity-status {
+  display: flex; flex-direction: column; gap: 3px; width: 100%;
+  padding: 9px 11px; border-left: var(--accent-bar) solid var(--brand);
+  background: var(--surface-sunken); color: var(--ink);
+  font-size: 12px; line-height: 1.35; border-radius: var(--radius-inner);
+}
+.capacity-status small { color: var(--muted); font-size: 12px; font-weight: 800; }
+.side-stats { display: flex; gap: 40px; margin-top: 48px; }
+.side-stats span {
+  display: flex; flex-direction: column; color: var(--muted-on-navy);
+  font-family: var(--font-display), var(--font-sans); font-size: 12px; font-weight: 900; letter-spacing: .12em;
+}
+.side-stats b { margin-bottom: 5px; color: var(--on-navy); font-size: 20px; letter-spacing: 0; }
+
+.locker { padding: 62px 6.8cqw 78px; }
+.locker .eyebrow { color: var(--muted); }
+.locker h2 { margin: 10px 0 0; font-size: 34px; letter-spacing: -.03em; }
+.locker p { margin: 12px 0 0; color: var(--body); line-height: 1.7; }
+
+footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 30px 7cqw; background: var(--navy); color: var(--on-navy);
+  font-size: 12px; font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Container breakpoints (production: 1050 layout, 900 nav collapse, 760 mobile)
+   -------------------------------------------------------------------------- */
+@container app (max-width: 1050px) {
+  .hero { grid-template-columns: 1fr; }
+  .hero-copy { padding-left: 7cqw; }
+  .fixture-side { padding: 65px 8cqw; }
+  .schedule-card { max-width: 620px; }
+}
+@container app (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .club-sidebar { display: none; }
+  .club-mobile-bar {
+    position: sticky; top: 0; z-index: 30; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px 0 16px; border-bottom: 1px solid var(--line);
+    background: var(--topbar-bg);
+  }
+  .club-mobile-bar .club-crest { padding: 0; color: var(--ink); font-size: 17px; }
+  .club-mobile-bar .club-crest span { width: 32px; height: 32px; font-size: 12px; }
+  .club-tab-bar {
+    position: sticky; z-index: 40; bottom: 0;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 6px 4px 8px; border-top: 1px solid var(--line); background: var(--surface);
+  }
+  .club-tab-bar a {
+    min-height: 52px; display: grid; justify-items: center; align-content: start; gap: 3px;
+    padding: 4px 0 0; color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none;
+  }
+  .tab-icon { width: 52px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-pill); }
+  .tab-icon .ic { width: 20px; height: 20px; }
+  .club-tab-bar [aria-current] { color: var(--ink); font-weight: 700; }
+  .club-tab-bar [aria-current] .tab-icon { background: var(--brand-soft); color: var(--brand); }
+}
+@container app (max-width: 760px) {
+  .hero { min-height: 0; }
+  .hero-copy { padding: 28px 6cqw; }
+  .mstage { margin: 18px 0 24px; }
+  .lead-row { grid-template-columns: 1fr; gap: 12px; }
+  .hero-actions { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .fixture-side { padding: 28px 6cqw 36px; }
+  .schedule-head { flex-direction: column; align-items: flex-start; gap: 5px; }
+  .schedule-main { grid-template-columns: 105px 1fr; }
+  .schedule-date b { font-size: 54px; }
+  .schedule-copy { padding: 25px 20px 20px; }
+  .schedule-copy dl { grid-template-columns: 1fr; }
+  .schedule-foot { flex-direction: column; align-items: flex-start; }
+  .side-stats { gap: 20px; }
+  .locker { padding-left: 5cqw; padding-right: 5cqw; }
+}
+@container app (max-width: 480px) {
+  .fixture-side { padding-left: 5cqw; padding-right: 8cqw; }
+}
+
+/* A real phone gets the app full screen; the frame toggle is hidden. */
+@media (max-width: 600px) {
+  :root { --bar-h: 0px; }
+  .proto-bar { position: static; flex-wrap: nowrap; gap: 8px; padding: 8px 12px; }
+  .proto-name small { display: none; }
+  .proto-name b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .proto-controls { flex-wrap: nowrap; gap: 6px; }
+  .seg button, .proto-btn { min-width: 40px; min-height: 40px; justify-content: center; padding: 0 10px; }
+  .proto-bar .lbl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .proto-view { display: none; }
+  .view-mobile { padding: 0; background: none; }
+  .view-mobile .device { width: 100%; height: auto; border: 0; border-radius: 0; box-shadow: none; }
+  .view-mobile .app { height: auto; overflow: visible; }
+}
+
+/* ==========================================================================
+   Concept stage
+   ========================================================================== */
+/* B. A coach's board: our five (solid) and theirs (outline) step through
+   2-2, 1-2-1 and 3-1. Each formation that locks opens one line of the
+   slogan; the last one draws the passing lanes. Afterwards the board keeps
+   changing shape very slowly (one move every 7s) until paused. */
+.b-wrap { font-size: min(11cqi, 58px); }
+.b-type { margin: 0 0 .32em; font-weight: 900; line-height: 1.12; letter-spacing: -.04em; }
+.b-l1, .b-l2 { display: block; width: max-content; }
+.b-l2 { color: var(--brand); }
+.b-board {
+  position: relative;
+  aspect-ratio: 440 / 200;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.b-svg { display: block; width: 100%; height: 100%; }
+.b-court path, .b-court rect { fill: none; stroke: var(--chalk); stroke-width: 1.5; }
+.b-court circle { fill: var(--chalk-strong); }
+.b-us circle { fill: var(--brand); transform-box: fill-box; transform-origin: center; }
+.b-opp circle { fill: var(--surface); stroke: var(--muted); stroke-width: 1.75; transform-box: fill-box; transform-origin: center; }
+.b-arrows path.lane { fill: none; stroke: var(--brand); stroke-width: 2.25; stroke-linecap: round; stroke-dasharray: 1; }
+.b-arrows path.head { fill: var(--brand); }
+.b-chip {
+  position: absolute; left: 12px; bottom: 10px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 10px 5px 11px;
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--surface);
+  line-height: 1;
+}
+.b-chip small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.b-names { display: grid; }
+.b-names span {
+  grid-area: 1 / 1;
+  color: var(--ink);
+  font-family: var(--font-display), var(--font-sans); font-size: 14px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.b-pause {
+  position: absolute; right: 4px; top: 4px;
+  width: var(--tap); height: var(--tap);
+  display: grid; place-items: center;
+  padding: 0; border: 0; background: none; color: var(--body); cursor: pointer;
+}
+.b-pause::before {
+  content: ""; position: absolute; inset: 6px;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface);
+}
+.b-pause .ic { position: relative; width: 14px; height: 14px; fill: currentColor; stroke: none; }
+.b-pause[hidden] { display: none; }
+@container app (max-width: 760px) {
+  .b-chip { left: 8px; bottom: 6px; padding: 4px 8px; }
+  .b-names span { font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cta, .cta:hover, .cta:active { transform: none; transition: none; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Icon paths from Lucide (ISC license), the icon set the production app uses. -->
+  <symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-mega" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+  <symbol id="i-fee" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></symbol>
+  <symbol id="i-vote" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M5 7c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v12H5V7Z"/><path d="M22 19H2"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M13 8H7"/><path d="M17 12H7"/></symbol>
+  <symbol id="i-login" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3 20 12 6 21Z"/></symbol>
+  <symbol id="i-still" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/></symbol>
+</svg>
+
+<header class="proto-bar">
+  <div class="proto-name"><small>경충FC 방문자 히어로 모션 시안</small><b>B. 전술판</b></div>
+  <div class="proto-controls">
+    <div class="seg proto-view" role="group" aria-label="미리보기 크기">
+      <button type="button" data-view="desktop" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-monitor"/></svg><span class="lbl">데스크톱</span></button>
+      <button type="button" data-view="mobile" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-phone"/></svg><span class="lbl">모바일</span></button>
+    </div>
+    <div class="seg" role="group" aria-label="화면 테마">
+      <button type="button" data-theme-set="light" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><span class="lbl">라이트</span></button>
+      <button type="button" data-theme-set="dark" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg><span class="lbl">다크</span></button>
+    </div>
+    <button type="button" class="proto-btn" id="still-toggle" aria-pressed="false" title="모션 줄이기 설정일 때 보이는 정지 화면"><svg class="ic" aria-hidden="true"><use href="#i-still"/></svg><span class="lbl">정지 화면</span></button>
+    <button type="button" class="proto-btn primary" id="replay"><svg class="ic" aria-hidden="true"><use href="#i-replay"/></svg><span class="lbl">다시 재생</span></button>
+  </div>
+</header>
+
+<div class="viewport view-desktop" id="viewport">
+  <div class="device">
+    <div class="app" id="app">
+      <div class="shell">
+        <aside class="club-sidebar">
+          <a class="club-crest" href="#" aria-label="경충FC 홈"><span aria-hidden="true">GC</span>경충FC</a>
+          <nav aria-label="주 메뉴">
+            <ul>
+              <li><a href="#" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-house"/></svg>홈</a></li>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-cal"/></svg>일정</a></li>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>회원</a></li>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-mega"/></svg>공지</a></li>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-trophy"/></svg>랭킹</a></li>
+            </ul>
+            <h2>클럽</h2>
+            <ul>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-fee"/></svg>회비</a></li>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-vote"/></svg>참여</a></li>
+              <li><a href="#"><svg class="ic" aria-hidden="true"><use href="#i-msg"/></svg>의견</a></li>
+            </ul>
+          </nav>
+          <div class="club-sidebar-foot">
+            <button type="button" class="account-login side"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg>로그인</button>
+            <div class="club-sidebar-links"><a href="#">업데이트 노트</a><a href="#">유튜브</a></div>
+          </div>
+        </aside>
+
+        <div class="shell-main">
+          <header class="club-mobile-bar">
+            <a class="club-crest" href="#" aria-label="경충FC 홈"><span aria-hidden="true">GC</span>경충FC</a>
+            <button type="button" class="account-login bar"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg>로그인</button>
+          </header>
+          <main>
+            <section class="hero">
+              <div class="hero-copy">
+                <span class="eyebrow"><span></span> EST. 2014 · SEOUL</span>
+                <h1 class="sr-only">우리의 주말, 우리의 풋살.</h1>
+                <div class="mstage mstage-b">
+                  <div class="b-wrap">
+                    <p class="b-type" aria-hidden="true"><span class="b-l1">우리의 주말,</span><span class="b-l2">우리의 풋살.</span></p>
+                    <div class="b-board">
+                      <svg class="b-svg" viewBox="0 0 440 200" aria-hidden="true">
+                        <g class="b-court"></g>
+                        <g class="b-arrows"></g>
+                        <g class="b-opp"></g>
+                        <g class="b-us"></g>
+                      </svg>
+                      <span class="b-chip" aria-hidden="true"><small>포메이션</small><span class="b-names"><span data-f="0">2-2</span><span data-f="1">1-2-1</span><span data-f="2">3-1</span></span></span>
+                      <button type="button" class="b-pause" aria-label="전술판 움직임 일시정지" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
+                    </div>
+                  </div>
+                </div>
+                <div class="lead-row"><strong>2026<br>SEASON</strong><p>경쟁보다 함께 뛰는 즐거움. 경충FC는 주말마다 모여 공을 차고, 땀 흘리고, 오래 함께할 사람을 만듭니다.</p></div>
+                <div class="hero-actions">
+                  <button type="button" class="cta">다음 일정 참석하기 <svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button>
+                  <button type="button" class="text-link">팀 의사결정 참여</button>
+                </div>
+              </div>
+              <div class="fixture-side">
+                <span class="giant-number" aria-hidden="true">04</span>
+                <span class="eyebrow light">NEXT SCHEDULE</span>
+                <article class="schedule-card">
+                  <header class="schedule-head"><span>다가오는 팀 일정</span><strong>이번 주 일요일 · 10. 4. 08:00 (D-4)</strong></header>
+                  <div class="schedule-main">
+                    <time class="schedule-date" datetime="2026-10-04T08:00"><small>10월</small><b>04</b><span>일요일</span></time>
+                    <div class="schedule-copy">
+                      <small>WEEKEND FUTSAL</small>
+                      <h2>일요 정기 풋살</h2>
+                      <dl><div><dt>시간</dt><dd>08:00</dd></div><div><dt>장소</dt><dd>세븐풋살장</dd></div></dl>
+                      <a class="map-link" href="#"><svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg><span>세븐풋살장</span><small>네이버 지도</small></a>
+                    </div>
+                  </div>
+                  <div class="schedule-foot">
+                    <div><span>참여 용병 <b>0명</b></span><span class="capacity-status open"><b>참석 0 / 정원 18명</b><small>잔여 18자리 · 용병 포함</small></span></div>
+                    <button type="button">일정 보기 <svg class="ic" aria-hidden="true" style="width:16px;height:16px"><use href="#i-chev"/></svg></button>
+                  </div>
+                </article>
+                <div class="side-stats"><span><b>WEEKLY</b> SAT / SUN</span></div>
+              </div>
+            </section>
+            <section class="locker">
+              <span class="eyebrow">MEMBER LOCKER ROOM</span>
+              <h2>팀 클럽하우스</h2>
+              <p>히어로 아래 영역은 시안 범위가 아니어서 제목만 남겼습니다.</p>
+            </section>
+          </main>
+          <footer><span>경충FC</span><span>EST. 2014</span></footer>
+          <nav class="club-tab-bar" aria-label="하단 메뉴">
+            <a href="#" aria-current="page"><span class="tab-icon"><svg class="ic" aria-hidden="true"><use href="#i-house"/></svg></span>홈</a>
+            <a href="#"><span class="tab-icon"><svg class="ic" aria-hidden="true"><use href="#i-cal"/></svg></span>일정</a>
+            <a href="#"><span class="tab-icon"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span>회원</a>
+            <a href="#"><span class="tab-icon"><svg class="ic" aria-hidden="true"><use href="#i-trophy"/></svg></span>랭킹</a>
+            <a href="#"><span class="tab-icon"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></span>더보기</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* --------------------------------------------------------------------------
+   Motion runtime: every animation goes through Web Animations so the whole
+   sequence can pause (offscreen, hidden tab, user pause), finish instantly
+   (reduced motion) or restart (replay) from one place.
+   -------------------------------------------------------------------------- */
+const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const Motion = {
+  anims: [],
+  inView: true,
+  pageVisible: !document.hidden,
+  userPaused: false,
+  forceStill: false,
+  isStill() { return reduceQuery.matches || this.forceStill; },
+  running() { return this.inView && this.pageVisible && !this.userPaused; },
+  add(el, keyframes, options) {
+    const a = el.animate(keyframes, Object.assign({ fill: "both" }, options));
+    this.anims.push(a);
+    if (!this.running()) a.pause();
+    return a;
+  },
+  clear() { this.anims.forEach((a) => a.cancel()); this.anims = []; },
+  finishAll() {
+    this.anims.forEach((a) => {
+      try { a.finish(); } catch (e) { a.cancel(); }
+    });
+  },
+  sync() {
+    const run = this.running();
+    this.anims.forEach((a) => {
+      if (a.playState === "finished" || a.playState === "idle") return;
+      if (run) a.play(); else a.pause();
+    });
+    document.dispatchEvent(new CustomEvent("motion-state", { detail: { running: run } }));
+  },
+};
+const ease = {
+  out: "cubic-bezier(0.16, 1, 0.3, 1)",
+  inOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+  decel: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+};
+
+/* ---------- concept ---------- */
+const Concept = {
+  measures: false,
+  build(stage, { still }) {
+    /* court is 40 x 20 m inside a 440 x 200 board */
+    const X = (v) => 10 + v * 10.5, Y = (v) => 5 + v * 9.5;
+    const court = stage.querySelector(".b-court");
+    const ar = (r) => (r * 10.5) + " " + (r * 9.5);
+    court.innerHTML =
+      '<rect x="10" y="5" width="420" height="190" rx="2"/>' +
+      '<path d="M220 5V195"/>' +
+      '<path d="M' + X(17) + ' ' + Y(10) + 'A' + ar(3) + ' 0 1 1 ' + X(23) + ' ' + Y(10) + 'A' + ar(3) + ' 0 1 1 ' + X(17) + ' ' + Y(10) + '"/>' +
+      '<path d="M' + X(0) + ' ' + Y(2.42) + 'A' + ar(6) + ' 0 0 1 ' + X(6) + ' ' + Y(8.42) + 'L' + X(6) + ' ' + Y(11.58) + 'A' + ar(6) + ' 0 0 1 ' + X(0) + ' ' + Y(17.58) + '"/>' +
+      '<path d="M' + X(40) + ' ' + Y(2.42) + 'A' + ar(6) + ' 0 0 0 ' + X(34) + ' ' + Y(8.42) + 'L' + X(34) + ' ' + Y(11.58) + 'A' + ar(6) + ' 0 0 0 ' + X(40) + ' ' + Y(17.58) + '"/>' +
+      '<path d="M3 ' + Y(8.4) + 'H10M3 ' + Y(11.6) + 'H10M437 ' + Y(8.4) + 'H430M437 ' + Y(11.6) + 'H430"/>' +
+      [[6, 10], [34, 10], [20, 10]].map(([a, b]) => '<circle r="2.2" cx="' + X(a) + '" cy="' + Y(b) + '"/>').join("");
+
+    /* formations in metres: index 0 = 2-2, 1 = 1-2-1, 2 = 3-1 */
+    const US = [
+      [[1.5, 10], [9, 5.5], [9, 14.5], [16, 5.5], [16, 14.5]],
+      [[1.5, 10], [8, 10], [15, 4], [15, 16], [22.5, 10]],
+      [[1.5, 10], [12, 4], [12, 10], [12, 16], [25, 10]],
+    ];
+    const THEM = [
+      [[38.5, 10], [31, 5.5], [31, 14.5], [24, 6.5], [24, 13.5]],
+      [[38.5, 10], [32, 10], [27, 5], [27, 15], [21, 13.5]],
+      [[38.5, 10], [33, 7], [33, 13], [29, 10], [27.5, 15.5]],
+    ];
+    const tf = (p) => "translate(" + X(p[0]).toFixed(1) + "px," + Y(p[1]).toFixed(1) + "px)";
+
+    const us = stage.querySelector(".b-us"), opp = stage.querySelector(".b-opp");
+    us.innerHTML = US[0].map(() => '<g><circle r="9"/></g>').join("");
+    opp.innerHTML = THEM[0].map(() => '<g><circle r="8"/></g>').join("");
+
+    /* intro: 2-2 -> 1-2-1 (1.4-2.2s) -> 3-1 (2.5-3.3s) */
+    const INTRO = 3300;
+    const introFrames = (set, i) => [
+      { offset: 0, transform: tf(set[0][i]) },
+      { offset: 1400 / INTRO, transform: tf(set[0][i]), easing: ease.inOut },
+      { offset: 2200 / INTRO, transform: tf(set[1][i]) },
+      { offset: 2500 / INTRO, transform: tf(set[1][i]), easing: ease.inOut },
+      { offset: 1, transform: tf(set[2][i]) },
+    ];
+    /* loop: hold 3-1 6s, glide to 2-2, hold, glide to 1-2-1, hold, back */
+    const CYCLE = 21000;
+    const loopFrames = (set, i) => [
+      { offset: 0, transform: tf(set[2][i]) },
+      { offset: 6000 / CYCLE, transform: tf(set[2][i]), easing: ease.inOut },
+      { offset: 7000 / CYCLE, transform: tf(set[0][i]) },
+      { offset: 13000 / CYCLE, transform: tf(set[0][i]), easing: ease.inOut },
+      { offset: 14000 / CYCLE, transform: tf(set[1][i]) },
+      { offset: 20000 / CYCLE, transform: tf(set[1][i]), easing: ease.inOut },
+      { offset: 1, transform: tf(set[2][i]) },
+    ];
+    const tokens = (group, set, popDelay) => [...group.children].forEach((g, i) => {
+      Motion.add(g, introFrames(set, i), { duration: INTRO });
+      Motion.add(g.firstChild, [{ transform: "scale(0)" }, { transform: "scale(1)" }], { duration: 380, delay: popDelay + i * 50, easing: ease.out });
+      if (!still) Motion.add(g, loopFrames(set, i), { duration: CYCLE, delay: INTRO, iterations: Infinity, fill: "none" });
+    });
+    tokens(us, US, 150);
+    tokens(opp, THEM, 380);
+
+    /* board and slogan */
+    Motion.add(stage.querySelector(".b-board"), [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 500, easing: ease.out });
+    const reveal = [{ clipPath: "inset(-.2em 100% -.2em -.1em)" }, { clipPath: "inset(-.2em -.1em -.2em -.1em)" }];
+    Motion.add(stage.querySelector(".b-l1"), reveal, { duration: 600, delay: 700, easing: ease.out });
+    Motion.add(stage.querySelector(".b-l2"), reveal, { duration: 600, delay: 3000, easing: ease.out });
+
+    /* formation name: quick crossfades pinned to each move */
+    const fade = 200;
+    const steps = (on, total) => {
+      /* on = [[start, end], ...] visible windows in ms within total */
+      const k = [{ offset: 0, opacity: on.some(([a]) => a === 0) ? 1 : 0 }];
+      on.forEach(([a, b]) => {
+        if (a > 0) { k.push({ offset: a / total, opacity: 0 }, { offset: Math.min(a + fade, total) / total, opacity: 1 }); }
+        if (b < total) { k.push({ offset: b / total, opacity: 1 }, { offset: Math.min(b + fade, total) / total, opacity: 0 }); }
+      });
+      k.push({ offset: 1, opacity: k[k.length - 1].opacity });
+      return k.sort((p, q) => p.offset - q.offset);
+    };
+    const names = [...stage.querySelectorAll(".b-names span")];
+    const introOn = [[[300, 1700]], [[1700, 2800]], [[2800, INTRO]]];
+    const loopOn = [[[6400, 13400]], [[13400, 20400]], [[0, 6400], [20400, CYCLE]]];
+    names.forEach((el, i) => {
+      Motion.add(el, steps(introOn[i], INTRO), { duration: INTRO });
+      if (!still) Motion.add(el, steps(loopOn[i], CYCLE), { duration: CYCLE, delay: INTRO, iterations: Infinity, fill: "none" });
+    });
+
+    /* passing lanes for 3-1: back to pivot, pivot to goal */
+    const arrows = stage.querySelector(".b-arrows");
+    const lanes = [
+      [[12, 16], [19, 17.8], [24, 11.2]],
+      [[26.2, 9.4], [32, 5.5], [39.2, 8.8]],
+    ];
+    arrows.innerHTML = lanes.map(([a, c, b]) => {
+      const ang = Math.atan2(Y(b[1]) - Y(c[1]), X(b[0]) - X(c[0])) * 180 / Math.PI;
+      return '<g><path class="lane" pathLength="1" d="M' + X(a[0]) + ' ' + Y(a[1]) + 'Q' + X(c[0]) + ' ' + Y(c[1]) + ' ' + X(b[0]) + ' ' + Y(b[1]) + '"/>' +
+        '<path class="head" d="M0 0L-9 -4.5L-9 4.5Z" transform="translate(' + X(b[0]) + ' ' + Y(b[1]) + ') rotate(' + ang.toFixed(1) + ')"/></g>';
+    }).join("");
+    [...arrows.children].forEach((g, i) => {
+      Motion.add(g.querySelector(".lane"), [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 650, delay: 3400 + i * 260, easing: ease.out });
+      Motion.add(g.querySelector(".head"), [{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 3400 + i * 260 + 560 });
+    });
+    if (!still) Motion.add(arrows, steps([[0, 5800], [20600, CYCLE]], CYCLE), { duration: CYCLE, delay: INTRO, iterations: Infinity, fill: "none" });
+
+    /* pause control: required because the board keeps moving after 5s */
+    const btn = stage.querySelector(".b-pause");
+    btn.hidden = still;
+    const paint = () => {
+      btn.setAttribute("aria-pressed", String(Motion.userPaused));
+      btn.setAttribute("aria-label", Motion.userPaused ? "전술판 움직임 재생" : "전술판 움직임 일시정지");
+      btn.querySelector("use").setAttribute("href", Motion.userPaused ? "#i-play" : "#i-pause");
+    };
+    btn.onclick = () => { Motion.userPaused = !Motion.userPaused; Motion.sync(); paint(); };
+    paint();
+  },
+};
+
+/* ---------- lifecycle ---------- */
+const stage = document.querySelector(".mstage");
+let resizeTimer = 0;
+let lastWidth = 0;
+
+function render(animate) {
+  Motion.clear();
+  Concept.build(stage, { still: Motion.isStill() || !animate });
+  if (Motion.isStill() || !animate) Motion.finishAll();
+  Motion.sync();
+  lastWidth = stage.clientWidth;
+}
+function replay() {
+  Motion.userPaused = false;
+  render(true);
+}
+
+const io = new IntersectionObserver((entries) => {
+  Motion.inView = entries[entries.length - 1].isIntersecting;
+  Motion.sync();
+}, { threshold: 0 });
+io.observe(stage);
+document.addEventListener("visibilitychange", () => { Motion.pageVisible = !document.hidden; Motion.sync(); });
+reduceQuery.addEventListener("change", () => render(false));
+
+new ResizeObserver(() => {
+  /* skip the initial observation and height-only changes */
+  if (!lastWidth || Math.abs(stage.clientWidth - lastWidth) < 1) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => render(false), 120);
+}).observe(stage);
+
+document.getElementById("replay").addEventListener("click", replay);
+const stillBtn = document.getElementById("still-toggle");
+stillBtn.addEventListener("click", () => {
+  Motion.forceStill = !Motion.forceStill;
+  stillBtn.setAttribute("aria-pressed", String(Motion.forceStill));
+  render(!Motion.forceStill);
+});
+
+/* view: desktop / mobile frame */
+const viewport = document.getElementById("viewport");
+document.querySelectorAll("[data-view]").forEach((btn) => btn.addEventListener("click", () => {
+  const view = btn.dataset.view;
+  viewport.className = "viewport view-" + view;
+  document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+  requestAnimationFrame(() => replay());
+}));
+
+/* theme: #dark / #light hash or the OS preference */
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === theme)));
+}
+const hashTheme = location.hash.replace("#", "");
+applyTheme(hashTheme === "dark" || hashTheme === "light" ? hashTheme : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+document.querySelectorAll("[data-theme-set]").forEach((btn) => btn.addEventListener("click", () => applyTheme(btn.dataset.themeSet)));
+window.addEventListener("hashchange", () => {
+  const h = location.hash.replace("#", "");
+  if (h === "dark" || h === "light") applyTheme(h);
+});
+
+/* Wait for the webfonts so measured glyph positions are final. */
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => render(true));
+/* A late font swap moves glyphs; re-measure once nothing is mid-flight. */
+if (document.fonts) document.fonts.addEventListener("loadingdone", () => {
+  if (Concept.measures && Motion.anims.length && Motion.anims.every((a) => a.playState === "finished" || a.effect.getComputedTiming().iterations === Infinity)) render(false);
+});
+</script>
+</body>
+</html>
