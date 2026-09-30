@@ -7130,3 +7130,56 @@ td { font-weight: 800; }
   }
 
 }
+
+/* Launch splash for the installed app. Hidden unless the head script set
+   html[data-splash]; fixed colours so it matches the OS splash in both themes. */
+.app-splash {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #0b1f33;
+  touch-action: none;
+}
+:root[data-splash] .app-splash { display: block; }
+:root[data-splash] body { overflow: hidden; }
+.app-splash-court,
+.app-splash-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.app-splash-court line,
+.app-splash-court circle { fill: none; stroke: rgba(255, 255, 255, .2); stroke-width: 1.5; }
+.app-splash-court .spot { fill: rgba(255, 255, 255, .35); stroke: none; }
+.app-splash-knock { fill: #0b1f33; }
+.app-splash-letter {
+  font-family: var(--font-wordmark), var(--font-display), sans-serif;
+  font-style: italic;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-variation-settings: "wdth" 125;
+  letter-spacing: -0.01em;
+  fill: #fff;
+}
+.app-splash-letter.accent,
+.app-splash-ball { fill: #b8f27c; }
+.app-splash-tagline {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 900;
+  letter-spacing: .22em;
+  fill: rgba(255, 255, 255, .62);
+}
+.app-splash-trail {
+  fill: none;
+  stroke: #b8f27c;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: .5;
+}
+.app-splash-ring { fill: none; stroke: #b8f27c; stroke-width: 2; opacity: 0; }
+.app-splash-ball { opacity: 0; }

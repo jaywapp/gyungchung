@@ -22,6 +22,19 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-09-30-app-splash",
+    date: "2026-09-30",
+    source: "request",
+    title: "홈 화면에 설치해 앱처럼 열 수 있습니다",
+    summary: "휴대전화 홈 화면에 클럽하우스를 추가하면 GCFC 아이콘으로 바로 열리고, 시작할 때 짧은 모션이 나옵니다.",
+    changes: [
+      { kind: "added", text: "브라우저의 '홈 화면에 추가'로 클럽하우스를 설치할 수 있습니다. 아이콘은 남색 바탕의 GCFC 로고입니다." },
+      { kind: "added", text: "설치한 앱을 처음 열면 공이 GCFC 글자를 차례로 띄우고 마침표 자리에 멈춘 뒤 앱이 열립니다. 이후에는 로고만 잠깐 보이고, 화면을 누르면 바로 넘어갑니다." },
+      { kind: "improved", text: "움직임 줄이기 설정을 켠 기기에서는 모션 없이 로고만 잠깐 보여 줍니다." },
+    ],
+    pullRequests: [172],
+  },
+  {
     id: "2026-09-30-visitor-hero-motion",
     date: "2026-09-30",
     source: "request",
