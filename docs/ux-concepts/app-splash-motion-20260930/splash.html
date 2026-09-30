@@ -1,0 +1,418 @@
+<title>경충FC 스플래시 시안</title>
+<meta name="description" content="경충FC 웹앱(PWA)과 Expo 앱에 함께 쓸 시작 화면 모션 시안 3종">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Noto+Sans+KR:wght@500;700;900&display=swap">
+<style>
+/* Layout: one column of three phone concepts on phones, three across from 1000px; tokens mirror app/globals.css */
+:root {
+  --bg: #f6f7f4;
+  --surface: #fff;
+  --surface-sunken: #eef0ec;
+  --ink: #0e1a26;
+  --body: #3f4b57;
+  --muted: #647180;
+  --line: #e3e6e1;
+  --brand: #157a43;
+  --brand-soft: #e6f5ec;
+  --highlight: #b8f27c;
+  --on-highlight: #0b1f33;
+  --splash: #0b1f33;           /* fixed in both themes: it is the OS splash colour */
+  --on-splash: #ffffff;
+  --chalk-splash: rgba(255, 255, 255, .2);
+  --font-ko: "Pretendard Variable", Pretendard, "Noto Sans KR", system-ui, sans-serif;
+  --font-display: "Archivo", "Noto Sans KR", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1622; --surface: #13212f; --surface-sunken: #0f1c2a; --ink: #e6edf3; --body: #b4c2cf;
+    --muted: #8fa1b3; --line: #22324a; --brand: #b8f27c; --brand-soft: rgba(184, 242, 124, .12);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1622; --surface: #13212f; --surface-sunken: #0f1c2a; --ink: #e6edf3; --body: #b4c2cf;
+  --muted: #8fa1b3; --line: #22324a; --brand: #b8f27c; --brand-soft: rgba(184, 242, 124, .12);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--body); font: 400 16px/1.6 var(--font-ko); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; }
+h1, h2, h3 { color: var(--ink); text-wrap: balance; letter-spacing: 0; }
+h1 { font-size: clamp(28px, 5vw, 48px); line-height: 1.15; margin: 0 0 12px; font-weight: 900; }
+.lead { max-width: 64ch; margin: 0 0 20px; }
+.eyebrow { font: 600 12px/1 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--brand); margin: 0 0 12px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 28px; font-size: 14px; }
+.toggle { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; color: var(--ink); font-weight: 500; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--brand); }
+.note { color: var(--muted); }
+
+.grid { display: grid; gap: 28px; grid-template-columns: 1fr; }
+@media (min-width: 1000px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.concept { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.concept header { display: flex; gap: 12px; align-items: baseline; }
+.tag { font: 800 28px/1 var(--font-display); color: var(--brand); }
+.concept h2 { font-size: 20px; margin: 0; line-height: 1.3; }
+.meta { font: 600 12px/1.4 var(--font-display); color: var(--muted); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.pitch { margin: 0; font-size: 15px; }
+
+.stage { display: grid; justify-items: center; gap: 12px; padding: 20px 0 16px; background: var(--surface-sunken); border-radius: 16px; }
+.fit { width: min(280px, 100%); position: relative; }
+.device { border-radius: 34px; padding: 8px; background: #05101b; box-shadow: 0 18px 40px -18px rgba(5, 16, 27, .5); }
+.screen-box { position: relative; overflow: hidden; border-radius: 27px; }
+.screen { position: absolute; left: 0; top: 0; width: 360px; height: 760px; transform-origin: 0 0; overflow: hidden; background: var(--bg); }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+button { font: 700 14px/1 var(--font-ko); border-radius: 12px; padding: 11px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button:focus-visible, .toggle input:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.flow { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 14px; }
+.flow li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; }
+.flow b { font: 600 12px/1.9 var(--font-display); color: var(--muted); font-variant-numeric: tabular-nums; }
+.fits { font-size: 14px; border-top: 1px solid var(--line); padding-top: 12px; margin: 0; }
+.fits strong { color: var(--ink); }
+
+/* ---------- inside the phone (fixed 360×760 coordinate space) ---------- */
+.home { position: absolute; inset: 0; display: flex; flex-direction: column; font-family: var(--font-ko); color: var(--body); }
+.h-top { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.crest { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 16px; color: var(--ink); }
+.crest i { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--highlight); color: var(--on-highlight); font: 800 12px/1 var(--font-display); font-style: normal; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.h-body { flex: 1; padding: 20px 16px; display: grid; gap: 14px; align-content: start; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 12px; }
+.h-eyebrow { font: 600 11px/1 var(--font-display); letter-spacing: .1em; color: var(--brand); }
+.h-date { font-size: 24px; font-weight: 900; color: var(--ink); line-height: 1.2; }
+.h-time { font-size: 13px; color: var(--muted); margin-top: -6px; }
+.rsvp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rsvp span { border-radius: 12px; padding: 12px 0; text-align: center; font-weight: 700; font-size: 15px; border: 1px solid var(--line); color: var(--ink); }
+.rsvp span.on { background: var(--highlight); color: var(--on-highlight); border-color: transparent; }
+.cap { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cap-bar { height: 6px; border-radius: 3px; background: var(--surface-sunken); overflow: hidden; }
+.cap-bar::after { content: ""; display: block; height: 100%; width: 75%; background: var(--brand); }
+.skel { height: 10px; border-radius: 5px; background: var(--surface-sunken); }
+.h-tabs { height: 64px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--surface); }
+.h-tabs .on { color: var(--brand); }
+
+.splash { position: absolute; inset: 0; background: var(--splash); }
+.splash svg { position: absolute; inset: 0; width: 360px; height: 760px; overflow: visible; }
+.line { fill: none; stroke: var(--chalk-splash); stroke-width: 1.5; }
+.post { fill: none; stroke: var(--on-splash); stroke-width: 3; stroke-linejoin: round; }
+.net line { stroke: var(--chalk-splash); stroke-width: 1; }
+.glyph { font: 900 52px/1 "Noto Sans KR", sans-serif; fill: var(--on-splash); }
+.glyph.latin { font: 800 50px/1 var(--font-display); }
+.ball { fill: var(--highlight); }
+.trail { fill: none; stroke: var(--highlight); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; opacity: .5; }
+.ring { fill: none; stroke: var(--highlight); stroke-width: 2; }
+.sbadge { position: absolute; left: 140px; top: 330px; width: 80px; height: 80px; border-radius: 22px; display: grid; place-items: center; background: var(--highlight); color: var(--on-highlight); font: 800 30px/1 var(--font-display); }
+.wordmark { position: absolute; left: 0; right: 0; top: 430px; text-align: center; color: var(--on-splash); font: 900 30px/1 "Noto Sans KR", sans-serif; }
+.wordmark span { font-family: var(--font-display); font-weight: 800; }
+
+.stack { display: grid; gap: 14px; margin-top: 56px; }
+.stack h2 { font-size: 28px; margin: 0; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--line); }
+th { color: var(--ink); font-weight: 700; white-space: nowrap; }
+td code, p code, li code { font-size: 13px; background: var(--surface-sunken); padding: 1px 5px; border-radius: 5px; color: var(--ink); }
+ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72ch; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Splash motion · 3 concepts</p>
+  <h1>앱을 열 때 보이는 첫 1초</h1>
+  <p class="lead">세 시안 모두 운영체제가 먼저 띄우는 <strong>정지 화면(첫 프레임)</strong>에서 시작해, 같은 그림 위에서 움직임을 이어 붙이고 로그인 홈으로 넘어갑니다. 웹앱(PWA)과 Expo 앱이 같은 타이밍 값을 씁니다. 휴대폰 화면 안의 홈은 예시입니다.</p>
+  <div class="bar">
+    <label class="toggle"><input type="checkbox" id="slow"> 느리게 보기(0.3배)</label>
+    <span class="note" id="rm-note" hidden>기기에 '움직임 줄이기'가 켜져 있어 완성 화면만 보여 줍니다. 앱에서도 같은 방식으로 동작합니다.</span>
+  </div>
+
+  <div class="grid">
+    <!-- A -->
+    <article class="concept" data-concept="a">
+      <header><span class="tag">A</span><div><h2>킥오프 궤적</h2><div class="meta">1.7 s · 첫 실행용</div></div></header>
+      <p class="pitch">웹 첫 화면의 궤적 드로잉을 줄인 버전입니다. 공이 날아와 '경충FC' 밑을 굴러가며 글자를 띄우고, 마침표 자리에 멈춥니다.</p>
+      <div class="stage">
+        <div class="fit"><div class="device"><div class="screen-box"><div class="screen"></div></div></div></div>
+        <div class="controls"><button class="primary" data-act="play">다시 재생</button><button data-act="first">첫 프레임</button></div>
+      </div>
+      <ol class="flow">
+        <li><b>0 ms</b><span>정지 화면: 남색 바탕에 하프라인과 센터서클</span></li>
+        <li><b>150</b><span>페널티 마크에서 공을 차 올림</span></li>
+        <li><b>630</b><span>착지 후 굴러가며 '경·충·F·C'가 차례로 떠오름</span></li>
+        <li><b>1270</b><span>공이 마침표로 멈춤 → 페이드로 홈 공개</span></li>
+      </ol>
+      <p class="fits"><strong>어울리는 경우</strong> 웹과 앱의 인상을 하나로 묶고 싶을 때. 길어서 두 번째 실행부터는 C처럼 짧은 버전으로 바꾸는 것을 권합니다.</p>
+    </article>
+
+    <!-- B -->
+    <article class="concept" data-concept="b">
+      <header><span class="tag">B</span><div><h2>골망 흔들기</h2><div class="meta">1.3 s · 모든 실행</div></div></header>
+      <p class="pitch">아래에서 찬 공이 골망에 꽂히고, 망이 출렁인 자리에서 GC 엠블럼이 튀어나옵니다. 엠블럼은 그대로 홈 상단 로고 자리로 날아가 앉습니다.</p>
+      <div class="stage">
+        <div class="fit"><div class="device"><div class="screen-box"><div class="screen"></div></div></div></div>
+        <div class="controls"><button class="primary" data-act="play">다시 재생</button><button data-act="first">첫 프레임</button></div>
+      </div>
+      <ol class="flow">
+        <li><b>0 ms</b><span>정지 화면: 남색 바탕에 골대와 그물</span></li>
+        <li><b>120</b><span>화면 아래에서 슈팅, 공이 멀어지며 작아짐</span></li>
+        <li><b>440</b><span>그물 출렁임 → 엠블럼과 '경충FC' 등장</span></li>
+        <li><b>1000</b><span>엠블럼이 상단 로고로 이동하며 홈 공개</span></li>
+      </ol>
+      <p class="fits"><strong>어울리는 경우</strong> '경기하러 들어간다'는 기대감을 주고 싶을 때. 득점 장면이라 가장 힘이 있고, 로고로 이어져 끊김이 없습니다.</p>
+    </article>
+
+    <!-- C -->
+    <article class="concept" data-concept="c">
+      <header><span class="tag">C</span><div><h2>코트 펼치기</h2><div class="meta">0.8 s · 모든 실행</div></div></header>
+      <p class="pitch">엠블럼 테두리가 화면 가득 코트 라인으로 펼쳐지고, 남색 바탕이 로고 자리로 빨려 들어가며 홈이 드러납니다. 공은 등장하지 않습니다.</p>
+      <div class="stage">
+        <div class="fit"><div class="device"><div class="screen-box"><div class="screen"></div></div></div></div>
+        <div class="controls"><button class="primary" data-act="play">다시 재생</button><button data-act="first">첫 프레임</button></div>
+      </div>
+      <ol class="flow">
+        <li><b>0 ms</b><span>정지 화면: 남색 바탕에 GC 엠블럼</span></li>
+        <li><b>100</b><span>엠블럼 테두리가 코트 라인으로 펼쳐짐</span></li>
+        <li><b>300</b><span>남색 바탕이 상단 로고 자리로 모이며 홈이 드러남</span></li>
+        <li><b>780</b><span>엠블럼이 로고에 겹쳐지며 종료</span></li>
+      </ol>
+      <p class="fits"><strong>어울리는 경우</strong> 매번 여는 앱이라 기다림을 줄이고 싶을 때. 가장 짧고 조용하며, 데이터가 늦게 와도 부담이 없습니다.</p>
+    </article>
+  </div>
+
+  <section class="stack">
+    <p class="eyebrow">공통 구현</p>
+    <h2>웹앱과 Expo 앱에 같은 모션을 넣는 방법</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>웹앱(PWA)</th><th>Expo 앱(iOS·Android)</th></tr></thead>
+        <tbody>
+          <tr><th>정지 화면</th><td><code>manifest</code>의 남색 배경과 아이콘으로 브라우저가 자동 생성. iOS는 <code>apple-touch-startup-image</code>를 기기 크기별로 준비. 지금은 manifest가 없어 먼저 추가해야 합니다.</td><td><code>expo-splash-screen</code> 설정에 첫 프레임 이미지와 남색 배경 지정. 다크 모드도 같은 남색이라 이미지 하나로 충분합니다.</td></tr>
+          <tr><th>모션</th><td>홈 화면 앱으로 실행됐을 때만(<code>display-mode: standalone</code>) 첫 화면 위에 SVG와 Web Animations API로 재생. 히어로 모션과 같은 방식입니다.</td><td>정지 화면을 <code>preventAutoHideAsync</code>로 붙잡아 둔 채 같은 그림을 그린 뒤 숨기고, <code>react-native-reanimated</code>와 <code>react-native-svg</code>로 재생.</td></tr>
+          <tr><th>공유</th><td colspan="2">좌표와 타이밍(ms)을 공용 모듈 하나에 두고 두 플랫폼이 가져다 씁니다. Lottie 파일은 만들지 않습니다(디자인 도구 없이 코드로 관리하고, 테마 토큰을 그대로 쓰기 위해).</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="rules">
+      <li>첫 프레임은 정지 화면과 픽셀 단위로 같게 맞춰 넘어가는 순간이 튀지 않게 합니다.</li>
+      <li>화면을 탭하면 바로 건너뜁니다. 움직임 줄이기 설정에서는 재생하지 않습니다.</li>
+      <li>스플래시는 로딩을 기다리는 데 쓰지 않습니다. 모션이 끝났는데 데이터가 없으면 홈의 기존 스켈레톤을 보여 줍니다.</li>
+      <li>브라우저 탭에서 여는 일반 웹 방문에는 재생하지 않습니다. 방문자 홈에는 이미 히어로 모션이 있습니다.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
+  const EASE_IN_OUT = "cubic-bezier(0.65, 0, 0.35, 1)";
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const slow = document.getElementById("slow");
+  const note = document.getElementById("rm-note");
+  const SVG = "http://www.w3.org/2000/svg";
+  // Header crest in the home mock: 32px at (16, 14) → centre (32, 30). Splash badge: 80px centred at (180, 370).
+  const TO_CREST = "translate(-148px, -340px) scale(0.4)";
+
+  const homeMarkup = `
+    <div class="home">
+      <div class="h-top"><div class="crest"><i>GC</i>경충FC</div><div class="avatar">민수</div></div>
+      <div class="h-body">
+        <div class="card">
+          <div class="h-eyebrow">NEXT MATCH · D-5</div>
+          <div class="h-date">10월 5일 일요일</div>
+          <div class="h-time">08:00–10:00 정기 경기</div>
+          <div class="rsvp"><span class="on">참석</span><span>불참</span></div>
+          <div class="cap"><span>참석 9명</span><span>정원 12명</span></div>
+          <div class="cap-bar"></div>
+        </div>
+        <div class="card"><div class="h-eyebrow">NOTICE</div><div class="skel" style="width:80%"></div><div class="skel" style="width:55%"></div></div>
+        <div class="card"><div class="h-eyebrow">MY FEE</div><div class="skel" style="width:40%"></div></div>
+      </div>
+      <div class="h-tabs"><span class="on">홈</span><span>일정</span><span>회원</span><span>공지</span><span>랭킹</span></div>
+    </div>`;
+
+  const el = (tag, attrs, parent) => {
+    const node = document.createElementNS(SVG, tag);
+    Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+    if (parent) parent.appendChild(node);
+    return node;
+  };
+
+  /* ---------- A: kickoff trajectory ---------- */
+  function buildA(screen) {
+    const splash = document.createElement("div");
+    splash.className = "splash";
+    const svg = el("svg", { viewBox: "0 0 360 760" }, splash);
+    el("line", { class: "line", x1: 0, y1: 380, x2: 360, y2: 380 }, svg);
+    el("circle", { class: "line", cx: 180, cy: 380, r: 70 }, svg);
+    el("circle", { cx: 180, cy: 380, r: 3, fill: "rgba(255,255,255,.35)" }, svg);
+    el("circle", { cx: 180, cy: 690, r: 3, fill: "rgba(255,255,255,.35)" }, svg);
+    const baseline = 398;
+    const glyphs = [["경", 109], ["충", 163], ["F", 213, true], ["C", 245, true]].map(([ch, x, latin]) => {
+      const t = el("text", { class: "glyph" + (latin ? " latin" : ""), x, y: baseline, "text-anchor": "middle" }, svg);
+      t.textContent = ch;
+      return { node: t, x };
+    });
+    const trail = el("path", { class: "trail", pathLength: 1 }, svg);
+    const ring = el("circle", { class: "ring", cx: 180, cy: 690, r: 10 }, svg);
+    const ball = el("circle", { class: "ball", cx: 0, cy: 0, r: 7 }, svg);
+    screen.appendChild(splash);
+
+    // Sampled path: lob → roll → hop into the full stop.
+    const KICK = 150, LOB = 480, ROLL = 420, HOP = 220, TOTAL = LOB + ROLL + HOP;
+    const quad = (a, b, c, t) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * b + t * t * c;
+    const samples = [];
+    for (let i = 0; i <= 24; i++) { const u = i / 24; samples.push({ t: u * LOB, x: quad(180, 120, 84, u), y: quad(690, 230, 412, u), s: 1 + 0.6 * Math.sin(Math.PI * u) }); }
+    for (let i = 1; i <= 18; i++) { const u = i / 18; samples.push({ t: LOB + u * ROLL, x: 84 + 178 * (1 - (1 - u) * (1 - u)), y: 412, s: 1 }); }
+    for (let i = 1; i <= 10; i++) { const u = i / 10; samples.push({ t: LOB + ROLL + u * HOP, x: quad(262, 268, 271, u), y: quad(412, 360, baseline - 7, u), s: 1 }); }
+
+    const lengths = [0];
+    for (let i = 1; i < samples.length; i++) lengths.push(lengths[i - 1] + Math.hypot(samples[i].x - samples[i - 1].x, samples[i].y - samples[i - 1].y));
+    const total = lengths[lengths.length - 1];
+    trail.setAttribute("d", "M" + samples.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("L"));
+
+    const anims = [];
+    anims.push([ball, samples.map((p) => ({ offset: p.t / TOTAL, transform: `translate(${p.x}px, ${p.y}px) scale(${p.s})` })), { duration: TOTAL, delay: KICK, easing: "linear" }]);
+    anims.push([ball, [{ opacity: 0 }, { opacity: 1 }], { duration: 80, delay: KICK }]);
+    anims.push([trail, samples.map((p, i) => ({ offset: p.t / TOTAL, strokeDashoffset: 1 - lengths[i] / total })), { duration: TOTAL, delay: KICK, easing: "linear" }]);
+    ring.style.transformOrigin = "180px 690px";
+    anims.push([ring, [{ opacity: 0.8, transform: "scale(.6)" }, { opacity: 0, transform: "scale(2.4)" }], { duration: 500, delay: KICK, easing: EASE_OUT }]);
+    glyphs.forEach((g) => {
+      const i = samples.findIndex((p) => p.t >= LOB && p.x >= g.x - 12);
+      const cue = KICK + samples[i < 0 ? samples.length - 1 : i].t - 40;
+      anims.push([g.node, [{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: cue, easing: EASE_OUT }]);
+    });
+    const exitAt = KICK + TOTAL + 180;
+    anims.push([splash, [{ opacity: 1 }, { opacity: 0 }], { duration: 280, delay: exitAt, easing: "ease-out" }]);
+    anims.push([screen.querySelector(".h-body"), [{ transform: "translateY(10px)" }, { transform: "none" }], { duration: 360, delay: exitAt, easing: EASE_OUT }]);
+    return anims;
+  }
+
+  /* ---------- B: net ripple ---------- */
+  function buildB(screen) {
+    const splash = document.createElement("div");
+    splash.className = "splash";
+    const svg = el("svg", { viewBox: "0 0 360 760" }, splash);
+    const goal = el("g", {}, svg);
+    const net = el("g", { class: "net" }, goal);
+    for (let x = 100; x <= 260; x += 20) el("line", { x1: x, y1: 300, x2: x, y2: 410 }, net);
+    for (let y = 320; y <= 400; y += 20) el("line", { x1: 80, y1: y, x2: 280, y2: y }, net);
+    el("path", { class: "post", d: "M80 412 V300 H280 V412" }, goal);
+    el("line", { class: "line", x1: 24, y1: 412, x2: 336, y2: 412 }, goal);
+    const ring = el("circle", { class: "ring", cx: 206, cy: 356, r: 12 }, svg);
+    const ball = el("circle", { class: "ball", cx: 0, cy: 0, r: 12 }, svg);
+    const badge = document.createElement("div");
+    badge.className = "sbadge";
+    badge.textContent = "GC";
+    const word = document.createElement("div");
+    word.className = "wordmark";
+    word.innerHTML = "경충<span>FC</span>";
+    splash.append(badge, word);
+    screen.appendChild(splash);
+
+    const SHOT = 120, FLIGHT = 320, HIT = SHOT + FLIGHT, FLY = 1000;
+    const anims = [];
+    anims.push([ball, [
+      { transform: "translate(170px, 780px) scale(1.7)" },
+      { transform: "translate(206px, 356px) scale(.6)" },
+    ], { duration: FLIGHT, delay: SHOT, easing: "cubic-bezier(.45, 0, .9, .55)" }]);
+    anims.push([ball, [{ opacity: 1 }, { opacity: 0 }], { duration: 100, delay: HIT }]);
+    net.style.transformOrigin = "206px 356px";
+    anims.push([net, [
+      { transform: "scale(1)" }, { transform: "scale(1.14, 1.1)", offset: 0.3 }, { transform: "scale(.96)", offset: 0.65 }, { transform: "scale(1)" },
+    ], { duration: 460, delay: HIT, easing: "ease-out" }]);
+    ring.style.transformOrigin = "206px 356px";
+    anims.push([ring, [{ opacity: 0.9, transform: "scale(.5)" }, { opacity: 0, transform: "scale(3)" }], { duration: 420, delay: HIT, easing: EASE_OUT }]);
+    anims.push([goal, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, delay: HIT + 180, easing: "ease-out" }]);
+    anims.push([badge, [
+      { opacity: 0, transform: "scale(.2)" }, { opacity: 1, transform: "scale(1.08)", offset: 0.7 }, { opacity: 1, transform: "scale(1)" },
+    ], { duration: 320, delay: HIT + 80, easing: EASE_OUT }]);
+    anims.push([word, [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 280, delay: HIT + 200, easing: EASE_OUT }]);
+    anims.push([word, [{ opacity: 1 }, { opacity: 0 }], { duration: 160, delay: FLY, fill: "forwards" }]);
+    anims.push([badge, [{ transform: "none" }, { transform: TO_CREST }], { duration: 320, delay: FLY, easing: EASE_IN_OUT, fill: "forwards" }]);
+    anims.push([splash, [{ backgroundColor: "rgba(11,31,51,1)" }, { backgroundColor: "rgba(11,31,51,0)" }], { duration: 300, delay: FLY, easing: "ease-out" }]);
+    anims.push([badge, [{ opacity: 1 }, { opacity: 0 }], { duration: 60, delay: FLY + 320, fill: "forwards" }]);
+    anims.push([screen.querySelector(".h-body"), [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: FLY + 60, easing: EASE_OUT }]);
+    return anims;
+  }
+
+  /* ---------- C: court unfold ---------- */
+  function buildC(screen) {
+    const splash = document.createElement("div");
+    splash.className = "splash";
+    const bg = document.createElement("div");
+    bg.style.cssText = "position:absolute;inset:0;background:var(--splash)";
+    splash.style.background = "transparent";
+    splash.appendChild(bg);
+    const svg = el("svg", { viewBox: "0 0 360 760" }, bg);
+    const court = el("g", {}, svg);
+    const rect = el("rect", { class: "line", x: 16, y: 76, width: 328, height: 620, rx: 4, "vector-effect": "non-scaling-stroke" }, court);
+    const half = el("line", { class: "line", x1: 16, y1: 386, x2: 344, y2: 386, pathLength: 1, "stroke-dasharray": 1 }, court);
+    const circle = el("circle", { class: "line", cx: 180, cy: 386, r: 64, pathLength: 1, "stroke-dasharray": 1 }, court);
+    const badge = document.createElement("div");
+    badge.className = "sbadge";
+    badge.textContent = "GC";
+    splash.appendChild(badge);
+    screen.appendChild(splash);
+
+    const anims = [];
+    rect.style.transformOrigin = "180px 370px";
+    rect.style.transformBox = "view-box";
+    anims.push([rect, [{ transform: "scale(.244, .129)", opacity: 0 }, { transform: "scale(.244, .129)", opacity: 1, offset: 0.1 }, { transform: "none", opacity: 1 }], { duration: 380, delay: 100, easing: EASE_OUT }]);
+    anims.push([half, [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 260, delay: 260, easing: EASE_OUT }]);
+    anims.push([circle, [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 300, delay: 280, easing: EASE_OUT }]);
+    anims.push([bg, [{ clipPath: "circle(560px at 180px 370px)" }, { clipPath: "circle(16px at 32px 30px)" }], { duration: 440, delay: 300, easing: "cubic-bezier(.7, 0, .2, 1)" }]);
+    anims.push([badge, [{ transform: "none" }, { transform: TO_CREST }], { duration: 440, delay: 300, easing: "cubic-bezier(.7, 0, .2, 1)" }]);
+    anims.push([badge, [{ opacity: 1 }, { opacity: 0 }], { duration: 60, delay: 740, fill: "forwards" }]);
+    anims.push([bg, [{ opacity: 1 }, { opacity: 0 }], { duration: 60, delay: 720, fill: "forwards" }]);
+    anims.push([screen.querySelector(".h-body"), [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 380, delay: 420, easing: EASE_OUT }]);
+    return anims;
+  }
+
+  const builders = { a: buildA, b: buildB, c: buildC };
+
+  document.querySelectorAll(".concept").forEach((concept) => {
+    const key = concept.dataset.concept;
+    const screen = concept.querySelector(".screen");
+    const box = concept.querySelector(".screen-box");
+    let running = [];
+
+    const fit = () => {
+      const w = box.clientWidth;
+      const s = w / 360;
+      screen.style.transform = `scale(${s})`;
+      box.style.height = `${760 * s}px`;
+    };
+    new ResizeObserver(fit).observe(box);
+    fit();
+
+    const setup = () => {
+      running.forEach((a) => a.cancel());
+      screen.innerHTML = homeMarkup;
+      running = builders[key](screen).map(([node, frames, opts]) => {
+        const anim = node.animate(frames, { fill: "both", ...opts });
+        anim.pause();
+        return anim;
+      });
+    };
+    const play = () => {
+      setup();
+      if (reduce.matches) { running.forEach((a) => a.finish()); return; }
+      running.forEach((a) => { a.playbackRate = slow.checked ? 0.3 : 1; a.play(); });
+    };
+    const firstFrame = () => { setup(); running.forEach((a) => { a.currentTime = 0; }); };
+
+    concept.querySelector('[data-act="play"]').addEventListener("click", play);
+    concept.querySelector('[data-act="first"]').addEventListener("click", firstFrame);
+    firstFrame();
+
+    // Play once the first time the phone scrolls into view.
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { io.disconnect(); setTimeout(play, 350); }
+    }, { threshold: 0.6 });
+    io.observe(box);
+  });
+
+  note.hidden = !reduce.matches;
+  reduce.addEventListener("change", () => { note.hidden = !reduce.matches; });
+})();
+</script>
