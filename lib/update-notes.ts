@@ -22,6 +22,19 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-09-30-visitor-hero-motion",
+    date: "2026-09-30",
+    source: "request",
+    title: "첫 화면의 슬로건이 공을 따라 나타납니다",
+    summary: "로그인하지 않은 방문자의 첫 화면에서 코트가 그려지고, 공이 굴러가며 슬로건을 완성합니다.",
+    changes: [
+      { kind: "improved", text: "코트 라인이 그려진 뒤 공이 날아와 굴러가며 '우리의 풋살' 글자를 하나씩 띄우고, 마침표 자리에 멈춥니다." },
+      { kind: "improved", text: "움직임 줄이기 설정을 켠 기기에서는 완성된 화면을 바로 보여 주고, 화면 밖이나 다른 탭에서는 멈춥니다." },
+      { kind: "improved", text: "첫 화면 오른쪽 안내를 실제 정기 경기 요일인 일요일로 바로잡았습니다." },
+    ],
+    pullRequests: [169],
+  },
+  {
     id: "2026-09-30-match-console",
     date: "2026-09-30",
     source: "request",

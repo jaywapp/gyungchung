@@ -39,6 +39,8 @@
   --watermark-on-navy: rgba(255, 255, 255, .04);
   --rail-hover: rgba(255, 255, 255, .06);
   --rail-active: rgba(255, 255, 255, .12);
+  --chalk: color-mix(in srgb, var(--ink) 16%, transparent);
+  --chalk-strong: color-mix(in srgb, var(--ink) 30%, transparent);
 
   /* member positions — FW brand, MF blue, DF neutral, GK amber, ANY dashed */
   --pos-fw-bg: var(--brand-soft);
@@ -961,20 +963,90 @@ footer a {
   color: var(--highlight);
 }
 
-/* Hangul glyph boxes run ~1.15em tall, so display leading has a hard floor
-   around 1.0 — anything tighter collides the lines. */
-.hero h1 {
+/* The slogan is drawn as a play: the court is chalked in, a lob lands under
+   the second line, the ball rolls past each syllable and hops into place as
+   the full stop. Sized to its own column so it never overflows the copy. */
+.hero-motion {
+  position: relative;
   margin: 25px 0 36px;
-  font-size: clamp(52px, 6.7vw, 112px);
-  font-weight: 900;
-  line-height: 1.02;
-  letter-spacing: -.045em;
-  text-transform: uppercase;
+  container-type: inline-size;
 }
 
-.hero h1 em {
+.hero-motion-box {
+  position: relative;
+  padding: .2em 0 .5em;
+  font-size: min(16cqi, 88px);
+}
+
+.hero-motion-court,
+.hero-motion-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.hero-motion-court path {
+  fill: none;
+  stroke: var(--chalk);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.hero-motion-court circle { fill: var(--chalk-strong); }
+
+.hero-motion-type {
+  position: relative;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -.04em;
+}
+
+.hero-motion-l1,
+.hero-motion-l2 { display: block; white-space: nowrap; }
+
+.hero-motion-l2 { color: var(--brand); }
+.hero-motion-l2 .g { display: inline-block; }
+
+.hero-motion-slot {
+  position: relative;
+  display: inline-block;
+  width: .3em;
+  height: .1em;
+  vertical-align: baseline;
+}
+
+/* Until the script measures the line, a plain full stop holds the ball's
+   place. It is taken out of flow so the slot's baseline never moves. */
+.hero-motion-box:not([data-ready]) .hero-motion-slot::before {
+  content: ".";
+  position: absolute;
+  left: 0;
+  bottom: 0;
   font-style: normal;
-  color: var(--brand);
+  line-height: 1;
+}
+
+.hero-motion-trail {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: max(2px, .03em);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  opacity: .5;
+}
+
+.hero-motion-ball { fill: var(--brand); }
+
+.hero-motion-kick {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 2;
+  opacity: 0;
 }
 
 .lead-row {
@@ -6771,12 +6843,7 @@ td { font-weight: 800; }
 
   .hero { min-height: 0; }
   .hero-copy { padding: 28px 6vw; }
-
-  .hero h1 {
-    margin: 18px 0 24px;
-    font-size: clamp(32px, 10.5vw, 64px);
-    line-height: 1.15;
-  }
+  .hero-motion { margin: 18px 0 24px; }
 
   .lead-row {
     grid-template-columns: 1fr;
