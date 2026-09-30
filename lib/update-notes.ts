@@ -32,7 +32,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "improved", text: "움직임 줄이기 설정을 켠 기기에서는 완성된 화면을 바로 보여 주고, 화면 밖이나 다른 탭에서는 멈춥니다." },
       { kind: "improved", text: "첫 화면 오른쪽 안내를 실제 정기 경기 요일인 일요일로 바로잡았습니다." },
     ],
-    pullRequests: [],
+    pullRequests: [169],
   },
   {
     id: "2026-09-30-match-console",
