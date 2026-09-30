@@ -22,6 +22,17 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-01-gcfc-icon",
+    date: "2026-10-01",
+    source: "request",
+    title: "새 GCFC 아이콘으로 바꿨습니다",
+    summary: "브라우저 탭과 홈 화면에 보이는 아이콘을 두 줄 GCFC 로고로 바꿨습니다.",
+    changes: [
+      { kind: "improved", text: "브라우저 탭, 홈 화면에 설치한 앱, iOS 홈 화면 아이콘이 남색 바탕에 GC와 FC를 두 줄로 쌓은 로고로 바뀌었습니다. F와 공 마침표는 라임색입니다." },
+    ],
+    pullRequests: [173],
+  },
+  {
     id: "2026-09-30-app-splash",
     date: "2026-09-30",
     source: "request",

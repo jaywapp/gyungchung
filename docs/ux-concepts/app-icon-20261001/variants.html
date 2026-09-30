@@ -1,0 +1,277 @@
+<title>GCFC 아이콘 2차 시안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,100,600;1,125,900&family=Noto+Sans+KR:wght@500;700;900&display=block">
+<style>
+/* Layout: current icon as a reference strip, then three concepts stacked; each shows the master and real launcher sizes */
+:root {
+  --bg: #f6f7f4; --surface: #fff; --sunken: #eef0ec; --ink: #0e1a26; --body: #3f4b57; --muted: #647180; --line: #e3e6e1; --brand: #157a43;
+  --wall-light: #dfe5ea; --wall-dark: #111418; --label-light: #0e1a26; --label-dark: #f2f4f6;
+  --font-ko: "Pretendard Variable", Pretendard, "Noto Sans KR", system-ui, sans-serif;
+  --font-display: "Archivo", "Noto Sans KR", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0b1622; --surface: #13212f; --sunken: #0f1c2a; --ink: #e6edf3; --body: #b4c2cf; --muted: #8fa1b3; --line: #22324a; --brand: #b8f27c; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #0b1622; --surface: #13212f; --sunken: #0f1c2a; --ink: #e6edf3; --body: #b4c2cf; --muted: #8fa1b3; --line: #22324a; --brand: #b8f27c; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--body); font: 400 16px/1.6 var(--font-ko); margin: 0; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 28px; }
+h1, h2 { color: var(--ink); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(28px, 5vw, 44px); line-height: 1.15; font-weight: 900; }
+.eyebrow { font: 600 12px/1 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--brand); margin: 0 0 12px; }
+.lead { max-width: 64ch; margin: 12px 0 0; }
+.toggle { display: inline-flex; gap: 8px; align-items: center; color: var(--ink); font-weight: 500; font-size: 14px; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--brand); }
+.toggle input:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.concept { display: grid; gap: 16px; padding-top: 24px; border-top: 1px solid var(--line); }
+.concept header { display: flex; gap: 12px; align-items: baseline; }
+.tag { font: 800 28px/1 var(--font-display); color: var(--brand); min-width: 1.2em; }
+.concept h2 { font-size: 20px; line-height: 1.3; }
+.meta { font-size: 13px; color: var(--muted); }
+.body { display: grid; gap: 20px; grid-template-columns: 1fr; }
+@media (min-width: 820px) { .body { grid-template-columns: 240px minmax(0, 1fr); } }
+.master { position: relative; width: 240px; max-width: 100%; aspect-ratio: 1; }
+.master canvas { width: 100%; height: 100%; border-radius: 22.37%; display: block; }
+.master .safe { position: absolute; inset: 0; pointer-events: none; }
+.side { display: grid; gap: 14px; min-width: 0; align-content: start; }
+.walls { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.wall { border-radius: 16px; padding: 16px 12px 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 6px; justify-items: center; }
+.wall.light { background: var(--wall-light); color: var(--label-light); }
+.wall.dark { background: var(--wall-dark); color: var(--label-dark); }
+.app { display: grid; justify-items: center; gap: 4px; font-size: 11px; font-weight: 500; }
+.app canvas { width: 56px; height: 56px; display: block; }
+.app.ios canvas { border-radius: 12.5px; }
+.app.android canvas { border-radius: 50%; }
+.ghost { width: 56px; height: 56px; border-radius: 12.5px; background: currentColor; opacity: .12; }
+.android .ghost, .wall .ghost.round { border-radius: 50%; }
+.wall-title { grid-column: 1 / -1; justify-self: start; font: 600 11px/1 var(--font-display); letter-spacing: .08em; opacity: .6; }
+.tiny { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.tiny figure { margin: 0; display: grid; justify-items: center; gap: 4px; }
+.tiny canvas { display: block; border-radius: 22%; }
+.notes { margin: 0; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
+.notes strong { color: var(--ink); }
+.ref { opacity: .92; }
+</style>
+
+<div class="wrap">
+  <div>
+    <p class="eyebrow">App icon · round 2 · B & C</p>
+    <h1>B와 C를 더 다듬은 여섯 가지</h1>
+    <p class="lead">1차에서 고른 B(GC / FC 2단)와 C(킥오프 심볼)를 각각 세 갈래로 나눴습니다. 각 방향의 첫 번째는 1차 시안 그대로입니다. 고른 아이콘은 웹사이트(파비콘, 홈 화면 웹앱)와 Android·iOS 앱에 함께 씁니다.</p>
+    <p style="margin:16px 0 0"><label class="toggle"><input type="checkbox" id="safe"> Android 안전 영역 표시(가운데 66% 원 밖은 잘릴 수 있음)</label></p>
+  </div>
+
+  <p class="eyebrow" style="margin:8px 0 0">B · GC / FC 2단</p>
+  <section class="concept" data-concept="b">
+    <header><span class="tag">B1</span><div><h2>기본 2단</h2><div class="meta">1차 시안 그대로</div></div></header>
+    <div class="body"><div class="master"><canvas></canvas><canvas class="safe"></canvas></div><div class="side"></div></div>
+    <ul class="notes"><li><strong>장점</strong> 스플래시 로고의 글자·라임 F·공 마침표를 그대로 담습니다.</li><li><strong>주의</strong> 29px 이하에서는 글자가 흐려집니다.</li></ul>
+  </section>
+  <section class="concept" data-concept="b2">
+    <header><span class="tag">B2</span><div><h2>하프라인 분할</h2><div class="meta">두 줄 사이를 하프라인이, 둘레를 센터서클이 지나감</div></div></header>
+    <div class="body"><div class="master"><canvas></canvas><canvas class="safe"></canvas></div><div class="side"></div></div>
+    <ul class="notes"><li><strong>장점</strong> 글자와 경기장이 한 그림이 되어 스플래시 첫 장면과 가장 비슷합니다.</li><li><strong>주의</strong> 선이 늘어나 작은 크기에서는 B1보다 조금 복잡해 보입니다.</li></ul>
+  </section>
+  <section class="concept" data-concept="b3">
+    <header><span class="tag">B3</span><div><h2>계단 배치</h2><div class="meta">FC를 오른쪽으로 밀어 이탤릭 기울기를 따라 내려가는 두 줄</div></div></header>
+    <div class="body"><div class="master"><canvas></canvas><canvas class="safe"></canvas></div><div class="side"></div></div>
+    <ul class="notes"><li><strong>장점</strong> 글자를 가장 크게 쓸 수 있어 B 중 작은 크기에서 가장 잘 읽힙니다. 앞으로 달려 나가는 느낌이 납니다.</li><li><strong>주의</strong> 가운데 정렬이 아니라 Android 원형으로 잘릴 때 양 끝이 안전 영역에 가깝습니다.</li></ul>
+  </section>
+  <p class="eyebrow" style="margin:24px 0 0">C · 킥오프 심볼</p>
+  <section class="concept" data-concept="c">
+    <header><span class="tag">C1</span><div><h2>기본 궤적</h2><div class="meta">1차 시안 그대로</div></div></header>
+    <div class="body"><div class="master"><canvas></canvas><canvas class="safe"></canvas></div><div class="side"></div></div>
+    <ul class="notes"><li><strong>장점</strong> 어떤 모양으로 잘려도 형태가 유지되고 스플래시 첫 장면과 이어집니다.</li><li><strong>주의</strong> 이름이 없어 아이콘만으로 경충FC라는 걸 알기 어렵습니다.</li></ul>
+  </section>
+  <section class="concept" data-concept="c2">
+    <header><span class="tag">C2</span><div><h2>굵은 센터서클</h2><div class="meta">궤적 없이 굵은 선과 공 하나</div></div></header>
+    <div class="body"><div class="master"><canvas></canvas><canvas class="safe"></canvas></div><div class="side"></div></div>
+    <ul class="notes"><li><strong>장점</strong> 가장 단순해서 16px 탭에서도 형태가 또렷합니다.</li><li><strong>주의</strong> 단순한 만큼 다른 축구 앱 아이콘과 비슷해 보일 수 있습니다.</li></ul>
+  </section>
+  <section class="concept" data-concept="c3">
+    <header><span class="tag">C3</span><div><h2>잔디 피치</h2><div class="meta">남색 대신 피치 녹색 바탕과 잔디 줄무늬</div></div></header>
+    <div class="body"><div class="master"><canvas></canvas><canvas class="safe"></canvas></div><div class="side"></div></div>
+    <ul class="notes"><li><strong>장점</strong> 한눈에 축구장으로 읽히고 홈 화면에서 색으로 구분됩니다.</li><li><strong>주의</strong> 스플래시(남색)로 넘어갈 때 바탕색이 바뀝니다. 녹색은 웹의 피치 토큰(#124a33)입니다.</li></ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const NAVY = "#0b1f33", LIME = "#b8f27c", WHITE = "#ffffff", CHALK = "rgba(255,255,255,.16)";
+  const FONT = (size) => `italic 900 ${size}px Archivo`;
+
+  function setFont(x, size) { x.font = FONT(size); try { x.fontStretch = "expanded"; } catch (e) {} }
+  function widths(x, glyphs) { return glyphs.map((g) => x.measureText(g).width); }
+  function ball(x, cx, cy, r) { x.fillStyle = LIME; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill(); }
+  function court(x, px, r, alpha) {
+    x.strokeStyle = `rgba(255,255,255,${alpha})`; x.lineWidth = Math.max(1, px * 0.008);
+    x.beginPath(); x.moveTo(0, px / 2); x.lineTo(px, px / 2); x.stroke();
+    x.beginPath(); x.arc(px / 2, px / 2, r, 0, Math.PI * 2); x.stroke();
+  }
+
+  // Writes a run of glyphs; returns the x after the last glyph.
+  function run(x, glyphs, colors, left, baseline, size, gapAfter) {
+    const w = widths(x, glyphs);
+    let cur = left;
+    glyphs.forEach((g, i) => { x.fillStyle = colors[i]; x.fillText(g, cur, baseline); cur += w[i] + (gapAfter && gapAfter[i] ? gapAfter[i] : 0); });
+    return cur;
+  }
+
+  const concepts = {
+    current(x, px) {
+      const size = px * 0.155, baseline = px / 2 + size * 0.36;
+      court(x, px, size * 1.05, 0.2);
+      setFont(x, size);
+      const glyphs = ["G", "C", "F", "C"], w = widths(x, glyphs), gap = size * 0.16, r = size * 0.11;
+      const total = w.reduce((a, b) => a + b, 0) + gap + r * 2 + size * 0.12;
+      const left = px / 2 - total / 2;
+      x.fillStyle = NAVY; x.fillRect(left - size * 0.2, baseline - size * 0.82, total + size * 0.4, size * 0.98);
+      const end = run(x, glyphs, [WHITE, WHITE, LIME, WHITE], left, baseline, size, [0, gap, 0, 0]);
+      ball(x, end + size * 0.12 + r, baseline - r + 1, r);
+    },
+    a(x, px) {
+      const size = px * 0.34, r = size * 0.12;
+      court(x, px, px * 0.33, 0.12);
+      setFont(x, size);
+      const w = widths(x, ["G", "C"]);
+      const total = w[0] + w[1] + size * 0.1 + r * 2;
+      const left = px / 2 - total / 2 - size * 0.02, baseline = px / 2 + size * 0.36;
+      x.fillStyle = NAVY; x.fillRect(left - size * 0.12, baseline - size * 0.8, total + size * 0.24, size * 0.94);
+      const end = run(x, ["G", "C"], [WHITE, WHITE], left, baseline, size);
+      ball(x, end + size * 0.1 + r, baseline - r, r);
+    },
+    b(x, px) {
+      const size = px * 0.25, r = size * 0.12, lead = size * 0.98;
+      setFont(x, size);
+      const w1 = widths(x, ["G", "C"]), w2 = widths(x, ["F", "C"]);
+      const line1 = w1[0] + w1[1], line2 = w2[0] + w2[1] + size * 0.1 + r * 2;
+      const block = Math.max(line1, line2);
+      const left = px / 2 - block / 2;
+      const top = px / 2 - lead / 2;
+      run(x, ["G", "C"], [WHITE, WHITE], left + size * 0.08, top + size * 0.34, size);
+      const end = run(x, ["F", "C"], [LIME, WHITE], left, top + lead + size * 0.34, size);
+      ball(x, end + size * 0.1 + r, top + lead + size * 0.34 - r, r);
+    },
+    c(x, px) {
+      const cx = px / 2, cy = px / 2, R = px * 0.25;
+      x.strokeStyle = "rgba(255,255,255,.34)"; x.lineWidth = px * 0.014;
+      x.beginPath(); x.moveTo(px * 0.06, cy); x.lineTo(px * 0.94, cy); x.stroke();
+      x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.stroke();
+      // Lob from bottom left onto the centre spot.
+      x.strokeStyle = "rgba(184,242,124,.55)"; x.lineWidth = px * 0.016; x.lineCap = "round";
+      x.beginPath(); x.moveTo(px * 0.24, px * 0.8); x.quadraticCurveTo(px * 0.3, px * 0.2, cx - px * 0.02, cy - px * 0.02); x.stroke();
+      ball(x, cx, cy, px * 0.085);
+    },
+    d(x, px) {
+      x.fillStyle = LIME; x.fillRect(0, 0, px, px);
+      const size = px * 0.36, r = size * 0.11;
+      setFont(x, size);
+      const w = widths(x, ["G", "C"]);
+      const total = w[0] + w[1] + size * 0.1 + r * 2;
+      const left = px / 2 - total / 2 - size * 0.02, baseline = px / 2 + size * 0.36;
+      const end = run(x, ["G", "C"], [NAVY, NAVY], left, baseline, size);
+      x.fillStyle = NAVY; x.beginPath(); x.arc(end + size * 0.1 + r, baseline - r, r, 0, Math.PI * 2); x.fill();
+    },
+    e(x, px) {
+      const size = px * 0.3, r = size * 0.1;
+      court(x, px, px * 0.33, 0.12);
+      x.font = `900 ${size}px "Noto Sans KR", sans-serif`;
+      try { x.fontStretch = "normal"; } catch (err) {}
+      const w = widths(x, ["경", "충"]);
+      const total = w[0] + w[1] + size * 0.06 + r * 2;
+      const left = px / 2 - total / 2, baseline = px / 2 + size * 0.36;
+      x.fillStyle = NAVY; x.fillRect(left - size * 0.1, baseline - size * 0.9, total + size * 0.2, size * 1.04);
+      const end = run(x, ["경", "충"], [WHITE, WHITE], left, baseline, size);
+      ball(x, end + size * 0.06 + r, baseline - r, r);
+    },
+    b2(x, px) {
+      const size = px * 0.23, r = size * 0.12, mid = px / 2;
+      court(x, px, px * 0.36, 0.2);
+      setFont(x, size);
+      const w1 = widths(x, ["G", "C"]), w2 = widths(x, ["F", "C"]);
+      const line1 = w1[0] + w1[1], line2 = w2[0] + w2[1] + size * 0.1 + r * 2;
+      const left1 = px / 2 - line1 / 2, left2 = px / 2 - line2 / 2;
+      const base1 = mid - size * 0.16, base2 = mid + size * 0.86;
+      x.fillStyle = NAVY;
+      x.fillRect(left1 - size * 0.1, base1 - size * 0.8, line1 + size * 0.2, size * 0.9);
+      x.fillRect(left2 - size * 0.1, base2 - size * 0.8, line2 + size * 0.2, size * 0.9);
+      run(x, ["G", "C"], [WHITE, WHITE], left1, base1, size);
+      const end = run(x, ["F", "C"], [LIME, WHITE], left2, base2, size);
+      ball(x, end + size * 0.1 + r, base2 - r, r);
+    },
+    b3(x, px) {
+      const size = px * 0.29, r = size * 0.12, lead = size * 0.96, shift = size * 0.32;
+      setFont(x, size);
+      const w1 = widths(x, ["G", "C"]), w2 = widths(x, ["F", "C"]);
+      const line1 = w1[0] + w1[1], line2 = shift + w2[0] + w2[1] + size * 0.1 + r * 2;
+      const left = px / 2 - Math.max(line1, line2) / 2;
+      const top = px / 2 - lead / 2 + size * 0.34;
+      run(x, ["G", "C"], [WHITE, WHITE], left, top, size);
+      const end = run(x, ["F", "C"], [LIME, WHITE], left + shift, top + lead, size);
+      ball(x, end + size * 0.1 + r, top + lead - r, r);
+    },
+    c2(x, px) {
+      const cx = px / 2, cy = px / 2;
+      x.strokeStyle = "rgba(255,255,255,.9)"; x.lineWidth = px * 0.035;
+      x.beginPath(); x.moveTo(px * 0.14, cy); x.lineTo(px * 0.86, cy); x.stroke();
+      x.beginPath(); x.arc(cx, cy, px * 0.24, 0, Math.PI * 2); x.stroke();
+      x.fillStyle = NAVY; x.beginPath(); x.arc(cx, cy, px * 0.13, 0, Math.PI * 2); x.fill();
+      ball(x, cx, cy, px * 0.095);
+    },
+    c3(x, px) {
+      x.fillStyle = "#124a33"; x.fillRect(0, 0, px, px);
+      x.fillStyle = "rgba(255,255,255,.05)";
+      for (let i = 0; i < 6; i += 2) x.fillRect(i * px / 6, 0, px / 6, px);
+      const cx = px / 2, cy = px / 2;
+      x.strokeStyle = "rgba(255,255,255,.6)"; x.lineWidth = px * 0.014;
+      x.beginPath(); x.moveTo(0, cy); x.lineTo(px, cy); x.stroke();
+      x.beginPath(); x.arc(cx, cy, px * 0.25, 0, Math.PI * 2); x.stroke();
+      x.strokeStyle = "rgba(184,242,124,.7)"; x.lineWidth = px * 0.016; x.lineCap = "round";
+      x.beginPath(); x.moveTo(px * 0.24, px * 0.8); x.quadraticCurveTo(px * 0.3, px * 0.2, cx - px * 0.02, cy - px * 0.02); x.stroke();
+      ball(x, cx, cy, px * 0.085);
+    },
+  };
+
+  function paint(canvas, key, px, dpr) {
+    const d = px * dpr;
+    canvas.width = d; canvas.height = d;
+    const x = canvas.getContext("2d");
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.fillStyle = NAVY; x.fillRect(0, 0, px, px);
+    x.textBaseline = "alphabetic";
+    concepts[key](x, px);
+  }
+
+  function paintSafe(canvas, show) {
+    const px = 240, dpr = window.devicePixelRatio || 1;
+    canvas.width = px * dpr; canvas.height = px * dpr;
+    const x = canvas.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, px, px);
+    if (!show) return;
+    x.fillStyle = "rgba(255,80,80,.28)"; x.beginPath(); x.rect(0, 0, px, px); x.arc(px / 2, px / 2, px * 0.33, 0, Math.PI * 2, true); x.fill();
+    x.strokeStyle = "rgba(255,120,120,.9)"; x.setLineDash([4, 4]); x.beginPath(); x.arc(px / 2, px / 2, px * 0.33, 0, Math.PI * 2); x.stroke();
+  }
+
+  function sideMarkup() {
+    const row = (cls) => `<div class="app ${cls}"><div class="ghost${cls === "android" ? " round" : ""}"></div>캘린더</div>`;
+    const wall = (tone, os, cls) => `<div class="wall ${tone}"><span class="wall-title">${os}</span>${row(cls)}<div class="app ${cls}"><canvas data-size="56"></canvas>경충FC</div>${row(cls)}${row(cls)}</div>`;
+    return `<div class="walls">${wall("light", "iOS · 밝은 배경", "ios")}${wall("dark", "Android · 어두운 배경", "android")}</div>
+      <div class="tiny"><figure><canvas data-size="40" style="width:40px;height:40px"></canvas>40px 알림</figure><figure><canvas data-size="29" style="width:29px;height:29px"></canvas>29px 설정</figure><figure><canvas data-size="20" style="width:20px;height:20px"></canvas>20px 상태 표시줄</figure><figure><canvas data-size="16" style="width:16px;height:16px"></canvas>16px 브라우저 탭</figure></div>`;
+  }
+
+  const safeToggle = document.getElementById("safe");
+  function render() {
+    const dpr = Math.max(2, window.devicePixelRatio || 1);
+    document.querySelectorAll(".concept").forEach((section) => {
+      const key = section.dataset.concept;
+      const side = section.querySelector(".side");
+      if (!side.innerHTML) side.innerHTML = sideMarkup();
+      paint(section.querySelector(".master canvas"), key, 240, dpr);
+      paintSafe(section.querySelector(".master .safe"), safeToggle.checked);
+      side.querySelectorAll("canvas[data-size]").forEach((c) => paint(c, key, Number(c.dataset.size), dpr));
+    });
+  }
+  safeToggle.addEventListener("change", render);
+  render();
+  Promise.all([document.fonts.load(FONT(40)), document.fonts.load('900 40px "Noto Sans KR"', '경충'), document.fonts.ready]).catch(() => {}).then(render);
+})();
+</script>
