@@ -2,7 +2,7 @@
 <meta name="description" content="경충FC 웹앱(PWA)과 Expo 앱에 함께 쓸 시작 화면 모션 시안 3종">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Noto+Sans+KR:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Noto+Sans+KR:wght@500;700;900&display=swap">
 <style>
 /* Layout: one column of three phone concepts on phones, three across from 1000px; tokens mirror app/globals.css */
 :root {
@@ -98,8 +98,9 @@ button:focus-visible, .toggle input:focus-visible { outline: 3px solid var(--bra
 .line { fill: none; stroke: var(--chalk-splash); stroke-width: 1.5; }
 .post { fill: none; stroke: var(--on-splash); stroke-width: 3; stroke-linejoin: round; }
 .net line { stroke: var(--chalk-splash); stroke-width: 1; }
-.glyph { font: 900 52px/1 "Noto Sans KR", sans-serif; fill: var(--on-splash); }
-.glyph.latin { font: 800 50px/1 var(--font-display); }
+.mark { font-family: "Archivo", sans-serif; font-size: 68px; font-weight: 900; font-style: italic; font-stretch: 125%; font-variation-settings: "wdth" 125; letter-spacing: -0.01em; fill: var(--on-splash); }
+.mark.outline { fill: var(--splash); stroke: var(--on-splash); stroke-width: 2; paint-order: stroke; stroke-linejoin: round; }
+.tagline { font: 600 10px/1 var(--font-display); letter-spacing: .28em; fill: rgba(255, 255, 255, .62); }
 .ball { fill: var(--highlight); }
 .trail { fill: none; stroke: var(--highlight); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; opacity: .5; }
 .ring { fill: none; stroke: var(--highlight); stroke-width: 2; }
@@ -129,8 +130,8 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
   <div class="grid">
     <!-- A -->
     <article class="concept" data-concept="a">
-      <header><span class="tag">A</span><div><h2>킥오프 궤적</h2><div class="meta">1.7 s · 첫 실행용</div></div></header>
-      <p class="pitch">웹 첫 화면의 궤적 드로잉을 줄인 버전입니다. 공이 날아와 '경충FC' 밑을 굴러가며 글자를 띄우고, 마침표 자리에 멈춥니다.</p>
+      <header><span class="tag">A</span><div><h2>킥오프 궤적</h2><div class="meta">1.8 s · 선택됨</div></div></header>
+      <p class="pitch">웹 첫 화면의 궤적 드로잉을 줄인 버전입니다. 공이 날아와 'GCFC' 밑을 굴러가며 글자를 띄우고, 마침표 자리에 멈춥니다. GC는 채운 글자, FC는 윤곽선으로 나눴습니다.</p>
       <div class="stage">
         <div class="fit"><div class="device"><div class="screen-box"><div class="screen"></div></div></div></div>
         <div class="controls"><button class="primary" data-act="play">다시 재생</button><button data-act="first">첫 프레임</button></div>
@@ -138,8 +139,8 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
       <ol class="flow">
         <li><b>0 ms</b><span>정지 화면: 남색 바탕에 하프라인과 센터서클</span></li>
         <li><b>150</b><span>페널티 마크에서 공을 차 올림</span></li>
-        <li><b>630</b><span>착지 후 굴러가며 '경·충·F·C'가 차례로 떠오름</span></li>
-        <li><b>1270</b><span>공이 마침표로 멈춤 → 페이드로 홈 공개</span></li>
+        <li><b>630</b><span>착지 후 굴러가며 'G·C·F·C'가 차례로 떠오름</span></li>
+        <li><b>1270</b><span>공이 마침표로 멈추고 클럽 문구가 펼쳐짐 → 페이드로 홈 공개</span></li>
       </ol>
       <p class="fits"><strong>어울리는 경우</strong> 웹과 앱의 인상을 하나로 묶고 싶을 때. 길어서 두 번째 실행부터는 C처럼 짧은 버전으로 바꾸는 것을 권합니다.</p>
     </article>
@@ -246,24 +247,41 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
     el("circle", { class: "line", cx: 180, cy: 380, r: 70 }, svg);
     el("circle", { cx: 180, cy: 380, r: 3, fill: "rgba(255,255,255,.35)" }, svg);
     el("circle", { cx: 180, cy: 690, r: 3, fill: "rgba(255,255,255,.35)" }, svg);
-    const baseline = 398;
-    const glyphs = [["경", 109], ["충", 163], ["F", 213, true], ["C", 245, true]].map(([ch, x, latin]) => {
-      const t = el("text", { class: "glyph" + (latin ? " latin" : ""), x, y: baseline, "text-anchor": "middle" }, svg);
+    // Wordmark: Archivo expanded black italic. "GC" solid, "FC" outlined; the ball becomes the full stop.
+    const baseline = 404, SIZE = 68, GAP = SIZE * 0.16, R = 7.5;
+    screen.appendChild(splash);
+    // Knocks the court lines out behind the wordmark once the letters rise.
+    const knock = el("rect", { y: baseline - SIZE * 0.82, height: SIZE * 0.98, fill: "var(--splash)" }, svg);
+    const glyphs = [["G", false], ["C", false], ["F", true], ["C", true]].map(([ch, outline]) => {
+      const t = el("text", { class: "mark" + (outline ? " outline" : ""), x: 0, y: baseline }, svg);
       t.textContent = ch;
-      return { node: t, x };
+      return { node: t, w: t.getComputedTextLength() };
     });
+    const markWidth = glyphs.reduce((sum, g) => sum + g.w, 0) + GAP + R * 2 + 8;
+    let cursor = 180 - markWidth / 2;
+    glyphs.forEach((g, i) => {
+      if (i === 2) cursor += GAP;
+      g.node.setAttribute("x", cursor.toFixed(1));
+      g.x = cursor + g.w / 2;
+      cursor += g.w;
+    });
+    const left = 180 - markWidth / 2, stopX = cursor + 8 + R, stopY = baseline - R + 1;
+    knock.setAttribute("x", (left - 14).toFixed(1));
+    knock.setAttribute("width", (markWidth + 28).toFixed(1));
+    const tagline = el("text", { class: "tagline", x: 180, y: baseline + 40, "text-anchor": "middle" }, svg);
+    tagline.textContent = "WEEKEND FUTSAL CLUB · EST. 2018";
     const trail = el("path", { class: "trail", pathLength: 1 }, svg);
     const ring = el("circle", { class: "ring", cx: 180, cy: 690, r: 10 }, svg);
-    const ball = el("circle", { class: "ball", cx: 0, cy: 0, r: 7 }, svg);
-    screen.appendChild(splash);
+    const ball = el("circle", { class: "ball", cx: 0, cy: 0, r: R }, svg);
 
-    // Sampled path: lob → roll → hop into the full stop.
+    // Sampled path: lob → roll under the wordmark → hop into the full stop.
     const KICK = 150, LOB = 480, ROLL = 420, HOP = 220, TOTAL = LOB + ROLL + HOP;
     const quad = (a, b, c, t) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * b + t * t * c;
+    const floor = baseline + 14, rollEnd = stopX - 10;
     const samples = [];
-    for (let i = 0; i <= 24; i++) { const u = i / 24; samples.push({ t: u * LOB, x: quad(180, 120, 84, u), y: quad(690, 230, 412, u), s: 1 + 0.6 * Math.sin(Math.PI * u) }); }
-    for (let i = 1; i <= 18; i++) { const u = i / 18; samples.push({ t: LOB + u * ROLL, x: 84 + 178 * (1 - (1 - u) * (1 - u)), y: 412, s: 1 }); }
-    for (let i = 1; i <= 10; i++) { const u = i / 10; samples.push({ t: LOB + ROLL + u * HOP, x: quad(262, 268, 271, u), y: quad(412, 360, baseline - 7, u), s: 1 }); }
+    for (let i = 0; i <= 24; i++) { const u = i / 24; samples.push({ t: u * LOB, x: quad(180, 120, left, u), y: quad(690, 230, floor, u), s: 1 + 0.6 * Math.sin(Math.PI * u) }); }
+    for (let i = 1; i <= 18; i++) { const u = i / 18; samples.push({ t: LOB + u * ROLL, x: left + (rollEnd - left) * (1 - (1 - u) * (1 - u)), y: floor, s: 1 }); }
+    for (let i = 1; i <= 10; i++) { const u = i / 10; samples.push({ t: LOB + ROLL + u * HOP, x: quad(rollEnd, stopX - 4, stopX, u), y: quad(floor, stopY - 44, stopY, u), s: 1 }); }
 
     const lengths = [0];
     for (let i = 1; i < samples.length; i++) lengths.push(lengths[i - 1] + Math.hypot(samples[i].x - samples[i - 1].x, samples[i].y - samples[i - 1].y));
@@ -281,7 +299,10 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
       const cue = KICK + samples[i < 0 ? samples.length - 1 : i].t - 40;
       anims.push([g.node, [{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: cue, easing: EASE_OUT }]);
     });
-    const exitAt = KICK + TOTAL + 180;
+    const firstCue = KICK + LOB - 40;
+    anims.push([knock, [{ opacity: 0 }, { opacity: 1 }], { duration: 360, delay: firstCue, easing: "ease-out" }]);
+    anims.push([tagline, [{ opacity: 0, letterSpacing: "0.1em" }, { opacity: 1, letterSpacing: "0.28em" }], { duration: 420, delay: KICK + TOTAL - 60, easing: EASE_OUT }]);
+    const exitAt = KICK + TOTAL + 260;
     anims.push([splash, [{ opacity: 1 }, { opacity: 0 }], { duration: 280, delay: exitAt, easing: "ease-out" }]);
     anims.push([screen.querySelector(".h-body"), [{ transform: "translateY(10px)" }, { transform: "none" }], { duration: 360, delay: exitAt, easing: EASE_OUT }]);
     return anims;
@@ -370,7 +391,7 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
 
   const builders = { a: buildA, b: buildB, c: buildC };
 
-  document.querySelectorAll(".concept").forEach((concept) => {
+  const init = () => document.querySelectorAll(".concept").forEach((concept) => {
     const key = concept.dataset.concept;
     const screen = concept.querySelector(".screen");
     const box = concept.querySelector(".screen-box");
@@ -411,6 +432,8 @@ ul.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
     }, { threshold: 0.6 });
     io.observe(box);
   });
+  // The wordmark is measured, so wait for the expanded italic face first.
+  Promise.all([document.fonts.load('italic 900 68px "Archivo"'), document.fonts.ready]).catch(() => {}).then(init);
 
   note.hidden = !reduce.matches;
   reduce.addEventListener("change", () => { note.hidden = !reduce.matches; });
