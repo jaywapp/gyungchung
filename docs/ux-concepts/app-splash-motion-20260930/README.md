@@ -1,7 +1,7 @@
 # 앱 스플래시 모션 시안 (2026-09-30)
 
 웹앱(PWA)과 Expo 앱(`docs/mobile-app-design.md`)에서 앱을 열 때 보이는 시작 화면 모션 시안 3종입니다.
-사용자가 하나를 고른 뒤에 `docs/app-splash-motion-20260930-{analysis,design,tasks}.md`를 쓰고 구현합니다.
+사용자가 A안을 골랐고(2026-09-30), 워드마크는 `경충FC` 대신 `GCFC`로 바꾸기로 했습니다. 이후 `docs/app-splash-motion-20260930-{analysis,design,tasks}.md`를 쓰고 구현합니다.
 
 - 시안: `splash.html` (세 시안을 한 페이지에서 비교, 다시 재생·첫 프레임·느리게 보기 지원)
 
