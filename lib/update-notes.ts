@@ -22,6 +22,17 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-01-mobile-update-api",
+    date: "2026-10-01",
+    source: "request",
+    title: "Android 앱 업데이트를 확인할 수 있습니다",
+    summary: "Android 앱의 새 버전을 확인하고 로그인한 회원이 앱 안에서 설치 파일을 받을 수 있도록 업데이트 연동을 준비했습니다.",
+    changes: [
+      { kind: "added", text: "로그인 전에도 최신 Android 버전을 확인할 수 있으며, 연결된 회원만 설치 파일을 다운로드할 수 있습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-01-gcfc-icon",
     date: "2026-10-01",
     source: "request",
