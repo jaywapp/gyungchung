@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-01-mobile-push-notifications",
+    date: "2026-10-01",
+    source: "request",
+    title: "모바일 알림을 종류별로 선택할 수 있도록 준비했습니다",
+    summary: "참석 변경, 일정 변경, 공지와 마감 안내를 선택해 받을 수 있는 모바일 알림 연동을 준비했습니다. 실제 발송은 아직 시작하지 않았습니다.",
+    changes: [
+      { kind: "added", text: "전체 알림과 종류별 알림을 선택하고, 운영진이 참석 변경 알림의 수신 범위를 정할 수 있도록 준비했습니다." },
+      { kind: "added", text: "운영진이 아직 참석 여부를 정하지 않은 회원에게 다시 알리고, 기록이 없는 미래 일정을 취소할 때 안내할 수 있도록 준비했습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-01-public-apk-release-channel",
     date: "2026-10-01",
     source: "request",
