@@ -4,10 +4,19 @@ import { APPLICATION_ID, createMobileUpdatesHandler, type MobileAuth } from "../
 
 const sha = "a".repeat(64);
 const filename = (code: number) => `gyungchung-1.0.0-android-${code}.apk`;
+const publicUrl = (code: number, name: string) => `https://github.com/jaywapp/gyungchung-releases/releases/download/v1.0.0-android-${code}/${name}`;
+function assertPublicCall(call: { url: string; init?: RequestInit }) {
+  const url = new URL(call.url);
+  if (url.hostname === "api.github.com") assert.equal(call.url, "https://api.github.com/repos/jaywapp/gyungchung-releases/releases?per_page=20");
+  else {
+    assert.equal(url.hostname, "github.com");
+    assert.ok(url.pathname.startsWith("/jaywapp/gyungchung-releases/releases/download/"));
+  }
+}
 function release(code = 100016, options: Record<string, unknown> = {}) {
   return { draft: false, prerelease: false, published_at: "2026-10-01T00:00:00Z", body: "private commit and PR details", assets: [
-    { id: code, name: filename(code), size: 4, state: "uploaded", digest: `sha256:${sha}` },
-    { id: code + 1, name: "checksums.sha256", size: 120, state: "uploaded" },
+    { id: code, name: filename(code), size: 4, state: "uploaded", digest: `sha256:${sha}`, browser_download_url: publicUrl(code, filename(code)) },
+    { id: code + 1, name: "checksums.sha256", size: 120, state: "uploaded", browser_download_url: publicUrl(code, "checksums.sha256") },
   ], ...options };
 }
 function member(status: string | null = "active", valid = true, lookupError: unknown = null): MobileAuth {
@@ -21,12 +30,14 @@ function fakeGithub(items: ReturnType<typeof release>[], extra: Record<string, s
   const fetcher: typeof fetch = async (input, init) => {
     const url = String(input); calls.push({ url, init });
     if (url.endsWith("releases?per_page=20")) return Response.json(items);
-    const id = Number(url.split("/").at(-1));
-    if (extra[id] !== undefined) return new Response(extra[id]);
     for (const item of items) {
       const apk = item.assets[0];
-      if (id === apk.id + 1) return new Response(`${sha}  ${apk.name}\n`);
-      if (id === apk.id) return new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-length": "4" } });
+      for (const candidate of item.assets) {
+        if (url !== candidate.browser_download_url) continue;
+        if (extra[candidate.id] !== undefined) return new Response(extra[candidate.id]);
+        if (candidate.name === "checksums.sha256") return new Response(`${sha}  ${apk.name}\n`);
+        if (candidate.id === apk.id) return new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-length": "4" } });
+      }
     }
     return new Response(null, { status: 404 });
   };
@@ -34,7 +45,7 @@ function fakeGithub(items: ReturnType<typeof release>[], extra: Record<string, s
 }
 const request = (query = "", authorized = false) => new Request(`https://example.test/functions/v1/mobile-updates${query}`, { headers: authorized ? { authorization: "Bearer user-jwt" } : {} });
 
-test("public metadata sanitizes private releases and selects greatest code despite older latest", async () => {
+test("public metadata sanitizes release bodies and selects greatest code despite older latest", async () => {
   const upstream = fakeGithub([release(100016), release(100018, { published_at: "2026-09-01T00:00:00Z" }), release(100020, { draft: true }), release(100030, { prerelease: true })]);
   const handler = createMobileUpdatesHandler({ githubToken: "server-only", fetch: upstream.fetcher });
   const response = await handler(request());
@@ -55,7 +66,7 @@ test("partial upload is skipped and absent digest uses checksum for legacy relea
 });
 
 test("manifest must match APK contract and notes must contain only curated public plain text", async () => {
-  const item = release(); item.assets.push({ id: 9, name: "update.json", size: 500, state: "uploaded", digest: undefined });
+  const item = release(); item.assets.push({ id: 9, name: "update.json", size: 500, state: "uploaded", digest: undefined, browser_download_url: publicUrl(100016, "update.json") });
   const manifest = { schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: "1.0.0", versionCode: 100016, assetName: filename(100016), sha256: sha, sizeBytes: 4, notes: ["앱 안정성을 개선했습니다."] };
   for (const mutation of [{}, { sha256: "b".repeat(64) }, { sizeBytes: 5 }, { applicationId: "other.app" }, { versionCode: 100017 }, { assetName: "other.apk" }, { notes: ["https://github.com/private/pull/1"] }]) {
     const upstream = fakeGithub([item], { 9: JSON.stringify({ ...manifest, ...mutation }) });
@@ -92,11 +103,11 @@ test("authentication validates JWT and profile linking/status before contacting 
 });
 
 test("private asset redirect strips credentials and rejects any unsafe redirect", async () => {
-  for (const location of ["https://release-assets.githubusercontent.com/private.apk?sig=hidden", "https://evil.test/file", "http://release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com.evil.test/file", "https://user:pass@release-assets.githubusercontent.com/file"]) {
+  for (const location of ["https://release-assets.githubusercontent.com/private.apk?sig=hidden", "https://evil.test/file", "http://release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com.evil.test/file", "https://user:pass@release-assets.githubusercontent.com/file", "https://release-assets.githubusercontent.com:443/file", "https://release-assets.githubusercontent.com:8443/file"]) {
     const upstream = fakeGithub([release()]); let redirected = false;
     const fetcher: typeof fetch = async (input, init) => {
       const url = String(input);
-      if (url.endsWith("/100016")) return new Response(null, { status: 302, headers: { location } });
+      if (url.endsWith(`/${filename(100016)}`)) { assert.equal(new Headers(init?.headers).has("authorization"), false); return new Response(null, { status: 302, headers: { location } }); }
       if (url.startsWith("https://release-assets.githubusercontent.com/private.apk")) {
         redirected = true; assert.equal(new Headers(init?.headers).has("authorization"), false);
         return new Response(new Uint8Array([1, 2, 3, 4]));
@@ -114,7 +125,7 @@ test("private asset redirect strips credentials and rejects any unsafe redirect"
 test("APK streams incrementally, cancellation aborts upstream, and truncated body fails", async () => {
   const upstream = fakeGithub([release()]); let canceled = false; let downloadSignal: AbortSignal | null = null;
   const fetcher: typeof fetch = async (input, init) => {
-    if (String(input).endsWith("/100016")) {
+    if (String(input).endsWith(`/${filename(100016)}`)) {
       downloadSignal = init!.signal as AbortSignal;
       return new Response(new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array([1])); }, cancel() { canceled = true; } }));
     }
@@ -124,14 +135,12 @@ test("APK streams incrementally, cancellation aborts upstream, and truncated bod
   const response = await handler(request("?versionCode=100016&download=1", true));
   const reader = response.body!.getReader(); assert.equal((await reader.read()).value!.byteLength, 1); await reader.cancel();
   assert.equal(canceled, true); assert.equal(downloadSignal!.aborted, true);
-  const truncated: typeof fetch = async (input, init) => String(input).endsWith("/100016") ? new Response(new Uint8Array([1])) : upstream.fetcher(input, init);
+  const truncated: typeof fetch = async (input, init) => String(input).endsWith(`/${filename(100016)}`) ? new Response(new Uint8Array([1])) : upstream.fetcher(input, init);
   const broken = createMobileUpdatesHandler({ githubToken: "server-only", authClient: member(), fetch: truncated });
   await assert.rejects((await broken(request("?versionCode=100016&download=1", true))).arrayBuffer(), /download_interrupted/);
 });
 
-test("invalid input, upstream errors, missing configuration, oversized/corrupt metadata are safe", async () => {
-  const missing = createMobileUpdatesHandler({ githubToken: "" });
-  assert.equal((await missing(request())).status, 503);
+test("invalid input, upstream errors, oversized/corrupt metadata are safe", async () => {
   const upstream = fakeGithub([release()]);
   const handler = createMobileUpdatesHandler({ githubToken: "server-only", authClient: member(), fetch: upstream.fetcher });
   for (const query of ["?repository=other", "?asset=https://evil.test", "?download=1&versionCode=-1", "?download=2", "?download=1&versionCode=1&versionCode=2", "?versionCode=100016"]) assert.equal((await handler(request(query, true))).status, 400);
@@ -174,7 +183,7 @@ test("download deadline and request cancellation abort private asset fetch", asy
   for (const externalCancellation of [false, true]) {
     const upstream = fakeGithub([release()]); let aborted = false;
     const fetcher: typeof fetch = async (input, init) => {
-      if (String(input).endsWith("/100016")) return new Promise((_resolve, reject) => {
+      if (String(input).endsWith(`/${filename(100016)}`)) return new Promise((_resolve, reject) => {
         const abort = () => { aborted = true; reject(new Error("private asset failed")); };
         if (init!.signal!.aborted) abort(); else init!.signal!.addEventListener("abort", abort);
       });
@@ -191,12 +200,129 @@ test("download deadline and request cancellation abort private asset fetch", asy
   }
 });
 
-test("download authentication precedes missing GitHub configuration and APK limit is 250MiB", async () => {
-  const unconfigured = createMobileUpdatesHandler({ githubToken: "", authClient: member() });
-  assert.equal((await unconfigured(request())).status, 503);
+test("download authentication precedes GitHub fetch and APK limit is 250MiB", async () => {
+  const upstreamWithoutToken = fakeGithub([release()]);
+  const unconfigured = createMobileUpdatesHandler({ fetch: upstreamWithoutToken.fetcher });
   assert.equal((await unconfigured(request("?download=1&versionCode=100016"))).status, 401);
   assert.equal((await unconfigured(request("?download=1&versionCode=100016", true))).status, 503);
+  assert.equal(upstreamWithoutToken.calls.length, 0);
+  assert.equal((await unconfigured(request())).status, 200);
   const oversized = release(); oversized.assets[0].size = 250 * 1024 * 1024 + 1;
   const upstream = fakeGithub([oversized]);
   assert.equal((await createMobileUpdatesHandler({ githubToken: "server-only", fetch: upstream.fetcher })(request())).status, 404);
+});
+
+test("public repository metadata and member downloads work without a GitHub token", async () => {
+  for (const githubToken of [undefined, "", "   "]) {
+    const upstream = fakeGithub([release()]);
+    const handler = createMobileUpdatesHandler({ githubToken, authClient: member(), fetch: upstream.fetcher });
+    assert.equal((await handler(request("?download=1&versionCode=100016"))).status, 401);
+    assert.equal(upstream.calls.length, 0);
+    assert.equal((await handler(request())).status, 200);
+    const response = await handler(request("?download=1&versionCode=100016", true));
+    assert.equal(response.status, 200);
+    await response.arrayBuffer();
+    assert.equal(upstream.calls.length, 3);
+    for (const call of upstream.calls) {
+      assertPublicCall(call);
+      assert.equal(new Headers(call.init?.headers).has("authorization"), false);
+      assert.equal(call.init?.redirect, "manual");
+    }
+    const before = upstream.calls.length;
+    assert.equal((await handler(request("?repository=jaywapp/gyungchung-mobile"))).status, 400);
+    assert.equal((await handler(request("?asset=https://evil.test/file"))).status, 400);
+    assert.equal(upstream.calls.length, before);
+  }
+});
+
+test("optional GitHub token is sent only to the fixed public API repository", async () => {
+  const upstream = fakeGithub([release()]);
+  const handler = createMobileUpdatesHandler({ githubToken: "server-only", authClient: member(), fetch: upstream.fetcher });
+  const response = await handler(request("?download=1&versionCode=100016", true));
+  assert.equal(response.status, 200);
+  await response.arrayBuffer();
+  for (const call of upstream.calls) {
+    assertPublicCall(call);
+    assert.equal(new Headers(call.init?.headers).get("authorization"), new URL(call.url).hostname === "api.github.com" ? "Bearer server-only" : null);
+  }
+});
+
+test("anonymous success cache merges calls for ten minutes and refreshes at expiry", async () => {
+  const upstream = fakeGithub([release()]); let current = 0;
+  const handler = createMobileUpdatesHandler({ fetch: upstream.fetcher, now: () => current });
+  const responses = await Promise.all([handler(request()), handler(request()), handler(request())]);
+  assert.deepEqual(responses.map(response => response.status), [200, 200, 200]);
+  assert.equal(upstream.calls.length, 2);
+  current = 120001;
+  assert.equal((await handler(request())).status, 200);
+  current = 599999;
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(upstream.calls.length, 2);
+  current = 600000;
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(upstream.calls.length, 4);
+});
+
+test("anonymous upstream failure remains safe and is retried without caching an error", async () => {
+  const upstream = fakeGithub([release()]); let attempts = 0;
+  const handler = createMobileUpdatesHandler({ fetch: async (input, init) => {
+    assert.equal(new Headers(init?.headers).has("authorization"), false);
+    if (++attempts === 1) return new Response("upstream details", { status: 403 });
+    return upstream.fetcher(input, init);
+  } });
+  const failed = await handler(request());
+  assert.equal(failed.status, 502);
+  assert.deepEqual(await failed.json(), { error: "upstream_unavailable" });
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(attempts, 3);
+});
+
+
+test("twenty complete releases use one REST API listing and public assets without credentials", async () => {
+  for (const githubToken of [undefined, "server-only"]) {
+    const items = Array.from({ length: 20 }, (_, index) => release(100000 + index * 10));
+    const extra: Record<string, string> = {};
+    for (const item of items) {
+      const apk = item.assets[0];
+      const code = apk.id;
+      item.assets.push({ id: code + 2, name: "update.json", size: 500, state: "uploaded", digest: undefined, browser_download_url: publicUrl(code, "update.json") });
+      extra[code + 2] = JSON.stringify({ schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: "1.0.0", versionCode: code, assetName: apk.name, sha256: sha, sizeBytes: 4, notes: ["앱 안정성을 개선했습니다."] });
+    }
+    const withManifest = fakeGithub(items, extra);
+    const handler = createMobileUpdatesHandler({ githubToken, authClient: member(), fetch: withManifest.fetcher });
+    const response = await handler(request());
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).versionCode, 100190);
+    assert.equal(withManifest.calls.filter(call => new URL(call.url).hostname === "api.github.com").length, 1);
+    assert.equal(withManifest.calls.filter(call => new URL(call.url).hostname === "github.com").length, 40);
+    for (const call of withManifest.calls) {
+      assertPublicCall(call);
+      assert.equal(new Headers(call.init?.headers).get("authorization"), new URL(call.url).hostname === "api.github.com" && githubToken ? "Bearer server-only" : null);
+    }
+    const download = await handler(request("?download=1&versionCode=100190", true));
+    assert.equal(download.status, 200);
+    await download.arrayBuffer();
+    assert.equal(withManifest.calls.filter(call => new URL(call.url).hostname === "api.github.com").length, 1);
+    assert.equal(withManifest.calls.at(-1)?.url, publicUrl(100190, filename(100190)));
+    assert.equal(new Headers(withManifest.calls.at(-1)?.init?.headers).has("authorization"), false);
+  }
+});
+
+test("public asset URLs reject other repositories, credentials, ports, queries and malformed paths", async () => {
+  const valid = publicUrl(100016, filename(100016));
+  const invalid = [undefined, null, "https://evil.test/file", valid.replace("https:", "http:"), valid.replace("github.com/", "github.com.evil.test/"), valid.replace("gyungchung-releases/", "gyungchung-mobile/"), valid.replace("https://", "https://user:pass@"), valid.replace("github.com/", "github.com:443/"), valid.replace("github.com/", "github.com:8443/"), `${valid}?download=1`, `${valid}?`, `${valid}#fragment`, `${valid}#`, valid.replace("v1.0.0-android-100016/", "tag/extra/"), valid.replace("v1.0.0-android-100016/", "tag%2Fextra/"), valid.replace("v1.0.0-android-100016/", "tag%5Cextra/"), valid.replace(filename(100016), "other.apk")];
+  for (const raw of invalid) {
+    const item = release();
+    (item.assets[0] as { browser_download_url?: unknown }).browser_download_url = raw;
+    const upstream = fakeGithub([item]);
+    const handler = createMobileUpdatesHandler({ githubToken: "server-only", fetch: upstream.fetcher });
+    assert.equal((await handler(request())).status, 502);
+    assert.equal(upstream.calls.length, 1);
+    assert.equal(new URL(upstream.calls[0].url).hostname, "api.github.com");
+  }
+  const item = release();
+  item.assets[1].browser_download_url = publicUrl(100016, "wrong-checksum.sha256");
+  const upstream = fakeGithub([item]);
+  assert.equal((await createMobileUpdatesHandler({ fetch: upstream.fetcher })(request())).status, 502);
+  assert.equal(upstream.calls.length, 1);
 });

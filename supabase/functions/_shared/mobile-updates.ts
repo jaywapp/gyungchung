@@ -1,4 +1,4 @@
-export const MOBILE_REPOSITORY = "jaywapp/gyungchung-mobile";
+export const MOBILE_REPOSITORY = "jaywapp/gyungchung-releases";
 export const APPLICATION_ID = "com.jaywapp.gyungchung";
 const API = `https://api.github.com/repos/${MOBILE_REPOSITORY}`;
 const APK_NAME = /^gyungchung-((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-android-([1-9]\d*)\.apk$/;
@@ -20,9 +20,9 @@ export type MobileMetadata = {
   notes: string[];
   publishedAt: string;
 };
-type Asset = { id: number; name: string; state: string; size: number; digest?: unknown };
+type Asset = { id: number; name: string; state: string; size: number; digest?: unknown; browser_download_url?: unknown };
 type Release = { draft: boolean; prerelease: boolean; published_at: string; assets: Asset[] };
-type ValidatedRelease = { metadata: MobileMetadata; assetId: number };
+type ValidatedRelease = { metadata: MobileMetadata; assetUrl: string };
 export type MobileAuth = {
   auth: { getUser(token: string): Promise<{ data: { user: { id: string } | null }; error: unknown }> };
   from(table: string): {
@@ -30,7 +30,7 @@ export type MobileAuth = {
   };
 };
 export type MobileDependencies = {
-  githubToken: string;
+  githubToken?: string;
   authClient?: MobileAuth;
   fetch?: typeof fetch;
   now?: () => number;
@@ -49,6 +49,19 @@ function positive(value: unknown, max = Number.MAX_SAFE_INTEGER): value is numbe
 }
 function asset(value: unknown): value is Asset {
   return object(value) && positive(value.id) && typeof value.name === "string" && value.state === "uploaded" && positive(value.size, MAX_APK_BYTES);
+}
+function publicAssetUrl(value: Asset): string {
+  const raw = value.browser_download_url;
+  if (typeof raw !== "string" || !raw.startsWith(`https://github.com/${MOBILE_REPOSITORY}/releases/download/`) || raw.includes("?") || raw.includes("#")) throw new MobileError(502, "invalid_release");
+  let url: URL;
+  try { url = new URL(raw); } catch { throw new MobileError(502, "invalid_release"); }
+  const prefix = `/${MOBILE_REPOSITORY}/releases/download/`;
+  const parts = url.pathname.slice(prefix.length).split("/");
+  if (url.href !== raw || url.origin !== "https://github.com" || url.username || url.password || url.port || !url.pathname.startsWith(prefix) || parts.length !== 2 || !parts[0] || parts[1] !== encodeURIComponent(value.name)) throw new MobileError(502, "invalid_release");
+  let tag: string;
+  try { tag = decodeURIComponent(parts[0]); } catch { throw new MobileError(502, "invalid_release"); }
+  if (!tag || tag === "." || tag === ".." || /[/\\\u0000-\u0020\u007f]/.test(tag)) throw new MobileError(502, "invalid_release");
+  return url.href;
 }
 function headers() {
   return {
@@ -107,21 +120,26 @@ function safeNotes(value: unknown): string[] {
 export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
   const upstreamFetch = dependencies.fetch ?? fetch;
   const now = dependencies.now ?? Date.now;
+  const githubToken = dependencies.githubToken?.trim();
+  const cacheTtlMs = githubToken ? 120000 : 600000;
   let cached: { expires: number; releases: ValidatedRelease[] } | undefined;
   let pending: Promise<ValidatedRelease[]> | undefined;
-  async function github(url: string, binary: boolean, signal: AbortSignal): Promise<Response> {
-    const parsed = new URL(url);
-    if (parsed.origin !== "https://api.github.com" || !parsed.pathname.startsWith(`/repos/${MOBILE_REPOSITORY}/`)) throw new MobileError(502, "invalid_release");
-    const response = await upstreamFetch(url, { signal, redirect: "manual", headers: {
-      "Authorization": `Bearer ${dependencies.githubToken}`,
-      "Accept": binary ? "application/octet-stream" : "application/vnd.github+json",
+  async function githubListing(signal: AbortSignal): Promise<Response> {
+    const response = await upstreamFetch(`${API}/releases?per_page=20`, { signal, redirect: "manual", headers: {
+      ...(githubToken ? { "Authorization": `Bearer ${githubToken}` } : {}),
+      "Accept": "application/vnd.github+json",
       "User-Agent": "gyungchung-mobile-updates",
       "X-GitHub-Api-Version": "2022-11-28",
     } });
-    if (binary && response.status === 302) {
+    if (response.status !== 200) { await response.body?.cancel(); throw new MobileError(502, "upstream_unavailable"); }
+    return response;
+  }
+  async function publicAsset(url: string, signal: AbortSignal): Promise<Response> {
+    const response = await upstreamFetch(url, { signal, redirect: "manual" });
+    if (response.status === 302) {
       const location = response.headers.get("location");
       await response.body?.cancel();
-      if (!location) throw new MobileError(502, "invalid_release");
+      if (!location || !location.startsWith("https://release-assets.githubusercontent.com/")) throw new MobileError(502, "invalid_release");
       const target = new URL(location);
       if (target.protocol !== "https:" || target.hostname !== "release-assets.githubusercontent.com" || target.port || target.username || target.password) throw new MobileError(502, "invalid_release");
       const redirected = await upstreamFetch(target.href, { signal, redirect: "manual" });
@@ -133,12 +151,12 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
   }
   async function smallAsset(value: Asset, signal: AbortSignal) {
     if (value.size > MAX_SMALL_BYTES) throw new MobileError(502, "invalid_release");
-    return limitedText(await github(`${API}/releases/assets/${value.id}`, true, signal), MAX_SMALL_BYTES);
+    return limitedText(await publicAsset(publicAssetUrl(value), signal), MAX_SMALL_BYTES);
   }
   async function loadReleases(): Promise<ValidatedRelease[]> {
     const deadline = timer(dependencies.metadataTimeoutMs ?? 15000);
     try {
-      const payload: unknown = JSON.parse(await limitedText(await github(`${API}/releases?per_page=20`, false, deadline.signal), MAX_JSON_BYTES));
+      const payload: unknown = JSON.parse(await limitedText(await githubListing(deadline.signal), MAX_JSON_BYTES));
       if (!Array.isArray(payload) || payload.length > 20) throw new MobileError(502, "invalid_release");
       const result: ValidatedRelease[] = [];
       let corrupt = false;
@@ -153,12 +171,13 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
         if (checksumCandidates.length === 0 || checksumCandidates.some(item => !asset(item))) continue;
         if (checksumCandidates.length !== 1) { corrupt = true; continue; }
         try {
+          const apksWithUrls = apks.map(apk => ({ apk, url: publicAssetUrl(apk) }));
           const checksums = await smallAsset(checksumCandidates[0], deadline.signal);
           const manifestCandidates = release.assets.filter(item => object(item) && item.name === "update.json");
           if (manifestCandidates.length > 1 || manifestCandidates.some(item => !asset(item))) throw new MobileError(502, "invalid_release");
           const manifest: unknown = manifestCandidates.length ? JSON.parse(await smallAsset(manifestCandidates[0], deadline.signal)) : undefined;
           const validated: ValidatedRelease[] = [];
-          for (const apk of apks) {
+          for (const { apk, url } of apksWithUrls) {
             const match = APK_NAME.exec(apk.name)!;
             const versionCode = Number(match[2]);
             if (!positive(versionCode, 2100000000)) throw new MobileError(502, "invalid_release");
@@ -172,7 +191,7 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
               if (!object(manifest) || manifest.schemaVersion !== 1 || manifest.platform !== "android" || manifest.applicationId !== APPLICATION_ID || manifest.versionName !== match[1] || manifest.versionCode !== versionCode || manifest.assetName !== apk.name || manifest.sha256 !== checksum || manifest.sizeBytes !== apk.size) throw new MobileError(502, "invalid_release");
               notes = safeNotes(manifest.notes);
             }
-            validated.push({ assetId: apk.id, metadata: { schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: match[1], versionCode, assetName: apk.name, sha256: checksum, sizeBytes: apk.size, notes, publishedAt: new Date(release.published_at).toISOString() } });
+            validated.push({ assetUrl: url, metadata: { schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: match[1], versionCode, assetName: apk.name, sha256: checksum, sizeBytes: apk.size, notes, publishedAt: new Date(release.published_at).toISOString() } });
           }
           result.push(...validated);
         } catch (error) {
@@ -189,7 +208,7 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
   }
   function releases() {
     if (cached && cached.expires > now()) return Promise.resolve(cached.releases);
-    if (!pending) pending = loadReleases().then(result => { cached = { expires: now() + 120000, releases: result }; return result; }).finally(() => { pending = undefined; });
+    if (!pending) pending = loadReleases().then(result => { cached = { expires: now() + cacheTtlMs, releases: result }; return result; }).finally(() => { pending = undefined; });
     return pending;
   }
   async function authenticate(request: Request) {
@@ -205,7 +224,7 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
   async function download(request: Request, release: ValidatedRelease) {
     const deadline = timer(dependencies.downloadTimeoutMs ?? 120000, request.signal);
     try {
-      const response = await github(`${API}/releases/assets/${release.assetId}`, true, deadline.signal);
+      const response = await publicAsset(release.assetUrl, deadline.signal);
       if (!response.body) throw new MobileError(502, "invalid_download");
       const length = response.headers.get("content-length");
       if (length !== null && Number(length) !== release.metadata.sizeBytes) { await response.body.cancel(); throw new MobileError(502, "invalid_download"); }
@@ -248,7 +267,6 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
       const code = url.searchParams.get("versionCode");
       if (isDownload && (!code || !/^[1-9]\d*$/.test(code) || !positive(Number(code), 2100000000))) throw new MobileError(400, "invalid_request");
       if (isDownload) await authenticate(request);
-      if (!dependencies.githubToken) throw new MobileError(503, "not_configured");
       const available = await releases();
       if (!isDownload) return json(available[0].metadata);
       const selected = available.find(value => value.metadata.versionCode === Number(code));
