@@ -31,7 +31,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "improved", text: "공유받은 공개 APK 링크에서 GitHub 계정 없이 Android 설치 파일을 받을 수 있습니다." },
       { kind: "improved", text: "앱의 최신 버전 정보는 공개 배포 채널에서 확인하며, 앱 안의 설치 파일 다운로드는 로그인한 연결 회원이 사용할 수 있습니다." },
     ],
-    pullRequests: [],
+    pullRequests: [175],
   },
   {
     id: "2026-10-01-mobile-update-api",
