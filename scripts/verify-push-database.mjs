@@ -49,6 +49,9 @@ try {
   await db.exec(passwordSource.slice(passwordSource.indexOf("create or replace function private.protect_password_change_requirement")));
   await db.exec(await read("supabase/migrations/20260821121500_save_attendance_batch.sql"));
   await db.exec(await read("supabase/migrations/20261001114159_push_notifications.sql"));
+  await db.exec(await read("supabase/migrations/20261001231341_push_production_rollout.sql"));
+  equal((await owner("select delivery_mode value from private.notification_runtime")).rows[0].value,"test","migration preserves the restricted rollout mode");
+  equal((await owner("select enabled value from private.notification_runtime")).rows[0].value,false,"migration does not enable delivery");
   for (let index = 0; index < auth.length; index++) {
     await db.query("insert into auth.users(id) values($1)", [auth[index]]);
     await db.query("insert into public.profiles(id,auth_user_id,name,role,officer_title,status,must_change_password,is_test_account) values($1,$2,$3,$4,$5,$6,$7,$8)",
@@ -356,5 +359,78 @@ try {
   equal((await value("select public.revoke_push_installation($1,1,2,$2) value",[uuid(881),revokeB])).revoked,true,"pending new binding can be revoked despite the previous installed proof");
   await actor(auth[2]);
   equal((await value("select public.register_push_installation($1,$2,$3,1,1,$4,'android','granted',$5) value",[uuid(881),proof,revokeB,"ExpoPushToken[late-new-binding]",project])).stale,true,"revoked new binding cannot arrive late and replace the older installation");
+  // Production drops only the test allowlist. Existing domain, preference and binding checks remain authoritative.
+  await owner("delete from private.notification_events");
+  await owner("update private.push_installations set enabled=true,tombstoned=false,permission_state='granted',last_seen_at=now(),revocation_expires_at=now()+interval '30 days',project_id=$1",[project]);
+  await owner("insert into public.notification_preferences(auth_user_id,enabled) select id,true from auth.users on conflict(auth_user_id) do update set enabled=true,notices_enabled=true,schedule_enabled=true");
+  await rejected(()=>owner("update private.notification_runtime set delivery_mode='production',production_activated_at=null"),/production_activation_required/,"production requires an explicit activation cutoff");
+  await owner("update private.notification_runtime set enabled=true,allowed_project_id=$1,test_auth_user_ids='{}',disabled_categories='{}',delivery_mode='test'",[project]);
+  equal(await claim(),[],"an empty test allowlist cannot dispatch");
+  await owner("update private.notification_runtime set delivery_mode='production',production_activated_at=now()-interval '1 minute'");
+  await actor(auth[1]);
+  await db.query("update public.events set venue='Production fixture venue' where id=$1",[event]);
+  const productionClaims = await claim();
+  equal(productionClaims.length>0,true,"production dispatch works without a test allowlist");
+  const productionPrepared = await prepare(productionClaims[0]);
+  equal(Boolean(productionPrepared?.to),true,"an opted-in production installation prepares normally");
+  await owner("update public.notification_preferences set enabled=false where auth_user_id=$1",[productionPrepared.data.recipient_user_id]);
+  await actor(null,"service_role");
+  equal(await value("select public.validate_notification_delivery($1,$2) value",[productionClaims[0].id,productionClaims[0].lease_token]),false,"production opt-out still blocks a prepared send");
+  await owner("update public.notification_preferences set enabled=true where auth_user_id=$1",[productionPrepared.data.recipient_user_id]);
+  await owner("update private.notification_runtime set production_activated_at=now()+interval '1 minute'");
+  await actor(null,"service_role");
+  equal(await value("select public.validate_notification_delivery($1,$2) value",[productionClaims[0].id,productionClaims[0].lease_token]),false,"activation cutoff also blocks an already prepared historical delivery");
+  await owner("update private.notification_deliveries set status='ticket',ticket_id='production-ticket',ticket_at=now(),next_attempt_at=now()-interval '1 minute',lease_until=null where id=$1",[productionClaims[0].id]);
+  await owner("update public.notification_preferences set enabled=false where auth_user_id=$1",[productionPrepared.data.recipient_user_id]);
+  await actor(null,"service_role");
+  equal((await value("select public.claim_notification_receipts(100) value")).some(c=>c.id===productionClaims[0].id),true,"production receipts complete accepted tickets even after opt-out and before cutoff");
+  await owner("delete from private.notification_events");
+  await actor(auth[1]);
+  await db.query("update public.events set venue='Historical fixture venue' where id=$1",[event]);
+  equal(await claim(),[],"historical outbox events do not expand after activation");
+  equal((await owner("select count(*)::integer value from private.notification_deliveries")).rows[0].value,0,"historical cutoff allocates no delivery rows");
+  // A newly registered member is eligible without editing the allowlist; project and account status remain gates.
+  await owner("delete from private.notification_events");
+  await owner("update private.notification_runtime set production_activated_at=now()-interval '1 minute',disabled_categories=ARRAY['event_reminders','rsvp_reminders','participation']");
+  await owner("delete from private.push_reservation_rate_limits where auth_user_id=$1",[auth[2]]);
+  await actor(auth[2]);
+  await register(0,0,revokeA,"ExpoPushToken[production-new-member]","granted",uuid(890));
+  await actor(auth[1]);
+  await db.query("update public.events set venue='New-member fixture venue' where id=$1",[event]);
+  const newMemberClaims = await claim();
+  equal((await owner("select exists(select 1 from private.notification_deliveries where installation_id=$1) value",[uuid(890)])).rows[0].value,true,"new production member registration needs no allowlist update");
+  equal(newMemberClaims.length>0,true,"production event creates eligible deliveries");
+  await owner("update private.push_installations set project_id=$1 where id=$2",[uuid(999),uuid(890)]);
+  await actor(null,"service_role");
+  const installationClaim = (await owner("select id,lease_token from private.notification_deliveries where installation_id=$1",[uuid(890)])).rows[0];
+  await actor(null,"service_role");
+  equal(await prepare(installationClaim),null,"production project mismatch still blocks prepare");
+  await owner("update private.push_installations set project_id=$1 where id=$2",[project,uuid(890)]);
+  await owner("delete from private.notification_events");
+  await owner("update public.profiles set status='inactive' where id=$1",[profiles[2]]);
+  await actor(auth[1]);
+  await db.query("update public.events set venue='Inactive-member fixture venue' where id=$1",[event]);
+  await claim();
+  equal((await owner("select exists(select 1 from private.notification_deliveries where installation_id=$1) value",[uuid(890)])).rows[0].value,false,"inactive members remain excluded in production");
+  await owner("update public.profiles set status='active' where id=$1",[profiles[2]]);
+  // Scheduler catch-up is bounded by its due time, including rows created by the first production poll.
+  await owner("delete from private.notification_events");
+  await owner("update private.notification_runtime set production_activated_at=now(),disabled_categories='{}'");
+  await owner("update private.notification_policy set event_reminder_hour=extract(hour from now() at time zone 'Asia/Seoul')::integer");
+  await owner("update public.events set starts_at=now()+interval '23 hours'");
+  await owner("insert into public.participation_forms(id,title,kind,status,ends_at) values($1,'Production form','survey','open',now()+interval '23 hours')",[uuid(891)]);
+  await owner("delete from private.notification_events");
+  await owner("select private.enqueue_scheduled_notifications()");
+  equal(await countEvents("event_reminder"),0,"first production poll does not catch up an event reminder due before activation");
+  equal(await countEvents("rsvp_reminder"),0,"first production poll does not catch up an RSVP reminder due before activation");
+  equal(await countEvents("participation_reminder"),0,"first production poll does not catch up a form reminder due before activation");
+  await owner("update private.notification_runtime set production_activated_at=now()-interval '2 hours'");
+  await owner("select private.enqueue_scheduled_notifications()");
+  equal((await countEvents("rsvp_reminder"))>0,true,"scheduled RSVP reminders due after activation still enqueue");
+  equal((await owner("select count(*)::integer value from private.notification_events where kind='participation_reminder' and source_id=$1",[uuid(891)])).rows[0].value,1,"scheduled form reminders due after activation still enqueue");
+  await actor(null,"anon");
+  await rejected(()=>value("select public.claim_notification_deliveries(100) value"),/permission denied/,"production claims remain inaccessible to anonymous clients");
+  await actor(auth[1]);
+  await rejected(()=>value("select public.claim_notification_receipts(100) value"),/permission denied/,"production receipts remain inaccessible to members");
   console.log("PASS " + checks + " PostgreSQL assertions; " + await owner("select version()").then(r=>r.rows[0].version));
 } catch (error) { console.error("FAIL after " + checks + " assertions: " + error.message); process.exitCode = 1; } finally { await db.close(); }
