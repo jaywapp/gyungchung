@@ -30,7 +30,7 @@ export const updateNotes: UpdateNote[] = [
     changes: [
       { kind: "added", text: "로그인 전에도 최신 Android 버전을 확인할 수 있으며, 연결된 회원만 설치 파일을 다운로드할 수 있습니다." },
     ],
-    pullRequests: [],
+    pullRequests: [174],
   },
   {
     id: "2026-10-01-gcfc-icon",
