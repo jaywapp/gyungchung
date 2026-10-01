@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-01-public-apk-release-channel",
+    date: "2026-10-01",
+    source: "request",
+    title: "GitHub 계정 없이 Android 설치 파일을 받을 수 있습니다",
+    summary: "공개 APK 배포 채널을 마련하고 앱의 버전 조회가 별도 GitHub 인증 없이 동작하도록 바꿨습니다.",
+    changes: [
+      { kind: "improved", text: "공유받은 공개 APK 링크에서 GitHub 계정 없이 Android 설치 파일을 받을 수 있습니다." },
+      { kind: "improved", text: "앱의 최신 버전 정보는 공개 배포 채널에서 확인하며, 앱 안의 설치 파일 다운로드는 로그인한 연결 회원이 사용할 수 있습니다." },
+    ],
+    pullRequests: [175],
+  },
+  {
     id: "2026-10-01-mobile-update-api",
     date: "2026-10-01",
     source: "request",

@@ -9,6 +9,6 @@ const client = url && secret ? createClient(url, secret, {
 }) : undefined;
 
 Deno.serve(createMobileUpdatesHandler({
-  githubToken: Deno.env.get("GITHUB_MOBILE_RELEASES_TOKEN") ?? "",
+  githubToken: Deno.env.get("GITHUB_MOBILE_RELEASES_TOKEN"),
   authClient: client as MobileAuth | undefined,
 }));
