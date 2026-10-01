@@ -1,6 +1,6 @@
 # 푸시 알림 서버 계약
 
-- 상태: 운영 migration·worker version 1·시크릿 적용 완료. DB와 worker 발송 OFF를 유지하며 실제 기기 수신은 미확인.
+- 상태: 2026-10-02 08:31(KST) production 모드·worker v2·자동 발송 활성화. 발송/receipt helper HTTP 200 확인. 실제 업무 변경의 휴대전화 표시·공지 설정별 수신은 확인 대기.
 - migration: CLI로 생성한 SQL을 사용자 승인으로 운영에 적용하고 ledger와 파일명을 `20261001114159_push_notifications.sql`로 맞췄다. SQL 내용은 동일하다.
 - 앱은 동일 Supabase 프로젝트의 로그인 JWT를 사용한다. `profiles.auth_user_id`로 회원을 연결하고 active 및 보호된 `must_change_password=false`를 확인한다.
 
@@ -109,7 +109,11 @@ Android channelId는 category, sound는 default다. 앱은 계정·설치·revis
 
 entrypoint는 `supabase/functions/push-worker/index.ts`. POST 본문은 `{"action":"dispatch"}` 또는 `{"action":"receipts"}`. `x-push-worker-secret`의 서버 전용 32자 이상 시크릿을 검증한다. 함수 배포 시 해당 함수만 verify_jwt=false로 설정해야 하며 publishable key는 이 인증을 대신하지 못한다.
 
-실제 전송에는 `PUSH_DELIVERY_ENABLED=true`, worker secret, DB runtime enabled=true, 비어 있지 않은 테스트 auth UUID allowlist, 일치하는 Expo project UUID가 모두 필요하다. 모두 기본 비활성이다. allowlist 제한을 없애는 운영 전체 발송은 이번 계약에 없다. Supabase 서버 키와 선택적 EXPO_ACCESS_TOKEN은 Edge 환경에서만 읽는다.
+실제 전송에는 `PUSH_DELIVERY_ENABLED=true`, worker secret, DB runtime enabled=true, 일치하는 Expo project UUID가 필요하다. 기본 test 모드에는 비어 있지 않은 테스트 auth UUID allowlist가 추가로 필요하다. 2026-10-02 사용자가 승인한 production 모드는 `production_activated_at`을 설정하고 allowlist 제한을 제거한다. 활성 회원·개인 동의·바인딩·현재 원본·운영진의 수신 범위 정책은 계속 검사한다. Supabase 서버 키와 선택적 EXPO_ACCESS_TOKEN은 Edge 환경에서만 읽는다.
+
+전환 전에 적재된 outbox는 확장과 발송 직전 검증에서 제외한다. 예약 알림 세 종류는 outbox 생성 시간이 아니라 원래 예정 시각이 전환 이후인지 확인한다. 이미 수락된 ticket은 설정을 끈 이후에도 receipts로 결과를 확인한다. pg_cron은 Vault 시크릿을 읽는 관리자 전용 helper를 dispatch 매분, receipts 5분마다 실행한다. 신규 Cron은 비활성으로 적용하고 운영 확인 후 활성화한다.
+
+운영 pg_net 확장 객체는 supabase_admin 소유여서 postgres REVOKE가 실제 접근을 차단하지 못했다. 큐에는 인증 값을 넣지 않았고 HTTP 요청 0건/발송 OFF를 유지했다. 이를 보완하는 helper는 공식 http 확장으로 큐 없이 동기 호출하며 Authorization Bearer 인증만 사용한다. worker는 기존 x-push-worker-secret 인증도 호환하되 Bearer 값은 동일 서버 시크릿으로 직접 검증한다. 사용자 JWT나 publishable key는 인정하지 않는다. 연결 5초/요청 60초/TLS 검증을 적용하고 서버 debug 로그에서는 fail closed한다. 실행 기록에는 HTTP 상태·처리 개수·고정 오류 코드만 남긴다. 관리형 DB의 실제 권한은 fixture와 별도로 catalog에서 검증한다.
 
 DB AFTER 트리거는 네트워크를 호출하지 않는다. private outbox를 같은 업무 트랜잭션에 남기므로 rollback과 배치의 실패 행은 알림도 사라진다. worker는 lease→현재 회원/설정/원본/OS/binding→token snapshot 확인 후 Expo에 요청한다. ticket과 receipt를 구분하고 구 token의 DeviceNotRegistered로 새 token을 비활성화하지 않는다. 네트워크 수락 여부 불명확/응답 손상/발송 lease 만료는 unknown이며 자동 재발송하지 않는다. 명시적인 일시 오류는 최대 5번 제한 재시도한다. dispatch 루프는 40초 예산을 두며 다음 작업을 준비하기 전에 예산을 확인한다. 준비하지 않은 claimed 건은 2분 lease 만료 후 다시 가져온다. provider 요청은 응답 본문까지 12초 및 256KiB로 제한한다. receipt는 ticket 15분 후 확인하며 24시간 경과 ticket은 unknown으로 종료한다. 이미 공급자로 보낸 알림의 회수나 정확히 한 번 기기 표시를 보장하지 않는다.
 

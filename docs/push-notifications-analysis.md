@@ -4,4 +4,8 @@
 
 원본: attendance.status는 RSVP이며 check_in_status는 현장 기록이다. events.starts_at은 날짜+시각이며 venue/address는 snapshot이므로 venues 편집을 일정 변경으로 간주하지 않는다. profiles.id와 auth.uid는 다를 수 있다.
 
-[최종 RPC·위험·검증 계약](push-notifications-contract.md)을 따른다. 운영 DB·worker·시크릿 적용은 사용자 승인으로 완료했고 실제 발송은 OFF다. 실기기 수신과 제한 대상 활성화는 다음 단계다.
+[최종 RPC·위험·검증 계약](push-notifications-contract.md)을 따른다. 최초 OFF 적용 후 2026-10-02 사용자가 승인한 production 모드로 전환했다. 실제 업무 알림의 휴대전화 표시·설정별 수신은 확인 대기다.
+
+## 2026-10-02 정상 운영 전환
+
+사용자가 최신 Android 앱을 설치한 운영진과 실제 환경에서 사용하도록 정상 발송을 승인했다. 전체 알림과 종류별 설정을 켠 활성 회원에게 기존 수신 정책대로 전달하며 테스트 계정 목록 편집 없이 신규 등록 기기도 포함한다. 전환 전에 쌓인 outbox와 전환 이전 시각에 예정된 알림은 발송하지 않는다. 운영진 기기 두 대가 수신 가능 상태이며 공지 활성 기기는 한 대다. 자동 업무 발송의 실기기 수신은 운영 전환 후 확인한다.

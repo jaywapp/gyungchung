@@ -104,7 +104,13 @@ export function createPushWorkerHandler(dependencies: Dependencies) {
   }
   return async (request: Request): Promise<Response> => {
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-    if (!dependencies.workerSecret || dependencies.workerSecret.length < 32 || !sameSecret(request.headers.get("x-push-worker-secret") ?? "", dependencies.workerSecret)) return json({ error: "authentication_required" }, 401);
+    const legacySecret = request.headers.get("x-push-worker-secret");
+    const authorization = request.headers.get("authorization");
+    const bearerSecret = authorization?.match(/^Bearer ([^\s]+)$/i)?.[1];
+    const suppliedSecret = legacySecret ?? bearerSecret ?? "";
+    if (!dependencies.workerSecret || dependencies.workerSecret.length < 32 ||
+      !sameSecret(suppliedSecret, dependencies.workerSecret) ||
+      (authorization !== null && (!bearerSecret || !sameSecret(bearerSecret, dependencies.workerSecret)))) return json({ error: "authentication_required" }, 401);
     if (!dependencies.enabled || !dependencies.database) return json({ error: "delivery_disabled" }, 503);
     let action: "dispatch" | "receipts";
     try {
