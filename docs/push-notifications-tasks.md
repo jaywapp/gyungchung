@@ -11,4 +11,6 @@
 | 운영 DB/함수/시크릿/실제 발송 | root | inherited | high | 검증·별도 승인 | rollout | 미실행 |
 
 
-검증 결과: lint·worker strict TypeScript·production build 통과, 전체 Node 테스트 159개 통과, 실제 격리 PostgreSQL 75개 assertion 통과. fixture 버전은 PostgreSQL 18.3/PGlite 0.5.8이며 운영 Supabase migration 통합 적용 검증과 실제 기기 발송은 별도 단계다.
+검증 결과: lint·worker strict TypeScript·production build 통과, 전체 Node 테스트 159개 통과, 실제 격리 PostgreSQL 97개 assertion 통과. fixture 버전은 PostgreSQL 18.3/PGlite 0.5.8이며 운영 Supabase migration 통합 적용 검증과 실제 기기 발송은 별도 단계다.
+
+운영 전 보강: 인증 예약과 익명 무저장, proof 탈취·예약 응답 유실·늦은 등록 방어, 회원별 quota·만료·완료 정리 검증 완료. 추가 커밋/운영 적용은 수행하지 않았다.

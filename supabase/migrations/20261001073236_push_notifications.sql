@@ -72,13 +72,28 @@ alter table private.rsvp_reminder_requests enable row level security;
 revoke all on private.notification_policy,private.notification_runtime,private.push_installations,
  private.notification_events,private.notification_deliveries,private.rsvp_reminder_requests from public,anon,authenticated;
 
-create table private.push_revocation_tombstones (
- installation_id uuid not null, revocation_hash text not null, transition_epoch bigint not null,
- expires_at timestamptz not null default now()+interval '30 days', primary key(installation_id,revocation_hash)
+create table private.push_installation_reservations (
+ installation_id uuid not null, revocation_hash text not null, proof_hash text not null,
+ auth_user_id uuid not null references auth.users(id) on delete cascade,
+ transition_epoch bigint not null, binding_revision bigint not null,
+ reserved_at timestamptz not null default now(), expires_at timestamptz not null,
+ revoked boolean not null default false, primary key(installation_id,revocation_hash)
 );
-create index push_revocation_tombstones_expiry_idx on private.push_revocation_tombstones(expires_at);
-alter table private.push_revocation_tombstones enable row level security;
-revoke all on private.push_revocation_tombstones from public,anon,authenticated;
+create index push_installation_reservations_owner_idx on private.push_installation_reservations(auth_user_id,expires_at);
+create index push_installation_reservations_expiry_idx on private.push_installation_reservations(expires_at);
+create table private.push_reservation_rate_limits (
+ auth_user_id uuid primary key references auth.users(id) on delete cascade,
+ window_started_at timestamptz not null, requests integer not null check(requests between 1 and 5)
+);
+alter table private.push_installation_reservations enable row level security;
+alter table private.push_reservation_rate_limits enable row level security;
+revoke all on private.push_installation_reservations,private.push_reservation_rate_limits from public,anon,authenticated;
+create function private.cleanup_push_installation_reservations() returns void
+language sql security definer set search_path='' as $$
+ delete from private.push_installation_reservations where expires_at<=now();
+ delete from private.push_reservation_rate_limits where window_started_at<now()-interval '1 day';
+$$;
+revoke all on function private.cleanup_push_installation_reservations() from public,anon,authenticated;
 create function private.notification_member_id() returns uuid language plpgsql stable security definer set search_path='' as $$
 declare result uuid;
 begin
@@ -124,9 +139,67 @@ begin
  return public.get_notification_settings();
 end; $$;
 
+create function public.reserve_push_installation(target_installation_id uuid,target_installation_proof text,target_revocation_proof text,target_transition_epoch bigint,target_binding_revision bigint)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare member_id uuid; i private.push_installations%rowtype; r private.push_installation_reservations%rowtype;
+ ph text; rh text; expires timestamptz:=now()+interval '30 days'; claims jsonb; jwt_exp numeric;
+begin
+ member_id:=private.notification_member_id();
+ if target_installation_id is null or target_installation_proof is null or target_installation_proof !~ '^[a-f0-9]{64}$'
+ or target_revocation_proof is null or target_revocation_proof !~ '^[a-f0-9]{64}$'
+ or target_transition_epoch is null or target_transition_epoch<0 or target_transition_epoch>9007199254740991
+ or target_binding_revision is null or target_binding_revision<0 or target_binding_revision>9007199254740991 then raise exception 'Invalid reservation'; end if;
+ ph:=encode(sha256(convert_to(target_installation_proof,'UTF8')),'hex'); rh:=encode(sha256(convert_to(target_revocation_proof,'UTF8')),'hex');
+ perform pg_advisory_xact_lock(hashtextextended((select auth.uid())::text,4));
+ perform pg_advisory_xact_lock(hashtextextended(target_installation_id::text,2));
+ perform private.cleanup_push_installation_reservations();
+ select * into i from private.push_installations where id=target_installation_id;
+ if found then
+  if i.proof_hash<>ph then raise exception 'Invalid installation proof' using errcode='42501'; end if;
+  if target_binding_revision<>i.binding_revision or target_transition_epoch<i.transition_epoch
+  or (target_transition_epoch=i.transition_epoch and (i.tombstoned or i.auth_user_id is distinct from (select auth.uid()))) then
+   return jsonb_build_object('installation_id',i.id,'transition_epoch',i.transition_epoch,'binding_revision',i.binding_revision,'reserved',false,'stale',true);
+  end if;
+  if target_transition_epoch=i.transition_epoch then
+   if rh<>i.revocation_hash then raise exception 'Revocation proof must remain stable within a binding' using errcode='42501'; end if;
+   return jsonb_build_object('installation_id',i.id,'transition_epoch',i.transition_epoch,'binding_revision',i.binding_revision,'reserved',true,'stale',false,'expires_at',i.revocation_expires_at);
+  end if;
+  if rh=i.revocation_hash then raise exception 'New transition requires a new revocation proof' using errcode='42501'; end if;
+ elsif target_binding_revision<>0 then raise exception 'Unknown installation binding'; end if;
+ select * into r from private.push_installation_reservations where installation_id=target_installation_id order by transition_epoch desc,reserved_at desc limit 1;
+ if found then
+  if r.proof_hash<>ph then raise exception 'Invalid installation proof' using errcode='42501'; end if;
+  if target_transition_epoch<r.transition_epoch or (target_transition_epoch=r.transition_epoch and (r.revoked or r.auth_user_id is distinct from (select auth.uid()))) then
+   return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',r.transition_epoch,'binding_revision',r.binding_revision,'reserved',false,'stale',true);
+  end if;
+  if target_transition_epoch=r.transition_epoch and rh<>r.revocation_hash then raise exception 'Revocation proof must remain stable within a reservation' using errcode='42501'; end if;
+  if target_transition_epoch>r.transition_epoch and rh=r.revocation_hash then raise exception 'New transition requires a new revocation proof' using errcode='42501'; end if;
+ end if;
+ select * into r from private.push_installation_reservations where installation_id=target_installation_id and revocation_hash=rh;
+ if found then
+  if r.auth_user_id is distinct from (select auth.uid()) or r.proof_hash<>ph or r.transition_epoch<>target_transition_epoch or r.binding_revision<>target_binding_revision or r.revoked then raise exception 'Invalid reservation proof' using errcode='42501'; end if;
+  return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',r.transition_epoch,'binding_revision',r.binding_revision,'reserved',true,'stale',false,'expires_at',r.expires_at);
+ end if;
+ if (select count(*) from private.push_installation_reservations where auth_user_id=(select auth.uid()))>=20 then raise exception 'Too many pending installation reservations' using errcode='P0001'; end if;
+ if exists(select 1 from private.push_reservation_rate_limits where auth_user_id=(select auth.uid()) and window_started_at>now()-interval '1 minute' and requests>=5) then raise exception 'Too many new installation reservations' using errcode='P0001'; end if;
+ insert into private.push_reservation_rate_limits(auth_user_id,window_started_at,requests) values((select auth.uid()),now(),1)
+ on conflict(auth_user_id) do update set window_started_at=case when private.push_reservation_rate_limits.window_started_at<=now()-interval '1 minute' then now() else private.push_reservation_rate_limits.window_started_at end,
+ requests=case when private.push_reservation_rate_limits.window_started_at<=now()-interval '1 minute' then 1 else private.push_reservation_rate_limits.requests+1 end;
+ -- Claims come only from PostgREST's verified JWT, never RPC parameters or headers.
+ claims:=auth.jwt();
+ if jsonb_typeof(claims->'exp')='number' then
+  jwt_exp:=(claims->>'exp')::numeric;
+  if jwt_exp>extract(epoch from now()) and jwt_exp<=253402300799 then expires:=greatest(expires,to_timestamp(jwt_exp::double precision)+interval '15 minutes'); end if;
+ end if;
+ insert into private.push_installation_reservations(installation_id,revocation_hash,proof_hash,auth_user_id,transition_epoch,binding_revision,expires_at)
+ values(target_installation_id,rh,ph,(select auth.uid()),target_transition_epoch,target_binding_revision,expires);
+ return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',target_transition_epoch,'binding_revision',target_binding_revision,'reserved',true,'stale',false,'expires_at',expires);
+end; $$;
+revoke all on function public.reserve_push_installation(uuid,text,text,bigint,bigint) from public,anon,authenticated;
+grant execute on function public.reserve_push_installation(uuid,text,text,bigint,bigint) to authenticated;
 create function public.register_push_installation(target_installation_id uuid,target_installation_proof text,target_revocation_proof text,target_transition_epoch bigint,target_binding_revision bigint,target_expo_token text,target_platform text,target_permission_state text,target_project_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare member_id uuid; i private.push_installations%rowtype; active boolean; ph text; rh text; revoked_epoch bigint;
+declare member_id uuid; i private.push_installations%rowtype; active boolean; ph text; rh text; r private.push_installation_reservations%rowtype;
 begin
  member_id:=private.notification_member_id();
  if target_installation_id is null or target_installation_proof is null or target_installation_proof !~ '^[a-f0-9]{64}$' or target_revocation_proof is null or target_revocation_proof !~ '^[a-f0-9]{64}$'
@@ -137,12 +210,6 @@ begin
  ph:=encode(sha256(convert_to(target_installation_proof,'UTF8')),'hex'); rh:=encode(sha256(convert_to(target_revocation_proof,'UTF8')),'hex');
  perform pg_advisory_xact_lock(hashtextextended(target_installation_id::text,2));
  perform pg_advisory_xact_lock(hashtextextended(target_expo_token,3));
- delete from private.push_revocation_tombstones where installation_id=target_installation_id and expires_at<=now();
- select transition_epoch into revoked_epoch from private.push_revocation_tombstones
- where installation_id=target_installation_id and revocation_hash=rh and expires_at>now();
- if revoked_epoch is not null and target_transition_epoch<=revoked_epoch then
-  return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',revoked_epoch,'binding_revision',target_binding_revision,'enabled',false,'stale',true);
- end if;
  select * into i from private.push_installations where id=target_installation_id for update;
  if found then
   if i.proof_hash<>ph then raise exception 'Invalid installation proof' using errcode='42501'; end if;
@@ -152,6 +219,20 @@ begin
   if target_transition_epoch>i.transition_epoch and rh=i.revocation_hash then raise exception 'New transition requires a new revocation proof' using errcode='42501'; end if;
   if target_transition_epoch=i.transition_epoch and rh<>i.revocation_hash then raise exception 'Revocation proof must remain stable within a binding' using errcode='42501'; end if;
  elsif target_binding_revision<>0 then raise exception 'Unknown installation binding'; end if;
+ select * into r from private.push_installation_reservations where installation_id=target_installation_id and expires_at>now() order by transition_epoch desc,reserved_at desc limit 1;
+ if found then
+  if r.proof_hash<>ph then raise exception 'Invalid installation proof' using errcode='42501'; end if;
+  if target_transition_epoch<r.transition_epoch or (target_transition_epoch=r.transition_epoch and (r.revoked or r.auth_user_id is distinct from (select auth.uid()))) then
+   return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',r.transition_epoch,'binding_revision',r.binding_revision,'enabled',false,'stale',true);
+  end if;
+ end if;
+ if i.id is null or target_transition_epoch>i.transition_epoch then
+  select * into r from private.push_installation_reservations where installation_id=target_installation_id and revocation_hash=rh;
+  if not found or r.expires_at<=now() or r.auth_user_id is distinct from (select auth.uid()) or r.proof_hash<>ph or r.binding_revision<>target_binding_revision then raise exception 'Installation reservation required' using errcode='42501'; end if;
+  if r.revoked or r.transition_epoch<>target_transition_epoch then
+   return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',r.transition_epoch,'binding_revision',r.binding_revision,'enabled',false,'stale',true);
+  end if;
+ end if;
  active:=target_permission_state='granted' and coalesce((select enabled from public.notification_preferences where auth_user_id=(select auth.uid())),false);
 
  update private.push_installations set enabled=false where expo_token=target_expo_token and id<>target_installation_id;
@@ -161,32 +242,34 @@ begin
  binding_revision=case when private.push_installations.transition_epoch=excluded.transition_epoch and private.push_installations.auth_user_id=excluded.auth_user_id then private.push_installations.binding_revision else private.push_installations.binding_revision+1 end,
  tombstoned=false,expo_token=excluded.expo_token,platform=excluded.platform,permission_state=excluded.permission_state,project_id=excluded.project_id,enabled=excluded.enabled,last_seen_at=now()
  returning * into i;
+ delete from private.push_installation_reservations where installation_id=i.id and transition_epoch<=i.transition_epoch;
  return jsonb_build_object('installation_id',i.id,'transition_epoch',i.transition_epoch,'binding_revision',i.binding_revision,'revocation_expires_at',i.revocation_expires_at,'enabled',i.enabled,'stale',false);
 end; $$;
 create function public.revoke_push_installation(target_installation_id uuid,target_binding_revision bigint,target_transition_epoch bigint,target_revocation_proof text)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare i private.push_installations%rowtype; revoked boolean:=false; rh text;
+declare i private.push_installations%rowtype; r private.push_installation_reservations%rowtype; revoked boolean:=false; rh text;
 begin
  if target_installation_id is null or target_revocation_proof is null or target_revocation_proof !~ '^[a-f0-9]{64}$' or target_transition_epoch is null or target_transition_epoch<0 or target_transition_epoch>9007199254740991 or target_binding_revision is null or target_binding_revision<0 or target_binding_revision>9007199254740991 then raise exception 'Invalid revocation'; end if;
  rh:=encode(sha256(convert_to(target_revocation_proof,'UTF8')),'hex');
  perform pg_advisory_xact_lock(hashtextextended(target_installation_id::text,2));
  select * into i from private.push_installations where id=target_installation_id for update;
- if not found then
-  insert into private.push_revocation_tombstones(installation_id,revocation_hash,transition_epoch)
-  values(target_installation_id,rh,target_transition_epoch)
-  on conflict(installation_id,revocation_hash) do update set transition_epoch=greatest(private.push_revocation_tombstones.transition_epoch,excluded.transition_epoch);
-  return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',target_transition_epoch,'binding_revision',target_binding_revision,'revoked',true,'terminal',true,'enabled',false);
+ if i.id is not null and i.revocation_hash=rh and i.revocation_expires_at>now() then
+  if (target_binding_revision=0 or target_binding_revision=i.binding_revision) and target_transition_epoch>i.transition_epoch then
+   update private.push_installations set enabled=false,tombstoned=true,transition_epoch=target_transition_epoch where id=target_installation_id returning * into i;
+   revoked:=true;
+  elsif i.tombstoned and target_transition_epoch=i.transition_epoch then revoked:=true; end if;
+  return jsonb_build_object('installation_id',i.id,'transition_epoch',i.transition_epoch,'binding_revision',i.binding_revision,'enabled',false,'revoked',revoked,'terminal',true);
  end if;
- if i.revocation_hash<>rh or i.revocation_expires_at<=now() then
-  return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',target_transition_epoch,'binding_revision',target_binding_revision,'revoked',false,'terminal',true,'enabled',false);
+ select * into r from private.push_installation_reservations where installation_id=target_installation_id and revocation_hash=rh and expires_at>now() for update;
+ if found then
+  if (target_binding_revision=0 or target_binding_revision=r.binding_revision) and target_transition_epoch>r.transition_epoch then
+   update private.push_installation_reservations set revoked=true,transition_epoch=target_transition_epoch where installation_id=r.installation_id and revocation_hash=rh returning * into r;
+   revoked:=true;
+  elsif r.revoked and target_transition_epoch=r.transition_epoch then revoked:=true; end if;
+  return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',r.transition_epoch,'binding_revision',r.binding_revision,'enabled',false,'revoked',revoked,'terminal',true);
  end if;
- if (target_binding_revision=0 or target_binding_revision=i.binding_revision) and target_transition_epoch>i.transition_epoch then
-  update private.push_installations set enabled=false,tombstoned=true,transition_epoch=target_transition_epoch where id=target_installation_id returning * into i;
-  insert into private.push_revocation_tombstones(installation_id,revocation_hash,transition_epoch) values(i.id,rh,i.transition_epoch)
-  on conflict(installation_id,revocation_hash) do update set transition_epoch=greatest(private.push_revocation_tombstones.transition_epoch,excluded.transition_epoch);
-  revoked:=true;
- elsif i.tombstoned and target_transition_epoch=i.transition_epoch then revoked:=true; end if;
- return jsonb_build_object('installation_id',i.id,'transition_epoch',i.transition_epoch,'binding_revision',i.binding_revision,'enabled',false,'revoked',revoked,'terminal',true);
+ -- Unknown capabilities never create anonymous rows. The client awaits reservation before dispatching registration.
+ return jsonb_build_object('installation_id',target_installation_id,'transition_epoch',target_transition_epoch,'binding_revision',target_binding_revision,'revoked',false,'terminal',true,'enabled',false);
 end; $$;
 revoke all on function public.get_notification_settings(),public.save_notification_preferences(jsonb),public.save_notification_policy(jsonb),public.register_push_installation(uuid,text,text,bigint,bigint,text,text,text,uuid),public.revoke_push_installation(uuid,bigint,bigint,text) from public,anon,authenticated;
 grant execute on function public.get_notification_settings(),public.save_notification_preferences(jsonb),public.save_notification_policy(jsonb),public.register_push_installation(uuid,text,text,bigint,bigint,text,text,text,uuid) to authenticated;
@@ -370,6 +453,7 @@ create function public.claim_notification_deliveries(target_limit integer defaul
 language plpgsql security definer set search_path='' as $$
 declare n private.notification_events%rowtype; result jsonb;
 begin
+ perform private.cleanup_push_installation_reservations();
  if not exists(select 1 from private.notification_runtime where enabled and cardinality(test_auth_user_ids)>0 and allowed_project_id is not null) then return '[]'; end if;
  perform private.enqueue_scheduled_notifications();
  update private.notification_deliveries set status='unknown',error_code='lease_expired_after_send' where status='sending' and lease_until<=now();

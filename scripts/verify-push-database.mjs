@@ -15,6 +15,7 @@ async function rejected(action, pattern, description) { await assert.rejects(act
 async function actor(id, role = "authenticated") {
   await db.exec("reset role");
   await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claim.role',$2,false)", [id ?? "", role]);
+  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:id,role,exp:Math.floor(Date.now()/1000)+3600})]);
   await db.exec("set role " + role);
 }
 async function owner(sql, args = []) { await db.exec("reset role"); return db.query(sql, args); }
@@ -27,7 +28,11 @@ const project = uuid(401);
 const proof = "a".repeat(64);
 const revokeA = "b".repeat(64);
 const revokeB = "c".repeat(64);
+async function reserve(epoch, revision, revocation = revokeA, installation = install, installationProof = proof) {
+  return value("select public.reserve_push_installation($1,$2,$3,$4,$5) value",[installation,installationProof,revocation,epoch,revision]);
+}
 async function register(epoch, revision, revocation = revokeA, token = "ExpoPushToken[test-old]", permission = "granted", installation = install) {
+  await reserve(epoch,revision,revocation,installation);
   return value("select public.register_push_installation($1,$2,$3,$4,$5,$6,'android',$7,$8) value", [installation,proof,revocation,epoch,revision,token,permission,project]);
 }
 async function enabled(id = install) { return (await owner("select enabled value from private.push_installations where id=$1", [id])).rows[0]?.value; }
@@ -245,11 +250,13 @@ try {
 
 
   const neverRegistered = uuid(609);
+  await actor(auth[0]);
+  await reserve(0,0,revokeA,neverRegistered);
   await actor(null,"anon");
   const revokeBeforeRegister = await value("select public.revoke_push_installation($1,0,1,$2) value",[neverRegistered,revokeA]);
   equal(revokeBeforeRegister,{installation_id:neverRegistered,transition_epoch:1,binding_revision:0,enabled:false,revoked:true,terminal:true},"first revocation is proof-ready and typed before registration arrives");
   await actor(auth[0]);
-  equal((await register(0,0,revokeA,"ExpoPushToken[late-first]","granted",neverRegistered)).stale,true,"late first register is blocked by its exact proof tombstone");
+  equal((await value("select public.register_push_installation($1,$2,$3,0,0,$4,'android','granted',$5) value",[neverRegistered,proof,revokeA,"ExpoPushToken[late-first]",project])).stale,true,"late first register is blocked by its authenticated revoked reservation");
   equal((await owner("select count(*)::integer value from private.push_installations where id=$1",[neverRegistered])).rows[0].value,0,"late first register creates no enabled binding");
   equal((await register(2,0,revokeB,"ExpoPushToken[new-first]","granted",neverRegistered)).enabled,true,"an unrelated/new proof is not blocked by a guessed installation UUID tombstone");
   await actor(null,"anon");
@@ -284,5 +291,70 @@ try {
   await actor(null,"service_role");
   await value("select public.claim_notification_receipts(100) value");
   equal((await owner("select status value from private.notification_deliveries where id=$1",[tokenClaims[0].id])).rows[0].value,"unknown","receipts beyond provider retention finish without replaying the message");
+  // Anonymous requests cannot allocate storage, and all new bindings require an awaited authenticated reservation.
+  const beforeAnonymous = (await owner("select count(*)::integer value from private.push_installation_reservations")).rows[0].value;
+  await actor(null,"anon");
+  for (let index=0;index<30;index++) {
+    const result = await value("select public.revoke_push_installation($1,0,1,$2) value",[uuid(800+index),revokeA]);
+    assert.equal(result.terminal,true);
+    assert.equal(result.revoked,false);
+  }
+  equal((await owner("select count(*)::integer value from private.push_installation_reservations")).rows[0].value,beforeAnonymous,"unknown anonymous proofs allocate no rows");
+  await actor(null,"anon");
+  await rejected(()=>reserve(0,0,revokeA,uuid(840)),/permission denied/,"anonymous clients cannot reserve installations");
+  await actor(auth[2]);
+  await rejected(()=>value("select public.register_push_installation($1,$2,$3,0,0,$4,'android','granted',$5) value",[uuid(841),proof,revokeA,"ExpoPushToken[unreserved]",project]),/reservation required/,"new registration cannot bypass the reservation boundary");
+  await owner("delete from private.push_reservation_rate_limits where auth_user_id=$1",[auth[2]]);
+  await actor(auth[2]);
+  const lostReservation = uuid(842);
+  const reservation = await reserve(0,0,revokeA,lostReservation);
+  equal([reservation.reserved,reservation.stale,reservation.transition_epoch,reservation.binding_revision],[true,false,0,0],"authenticated reservation has a typed matching response");
+  equal((await owner("select count(*)::integer value from private.push_installations where id=$1",[lostReservation])).rows[0].value,0,"lost reservation response cannot activate a push installation");
+  await actor(auth[1]);
+  await rejected(()=>reserve(0,0,revokeB,lostReservation,"f".repeat(64)),/Invalid installation proof/,"a different proof cannot steal a known reservation UUID");
+  await actor(null,"anon");
+  equal((await value("select public.revoke_push_installation($1,0,1,$2) value",[lostReservation,revokeA])).revoked,true,"logout revokes its authenticated pending reservation");
+  await actor(auth[2]);
+  equal((await value("select public.register_push_installation($1,$2,$3,0,0,$4,'android','granted',$5) value",[lostReservation,proof,revokeA,"ExpoPushToken[lost-reserve]",project])).stale,true,"late full registration is rejected after reservation logout");
+  // New reservations are bounded per owner; idempotent retries bypass both quota counters.
+  for(let index=0;index<4;index++) await reserve(0,0,revokeA,uuid(850+index));
+  await rejected(()=>reserve(0,0,revokeA,uuid(854)),/Too many new installation reservations/,"a sixth new reservation within the owner's minute is rejected");
+  equal((await reserve(0,0,revokeA,uuid(850))).reserved,true,"same reservation retries work after minute quota is full");
+  equal((await owner("select requests value from private.push_reservation_rate_limits where auth_user_id=$1",[auth[2]])).rows[0].value,5,"idempotent retries do not consume new-request quota");
+  for(let index=4;index<19;index++) {
+    if(index%5===4) await owner("update private.push_reservation_rate_limits set window_started_at=now()-interval '2 minutes' where auth_user_id=$1",[auth[2]]);
+    await actor(auth[2]);
+    await reserve(0,0,revokeA,uuid(850+index));
+  }
+  await owner("update private.push_reservation_rate_limits set window_started_at=now()-interval '2 minutes' where auth_user_id=$1",[auth[2]]);
+  await actor(auth[2]);
+  await rejected(()=>reserve(0,0,revokeA,uuid(870)),/Too many pending/,"twenty unfinished reservations bound retained rows per owner");
+  await actor(null,"anon");
+  equal((await value("select public.revoke_push_installation($1,1,1,$2) value",[uuid(302),revokeA])).revoked,true,"valid installed-device revocation remains available despite full reservation quota");
+  await owner("update private.push_installation_reservations set expires_at=now()-interval '1 minute' where installation_id=$1",[uuid(850)]);
+  await actor(auth[2]);
+  equal((await reserve(0,0,revokeA,uuid(870))).reserved,true,"expired reservations are cleaned before checking owner quota");
+  equal((await owner("select count(*)::integer value from private.push_installation_reservations where installation_id=$1",[uuid(850)])).rows[0].value,0,"expiry cleanup actually removes the expired capability");
+  // A verified JWT exp beyond the default retention extends the tombstone, while malformed claims use 30 days.
+  await owner("delete from private.push_installation_reservations where auth_user_id=$1",[auth[2]]);
+  await owner("delete from private.push_reservation_rate_limits where auth_user_id=$1",[auth[2]]);
+  await actor(auth[2]);
+  const extendedExp = Math.floor(Date.now()/1000)+40*86400;
+  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({exp:extendedExp})]);
+  const longReservation = await reserve(0,0,revokeA,uuid(880));
+  equal(new Date(longReservation.expires_at).getTime()>=extendedExp*1000+15*60000,true,"retention covers verified JWT expiry plus clock skew");
+  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({exp:"malformed"})]);
+  const fallbackReservation = await reserve(0,0,revokeA,uuid(881));
+  equal(Math.abs(new Date(fallbackReservation.expires_at).getTime()-Date.now()-30*86400000)<60000,true,"malformed JWT expiry uses conservative thirty-day retention");
+  await actor(auth[2]);
+  await register(0,0,revokeA,"ExpoPushToken[completed-reservation]","granted",uuid(881));
+  equal((await owner("select count(*)::integer value from private.push_installation_reservations where installation_id=$1",[uuid(881)])).rows[0].value,0,"completed registration removes its pending reservations");
+  await actor(auth[2]);
+  equal((await value("select public.register_push_installation($1,$2,$3,0,1,$4,'android','granted',$5) value",[uuid(881),proof,revokeA,"ExpoPushToken[stable-no-reserve]",project])).binding_revision,1,"stable token refresh works without a reservation after completion cleanup");
+  equal((await reserve(1,1,revokeB,uuid(881))).reserved,true,"a new binding reserves while an older installed binding still exists");
+  await actor(null,"anon");
+  equal((await value("select public.revoke_push_installation($1,1,2,$2) value",[uuid(881),revokeB])).revoked,true,"pending new binding can be revoked despite the previous installed proof");
+  await actor(auth[2]);
+  equal((await value("select public.register_push_installation($1,$2,$3,1,1,$4,'android','granted',$5) value",[uuid(881),proof,revokeB,"ExpoPushToken[late-new-binding]",project])).stale,true,"revoked new binding cannot arrive late and replace the older installation");
   console.log("PASS " + checks + " PostgreSQL assertions; " + await owner("select version()").then(r=>r.rows[0].version));
 } catch (error) { console.error("FAIL after " + checks + " assertions: " + error.message); process.exitCode = 1; } finally { await db.close(); }

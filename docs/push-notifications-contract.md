@@ -39,6 +39,14 @@
 
 ## 기기 등록·해제
 
+최초 연결과 새 epoch/계정 전환은 사전 저장한 bindingPending proof로 `reserve_push_installation(target_installation_id uuid,target_installation_proof text,target_revocation_proof text,target_transition_epoch bigint,target_binding_revision bigint)`를 인증 호출하고 완료 응답을 기다린다. 인수의 proof·epoch·revision 검증은 등록과 같다.
+
+성공 응답은 `{installation_id,transition_epoch,binding_revision,reserved:true,stale:false,expires_at}`이며 요청의 ID/epoch/revision과 일치한다. 오래된 요청은 서버의 안전한 숫자와 `reserved:false,stale:true`를 반환한다. 앱은 성공 후 현재 owner/generation/epoch/proof/master를 다시 확인한 경우에만 full register를 시작한다. 예약 응답 유실·지연 로그아웃은 full register를 시작하지 않는다. 정상 same owner+epoch token refresh에는 예약이 필요하지 않다.
+
+예약은 active·연결·비밀번호 변경 완료 회원만 생성한다. 회원별 미완료 예약 최대 20개, 새로운 예약은 최초 요청에서 시작하는 60초 창마다 최대 5개다. 동일 ID/proof/epoch/revision 예약 재시도는 추가 행과 quota를 소모하지 않는다. 해제된 미완료 예약도 늦은 요청 방어에 필요한 기간 동안 이 20개에 포함한다. 다른 proof로 알려진 UUID의 예약을 탈취할 수 없다.
+
+예약은 최소 30일, 검증된 `auth.jwt().exp`가 더 길면 exp+15분까지 보관한다. exp가 없거나 타입/범위가 이상하면 30일을 사용하며 RPC 인수나 헤더에서 만료 값을 받지 않는다. 정상 등록 완료 시 해당 epoch 이하 예약을 지우고, 예약과 worker claim 호출에서 만료 예약 및 하루 지난 회원별 rate counter를 정리한다. 실제 운영 Auth expiry는 이 계약을 적용하기 전에 별도로 확인한다. [Supabase JWT claims](https://supabase.com/docs/guides/auth/jwt-fields) · [세션 만료](https://supabase.com/docs/guides/auth/sessions)
+
 `register_push_installation` 인수:
 
 | 인수 | 계약 |
@@ -55,9 +63,9 @@
 
 응답은 `{installation_id,transition_epoch,binding_revision,revocation_expires_at,enabled,stale:false}`. 같은 owner+epoch 토큰 갱신은 revision/proof를 유지한다. 새로운 epoch는 새로운 해제 proof를 요구하고 revision을 증가시킨다. 오래된 epoch/revision이면 `{installation_id,transition_epoch,binding_revision,enabled:false,stale:true}`로 서버 상태만 반환하며 바인딩을 변경하지 않는다. 앱은 현재 계정·요청 세대와 맞는 응답만 사용한다. master off 또는 OS denied/undetermined 등록은 가능하나 enabled=false다.
 
-`revoke_push_installation(target_installation_id,target_binding_revision,target_transition_epoch,target_revocation_proof)`는 JWT 없이 anon 호출도 허용한다. 무작위 proof의 해시가 현재 binding과 일치해야 하며 proof는 30일 유효하다. 신규 등록 응답을 잃었으면 revision=0으로 정확한 사전 저장 proof만 해제할 수 있다. 정상 해제는 마지막 revision과 등록 N보다 큰 epoch(N+1)를 보낸다. 이 epoch는 tombstone이 되어 같은 epoch와 더 오래된 등록이 재활성화할 수 없다. 다음 등록은 N+2 이상이다. 이전 proof는 새 binding을 해제하지 못한다.
+`revoke_push_installation(target_installation_id,target_binding_revision,target_transition_epoch,target_revocation_proof)`는 JWT 없이 anon 호출도 허용한다. 무작위 proof의 해시가 현재 binding과 일치해야 하며 등록 완료 설치의 proof는 마지막 등록 갱신으로부터 30일 유효하다. 신규 등록 응답을 잃었으면 revision=0으로 정확한 사전 저장 proof만 해제할 수 있다. 정상 해제는 마지막 revision과 등록 N보다 큰 epoch(N+1)를 보낸다. 이 epoch는 tombstone이 되어 같은 epoch와 더 오래된 등록이 재활성화할 수 없다. 다음 등록은 N+2 이상이다. 이전 proof는 새 binding을 해제하지 못한다.
 
-모든 해제 응답은 `{installation_id,transition_epoch,binding_revision,enabled:false,revoked:boolean,terminal:true}`이며 숫자는 음수 없는 안전 정수다. 틀리거나 만료된 proof는 개인 정보 없이 요청의 epoch/revision을 돌려주고 revoked=false다. 최초 등록이 도착하기 전 해제는 installation UUID+정확한 proof 해시의 tombstone을 남겨 revoked=true로 반환한다. 같은 proof의 늦은 최초 등록을 막지만 관계없는 proof는 차단하지 않는다. terminal=true를 검증한 앱은 현재 로컬 요청 세대를 확인하고 해당 해제 큐를 완료한다. 해제 재시도는 안전하다. 서버는 proof 원문을 저장하지 않으며 로그에도 남기지 않는다. 30일 이상 갱신하지 않은 설치와 만료 proof 설치는 전송에서 제외한다.
+모든 해제 응답은 `{installation_id,transition_epoch,binding_revision,enabled:false,revoked:boolean,terminal:true}`이며 숫자는 음수 없는 안전 정수다. 틀리거나 만료된 proof는 개인 정보 없이 요청의 epoch/revision을 돌려주고 revoked=false다. 아직 등록되지 않은 정확한 인증 예약 proof의 해제는 그 예약을 tombstone으로 바꿔 revoked=true로 반환하며 늦은 full register를 막는다. 알려지지 않은 UUID/proof는 revoked=false,terminal=true와 요청 숫자를 반환하며 새 행을 만들지 않는다. 예약이 완료되기 전 해제가 도착해도 앱은 owner/generation 검사 후 full register를 시작하지 않는다. 정상 설치 해제는 예약 quota를 검사하거나 새 행을 만들지 않으며 현재 설치의 epoch/tombstoned 상태로 늦은 재등록을 막는다. terminal=true를 검증한 앱은 현재 로컬 요청 세대를 확인하고 해당 해제 큐를 완료한다. 해제 재시도는 안전하다. 서버는 proof 원문을 저장하지 않으며 로그에도 남기지 않는다. 30일 이상 갱신하지 않은 설치와 만료 proof 설치는 전송에서 제외한다.
 
 ## 수동 다시 알리기와 취소
 
