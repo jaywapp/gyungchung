@@ -246,7 +246,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <div class="preview" id="preview" role="dialog" aria-modal="true" aria-labelledby="preview-title" hidden>
   <header>
-    <h2 id="preview-title">초안 미리보기<small>방문자에게는 아직 보이지 않습니다. 시안 선택 전이라 01 안으로 표시합니다.</small></h2>
+    <h2 id="preview-title">초안 미리보기<small>방문자에게는 아직 보이지 않습니다. 선택된 03 구단 소개형으로 표시합니다.</small></h2>
     <span class="proto-seg" id="preview-size">
       <button type="button" data-size="pc" aria-pressed="true">PC</button>
       <button type="button" data-size="mobile" aria-pressed="false">모바일</button>
@@ -357,7 +357,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     if (v.section) section = v.section;
     var changed = v.changed || [];
     $("ed-top").innerHTML =
-      '<dl class="welcome-status" aria-label="게시 상태"><div><dt>방문자가 보는 게시본 <span class="status ' + v.pub[1] + '">' + v.pub[0] + "</span></dt><dd>" + v.pub[2] + (key === "first" ? "" : '<small>게시한 사람: 운영진 이름 예시 1</small>') + "</dd>" + (key === "first" ? "" : '<a href="../concept-01/index.html">공개 페이지 열기</a>') + "</div>" +
+      '<dl class="welcome-status" aria-label="게시 상태"><div><dt>방문자가 보는 게시본 <span class="status ' + v.pub[1] + '">' + v.pub[0] + "</span></dt><dd>" + v.pub[2] + (key === "first" ? "" : '<small>게시한 사람: 운영진 이름 예시 1</small>') + "</dd>" + (key === "first" ? "" : '<a href="../concept-03/index.html">공개 페이지 열기</a>') + "</div>" +
       '<div><dt>편집 중인 초안 <span class="status ' + v.draft[1] + '">' + v.draft[0] + "</span></dt><dd>" + v.draft[2] + '<small>저장한 사람: 운영진 이름 예시 1</small></dd></div></dl>' +
       alertHtml(v.alert) +
       '<div class="welcome-sections" role="group" aria-label="편집 영역">' + SECTIONS.map(function (s) {
@@ -384,7 +384,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     pv.hidden = !v.preview;
     if (v.preview) {
       var frame = pv.querySelector("iframe"), theme = document.documentElement.getAttribute("data-theme");
-      var src = "../concept-01/index.html?embed=1&draft=1&theme=" + theme;
+      var src = "../concept-03/index.html?embed=1&draft=1&theme=" + theme;
       if (frame.getAttribute("data-src") !== src) { frame.setAttribute("data-src", src); frame.src = src; }
       pv.querySelector("[data-close-preview]").focus();
     }

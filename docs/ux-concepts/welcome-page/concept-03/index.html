@@ -169,6 +169,7 @@
 }
 
 /* Sections */
+.section[hidden], .hero-nav a[hidden] { display: none; }
 .section { padding: clamp(56px, 9vh, 104px) var(--gutter); scroll-margin-top: var(--proto-h); }
 .section-head { max-width: 40em; margin-bottom: 36px; }
 .section-head h2 { font-size: clamp(28px, 3.6vw, 46px); font-weight: 900; letter-spacing: -.03em; }
@@ -470,9 +471,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
   function renderStaff() {
     var block = pageBlock("운영진 소개"), s = W.staff(), el = $("staff-body");
-    $("staff-tag").hidden = !!block || !s.length;
+    /* With no published officers the section and its shortcut leave the page instead of opening on an empty block. */
+    var none = !block && !s.length;
+    $("staff").hidden = none;
+    document.querySelector('.hero-nav a[href="#staff"]').hidden = none;
+    $("staff-tag").hidden = !!block;
     if (block) { el.innerHTML = block; return; }
-    if (!s.length) { el.innerHTML = '<div class="blank"><b>운영진 소개를 준비하고 있습니다</b>소개가 등록되면 이 자리에 표시됩니다.</div>'; return; }
+    if (none) { el.innerHTML = ""; return; }
     var lead = s[0], rest = s.slice(1);
     el.innerHTML = '<div class="people"><div class="lead-card"><span class="role">' + esc(lead.role) + "</span><b>" + esc(lead.name) + "</b>" + (lead.bio ? "<p>" + esc(lead.bio) + "</p>" : "") + "</div>" +
       '<ul class="sheet-list' + (rest.length < 3 ? " single" : "") + '">' + rest.map(function (m) {

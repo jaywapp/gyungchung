@@ -334,6 +334,7 @@ summary:focus-visible,
 }
 
 .example-tag .ic { width: 15px; height: 15px; }
+.example-tag[hidden] { display: none; }
 
 /* The horizontal logo ships with a small tagline row; headers show only the
    wordmark row by clipping the same asset instead of redrawing it. */
