@@ -35,3 +35,7 @@
 - 비밀이 아닌 공개 marker로 실제 cross-host redirect를 확인했고, HTTP200·목적지 echo·Authorization 미전달을 확인했다. 실 시크릿이나 회원 정보는 이 검사에 사용하지 않았다.
 - 전체 Node160, core PostgreSQL119, 최종 private HTTP SQL201 assertion 통과. 최종 SQL 검사의 HTTP/cron은 stub이며 실제 호출200/ACL catalog를 별도 확인했다.
 - dispatch 매분/receipts5분 Cron2개 active, postgres 소유. 기존 주간 Cron은 유지했다. 실제 업무 알림의 phone표시/공지ON-OFF별수신/탭 이동은 대기다.
+
+### 실제 신규 공지 — 2026-10-02 08:36(KST)
+
+08:35:57 실제 공지 outbox를08:36 자연 dispatch가 처리했다. 공지ON 기기1대 ticket접수·오류없음과 사용자 휴대전화 표시 확인, 공지OFF 계정 delivery0건 확인. 자연 receipts Cron도08:35 succeeded/HTTP200이며 해당 ticket은15분 대기 후 정상 cadence에서 확인한다. 이번 정확한 원본 탭 이동과 OFF 기기의 직접 미표시는 별도 확인 대기다.

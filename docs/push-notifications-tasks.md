@@ -31,3 +31,5 @@
 08:31:02(KST) production/DB/worker ON을 활성화하고 관리자 helper dispatch200/receipts200을 확인했다. 08:32와08:33 자연 dispatch Cron succeeded 및 대응 private 로그 HTTP200/processed0 확인. 현재 업무delivery0이며 실기기 업무수신은 아직 대기다. 새 공식 http 확장과 정상 발송은 사용자 추가 허용으로 적용했다. 실제 pg_net ACL REVOKE no-op 문제는 공개 큐에 인증을 저장하지 않는 동기 HTTP로 보완했다.
 
 최종 검증: 전체 Node160, 격리 core SQL119, 최종 private HTTP SQL201, lint·production build 통과. pg_net fixture200은 운영 객체owner차이를 재현하지 못한 초기 접근의 검사였으며 실제 ACL통과로 인정하지 않는다. 최종 privateHTTP fixture는 PUBLIC queue접근이 남아있어도 미사용0건임을 검증한다.
+
+08:36 실제 신규 공지의 자연 worker 발송 ticket1건·공지OFF delivery0건 및 사용자 기기 표시 확인 완료. 직접 Expo 경로와 구분되는 실제 업무 자동 경로다. 정확한 이번 원본 탭/다른 종류별 실제 수신/iOS는 별도다. 자연 receipts도08:35 succeeded/HTTP200 확인.
