@@ -48,7 +48,7 @@ try {
   const passwordSource = await read("supabase/migrations/20260822100217_require_initial_password_change.sql");
   await db.exec(passwordSource.slice(passwordSource.indexOf("create or replace function private.protect_password_change_requirement")));
   await db.exec(await read("supabase/migrations/20260821121500_save_attendance_batch.sql"));
-  await db.exec(await read("supabase/migrations/20261001073236_push_notifications.sql"));
+  await db.exec(await read("supabase/migrations/20261001114159_push_notifications.sql"));
   for (let index = 0; index < auth.length; index++) {
     await db.query("insert into auth.users(id) values($1)", [auth[index]]);
     await db.query("insert into public.profiles(id,auth_user_id,name,role,officer_title,status,must_change_password,is_test_account) values($1,$2,$3,$4,$5,$6,$7,$8)",

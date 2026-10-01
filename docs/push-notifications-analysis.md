@@ -4,4 +4,4 @@
 
 원본: attendance.status는 RSVP이며 check_in_status는 현장 기록이다. events.starts_at은 날짜+시각이며 venue/address는 snapshot이므로 venues 편집을 일정 변경으로 간주하지 않는다. profiles.id와 auth.uid는 다를 수 있다.
 
-[최종 RPC·위험·검증 계약](push-notifications-contract.md)을 따른다. 운영 적용·발송은 이 작업에서 수행하지 않는다.
+[최종 RPC·위험·검증 계약](push-notifications-contract.md)을 따른다. 운영 DB·worker·시크릿 적용은 사용자 승인으로 완료했고 실제 발송은 OFF다. 실기기 수신과 제한 대상 활성화는 다음 단계다.

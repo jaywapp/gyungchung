@@ -1,7 +1,7 @@
 # 푸시 알림 서버 계약
 
-- 상태: 미적용 migration과 기본 비활성 worker 초안. 운영 SQL·배포·시크릿 등록·실제 발송을 하지 않았다.
-- migration: Supabase CLI 2.102.0으로 생성한 `20261001073236_push_notifications.sql`.
+- 상태: 운영 migration·worker version 1·시크릿 적용 완료. DB와 worker 발송 OFF를 유지하며 실제 기기 수신은 미확인.
+- migration: CLI로 생성한 SQL을 사용자 승인으로 운영에 적용하고 ledger와 파일명을 `20261001114159_push_notifications.sql`로 맞췄다. SQL 내용은 동일하다.
 - 앱은 동일 Supabase 프로젝트의 로그인 JWT를 사용한다. `profiles.auth_user_id`로 회원을 연결하고 active 및 보호된 `must_change_password=false`를 확인한다.
 
 ## 계정 설정
@@ -113,10 +113,19 @@ entrypoint는 `supabase/functions/push-worker/index.ts`. POST 본문은 `{"actio
 
 DB AFTER 트리거는 네트워크를 호출하지 않는다. private outbox를 같은 업무 트랜잭션에 남기므로 rollback과 배치의 실패 행은 알림도 사라진다. worker는 lease→현재 회원/설정/원본/OS/binding→token snapshot 확인 후 Expo에 요청한다. ticket과 receipt를 구분하고 구 token의 DeviceNotRegistered로 새 token을 비활성화하지 않는다. 네트워크 수락 여부 불명확/응답 손상/발송 lease 만료는 unknown이며 자동 재발송하지 않는다. 명시적인 일시 오류는 최대 5번 제한 재시도한다. dispatch 루프는 40초 예산을 두며 다음 작업을 준비하기 전에 예산을 확인한다. 준비하지 않은 claimed 건은 2분 lease 만료 후 다시 가져온다. provider 요청은 응답 본문까지 12초 및 256KiB로 제한한다. receipt는 ticket 15분 후 확인하며 24시간 경과 ticket은 unknown으로 종료한다. 이미 공급자로 보낸 알림의 회수나 정확히 한 번 기기 표시를 보장하지 않는다.
 
-운영 pg_cron/pg_net/Vault 설정, 시크릿 등록, 함수 배포·실제 기기 발송은 수행하지 않았다. [Supabase 예약](https://supabase.com/docs/guides/functions/schedule-functions) · [함수 인증](https://supabase.com/docs/guides/functions/auth) · [Expo 전송·영수증](https://docs.expo.dev/push-notifications/sending-notifications/)
+운영 migration, worker version 1, worker secret·환경 OFF 등록은 완료했다. DB runtime false·allowlist 0·project NULL과 올바른 인증 요청의 HTTP 503 `delivery_disabled`를 확인했다. pg_cron/pg_net/Vault 예약 연결과 실제 기기 발송은 수행하지 않았다. [Supabase 예약](https://supabase.com/docs/guides/functions/schedule-functions) · [함수 인증](https://supabase.com/docs/guides/functions/auth) · [Expo 전송·영수증](https://docs.expo.dev/push-notifications/sending-notifications/)
 
 ## 검증
 
 worker: `node --experimental-default-type=module --test supabase/functions/tests/push-worker.test.ts`.
 
-격리 DB: `PUSH_PGLITE_MODULE`에 로컬 설치된 `@electric-sql/pglite/dist/index.js` 절대 경로를 지정한 뒤 `node scripts/verify-push-database.mjs`. 환경변수는 파일 경로이며 운영 연결 문자열이 아니다. 모듈을 일반 dev 환경에 설치했다면 경로를 생략할 수 있다. fixture는 회원/권한/참석/일정/공지/의견/참여 계약과 실제 비밀번호·출석 보호 함수 및 attendance batch RPC를 사용한다. 전체 Supabase Auth 세션/이전 모든 migration의 통합 실행을 대체하지 않는다. PostgreSQL 18.3(PGlite 0.5.8)에서 검증했으며 실제 운영 PostgreSQL 버전과 전체 migration 적용 검증은 배포 전 별도 단계다.
+격리 DB: `PUSH_PGLITE_MODULE`에 로컬 설치된 `@electric-sql/pglite/dist/index.js` 절대 경로를 지정한 뒤 `node scripts/verify-push-database.mjs`. 환경변수는 파일 경로이며 운영 연결 문자열이 아니다. 모듈을 일반 dev 환경에 설치했다면 경로를 생략할 수 있다. fixture는 회원/권한/참석/일정/공지/의견/참여 계약과 실제 비밀번호·출석 보호 함수 및 attendance batch RPC를 사용한다. 전체 Supabase Auth 세션/이전 모든 migration의 통합 실행을 대체하지 않는다. PostgreSQL 18.3(PGlite 0.5.8)에서 검증했다. 운영 PostgreSQL 17.6에 새 migration 적용 후 ledger·RLS·테이블/함수 grants·runtime OFF를 읽기 catalog로 확인했다. 실제 회원 JWT 성공 경로와 기기 수신은 별도 단계다.
+
+
+## 운영 보안 advisor 확인
+
+2026-10-01 적용 후 private 8개 테이블의 RLS policy 없음 INFO는 직접 회원 접근을 차단하고 검증된 security definer RPC를 사용하는 설계와 일치한다. 공개 `revoke_push_installation` WARN도 로그아웃 뒤 소유 증명으로 알려진 예약·기기를 해제하기 위한 의도된 경로다. 알 수 없는 설치에는 저장하지 않으며 증명·epoch·revision 검증은 실제 격리 DB에서 확인했다. 회원용 security definer RPC는 연결·활동·비밀번호 조건을, 관리용 RPC는 `events.manage` 권한을 검사한다. revoke는 소유 증명·epoch·revision을 검사한다. worker RPC는 service_role만 실행할 수 있다.
+
+[RLS advisor 기준](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) · [공개 security definer 기준](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable) · [회원 security definer 기준](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)
+
+기존 Auth 유출 비밀번호 보호 OFF 경고는 이 알림 변경에서 설정하지 않았다. [비밀번호 보호 설정](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
