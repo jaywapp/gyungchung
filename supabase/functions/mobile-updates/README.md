@@ -29,4 +29,3 @@ latest 표시나 게시 시각 대신 가장 큰 versionCode를 선택합니다.
 node --experimental-default-type=module --test supabase/functions/tests/mobile-updates.test.ts
 
 주입된 fetch/Auth 계약으로 공개 정보 제한, 버전 선택, checksum/manifest 일치, 업로드 완료, cache/auth 분리, redirect 토큰 차단, 스트림 취소/크기 오류, 시간 제한 및 안전한 오류를 검증합니다. 실제 운영 GitHub/Supabase 연동과 배포 확인은 리더의 후속 단계입니다.
-

@@ -260,5 +260,3 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
     }
   };
 }
-
-
