@@ -31,7 +31,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "added", text: "새로 로그인하고 알림을 켠 기기도 수신 대상에 포함되며, 운영진이 정한 참석 변경 알림 범위를 따릅니다." },
       { kind: "improved", text: "운영 시작 이전에 쌓인 변경 알림과 이미 지난 안내는 한꺼번에 보내지 않습니다." },
     ],
-    pullRequests: [],
+    pullRequests: [177],
   },
   {
     id: "2026-10-01-mobile-push-notifications",
