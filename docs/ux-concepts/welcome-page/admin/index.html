@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>웰컴 관리자 공통안</title>
+<meta name="description" content="기존 관리 콘솔의 운영 그룹에 웰컴 페이지 편집 메뉴를 더하는 공통안. 초안 저장, 미리보기, 게시와 실패, 충돌 상태를 보여 줍니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@900&display=swap">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+/* ==========================================================================
+   Admin draft. Everything above the "Welcome editor" block mirrors rules that
+   already exist in app/globals.css (shell, sidebar, page intro, operations
+   desk tabs, form fields, toast, confirm dialog). Only the welcome-* rules
+   are new, and they reuse the same tokens, radii and control heights.
+   ========================================================================== */
+.page.shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+.shell-main { min-width: 0; min-height: calc(100dvh - var(--proto-h)); }
+
+.club-sidebar {
+  position: sticky;
+  top: var(--proto-h);
+  height: calc(100dvh - var(--proto-h));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 24px 16px 20px;
+  border-right: 1px solid var(--card-edge);
+  background: var(--navy);
+  color: var(--on-navy);
+}
+
+.club-crest { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; color: inherit; font-size: 18px; font-weight: 800; letter-spacing: -.02em; text-decoration: none; }
+.club-crest span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--radius-inner); background: var(--highlight); color: var(--on-highlight); font-family: var(--font-display), var(--font-sans), sans-serif; font-size: 14px; font-weight: 900; }
+.club-sidebar h2 { margin: 16px 12px 4px; color: var(--muted-on-navy); font-size: 12px; font-weight: 600; letter-spacing: 0; }
+.club-sidebar ul { display: grid; gap: 2px; }
+.club-sidebar ul a { min-height: 42px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: var(--radius-control); color: var(--muted-on-navy); font-weight: 600; text-decoration: none; }
+.club-sidebar ul a[aria-current] { background: var(--rail-active); color: var(--on-navy); }
+.club-sidebar ul a[aria-current] .ic { color: var(--highlight); }
+
+.club-mobile-bar { display: none; }
+
+.content { padding: 72px 7vw 0; }
+.page-intro { max-width: 850px; margin-bottom: 55px; }
+.eyebrow { font-family: var(--font-display), var(--font-sans), sans-serif; font-size: 12px; font-weight: 900; letter-spacing: .18em; }
+.page-intro h1 { margin: 17px 0 20px; font-size: clamp(32px, 5vw, 56px); line-height: 1.02; }
+.page-intro p { color: var(--body); line-height: 1.7; }
+
+.admin-groups { display: flex; gap: 8px; margin-bottom: 14px; }
+.admin-groups button { min-height: var(--tap); padding: 11px 20px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); font-weight: 900; white-space: nowrap; cursor: pointer; }
+.admin-groups button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.admin-tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
+.admin-tabs button { padding: 14px 16px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted); font-weight: 700; white-space: nowrap; cursor: pointer; }
+.admin-tabs button[aria-pressed="true"] { border-bottom-color: var(--brand); color: var(--ink); }
+
+.form-error { padding: 12px; border-radius: var(--radius-inner); background: var(--danger-bg); color: var(--danger-ink); font-weight: 800; }
+.field-hint { color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.5; }
+.read-box { padding: 14px 17px; border-radius: var(--radius-inner); background: var(--surface-sunken); }
+
+.toast { position: fixed; z-index: 200; right: 25px; bottom: 104px; display: flex; align-items: center; gap: 9px; max-width: min(440px, calc(100vw - 32px)); padding: 15px 20px; border-radius: var(--radius-control); background: var(--navy); color: var(--on-navy); box-shadow: var(--shadow-overlay); font-weight: 900; }
+:root[data-theme="dark"] .toast { border: 1px solid var(--card-edge); }
+
+.modal-backdrop { position: fixed; z-index: 250; inset: 0; display: grid; place-items: center; padding: 20px; background: var(--overlay); }
+.confirm-dialog { width: min(430px, 100%); padding: 45px; border: 1px solid var(--card-edge); border-radius: var(--radius-dialog); background: var(--surface); box-shadow: var(--shadow-overlay); }
+.confirm-dialog h2 { margin: 0 0 14px; font-size: 32px; }
+.confirm-dialog p { margin: 0 0 25px; color: var(--body); line-height: 1.6; }
+.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* --------------------------------------------------------------------------
+   Welcome editor (new)
+   -------------------------------------------------------------------------- */
+.welcome-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 25px 0 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--line);
+  overflow: hidden;
+}
+
+.welcome-status > div { display: grid; align-content: start; gap: 6px; padding: 18px 20px; background: var(--surface); }
+.welcome-status dt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.welcome-status dd { margin: 0; font-weight: 800; }
+.welcome-status dd small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.welcome-status a { display: inline-flex; align-items: center; width: max-content; min-height: var(--tap); font-size: 14px; font-weight: 700; }
+
+.welcome-alert {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--danger-ink);
+  border-radius: var(--radius-inner);
+  background: var(--danger-bg);
+  color: var(--ink);
+}
+
+.welcome-alert.warn { border-color: var(--warn-ink); background: var(--warn-bg); }
+.welcome-alert b { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.welcome-alert b .ic { color: var(--danger-ink); }
+.welcome-alert.warn b .ic { color: var(--warn-ink); }
+.welcome-alert p { color: var(--body); font-size: 14px; }
+:root:not([data-theme="dark"]) .welcome-alert p { color: var(--ink); }
+.welcome-alert ul { display: grid; gap: 0; padding-left: 1.2em; list-style: disc; font-size: 14px; }
+.welcome-alert ul a { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--ink); font-weight: 700; }
+.welcome-alert div { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.welcome-sections { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.welcome-sections button { min-height: var(--tap); display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); font-weight: 900; cursor: pointer; }
+.welcome-sections button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.welcome-sections .changed { width: 8px; height: 8px; border-radius: 50%; background: var(--warn-solid); }
+.welcome-sections button[aria-pressed="true"] .changed { background: currentColor; }
+
+.welcome-form { max-width: 860px; padding: 28px; border: 1px solid var(--card-edge); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow); }
+.welcome-form[hidden] { display: none; }
+.welcome-form h2 { margin-bottom: 6px; font-size: 22px; }
+.welcome-form > p { margin-bottom: 22px; color: var(--body); font-size: 14px; }
+.welcome-form label, .welcome-form .label { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; font-size: 12px; font-weight: 900; }
+.welcome-form input:not([type="checkbox"]), .welcome-form select, .welcome-form textarea { min-width: 0; min-height: var(--tap); padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); font-size: 16px; font-weight: 400; }
+.welcome-form textarea { min-height: 96px; line-height: 1.6; resize: vertical; }
+.welcome-form [aria-invalid="true"] { border-color: var(--danger-ink); }
+.welcome-form .field-error { color: var(--danger-ink); font-size: 12px; font-weight: 800; }
+.welcome-form .check { flex-direction: row; align-items: center; min-height: var(--tap); font-size: 14px; }
+.welcome-form .check input { width: 20px; height: 20px; accent-color: var(--brand); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-row.three { grid-template-columns: 1fr 1fr 1fr; }
+
+.repeat { display: grid; gap: 12px; margin-bottom: 14px; }
+.repeat > li { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-inner); background: var(--surface-sunken); }
+.repeat header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.repeat header b { margin-right: auto; font-size: 14px; }
+.repeat header button { width: var(--tap); height: var(--tap); display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); cursor: pointer; }
+.repeat header button:disabled { color: var(--disabled-ink); cursor: not-allowed; }
+.repeat label:last-child { margin-bottom: 0; }
+.add-row { min-height: var(--tap); display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 1px dashed var(--chalk-strong); border-radius: var(--radius-control); background: none; font-weight: 800; cursor: pointer; }
+
+.auto-info { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 8px; }
+.auto-info dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.auto-info dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.welcome-form hr { margin: 24px 0; border: 0; border-top: 1px solid var(--line); }
+.welcome-form h3 { margin-bottom: 12px; font-size: 17px; letter-spacing: 0; }
+.welcome-note { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px; padding: 14px 16px; border-radius: var(--radius-inner); background: var(--note-bg); color: var(--note-ink); font-size: 14px; font-weight: 700; }
+.welcome-note .ic { margin-top: 1px; }
+
+/* The wrapper is the sticky element so the bar can travel the whole editor. */
+#ed-actions { position: sticky; bottom: 0; z-index: 20; }
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 28px -7vw 0;
+  padding: 14px 7vw calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.welcome-actions p { margin-right: auto; display: grid; gap: 2px; font-size: 14px; font-weight: 800; }
+.welcome-actions p small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.welcome-actions .cta[aria-busy="true"] .ic { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.welcome-denied { max-width: 620px; margin: 25px 0 80px; padding: 35px; border: 1px solid var(--card-edge); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow); }
+.welcome-denied .ic { width: 42px; height: 42px; color: var(--muted); }
+.welcome-denied h2 { margin: 14px 0 8px; font-size: 22px; }
+.welcome-denied p { color: var(--body); }
+
+/* Preview */
+.preview { position: fixed; z-index: 260; inset: 0; display: grid; grid-template-rows: auto 1fr; background: var(--surface-sunken); }
+.preview[hidden] { display: none; }
+.preview header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.preview header h2 { margin-right: auto; font-size: 18px; }
+.preview header h2 small { display: block; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; }
+.preview-stage { display: grid; justify-items: center; padding: 20px; overflow: auto; }
+.preview-stage iframe { width: 100%; height: 100%; min-height: 560px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--bg); }
+.preview-stage.mobile iframe { width: 390px; max-width: 100%; height: 800px; border: 8px solid #1a2530; border-radius: 28px; }
+
+@media (max-width: 900px) {
+  .page.shell { grid-template-columns: minmax(0, 1fr); }
+  .club-sidebar { display: none; }
+  .club-mobile-bar { position: sticky; top: var(--proto-h); z-index: 30; height: 56px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--topbar-bg); }
+  .club-mobile-bar .club-crest { padding: 0; color: var(--ink); font-size: 17px; }
+  .club-mobile-bar .club-crest span { width: 32px; height: 32px; font-size: 12px; }
+  .content { padding: 36px 20px 0; }
+  .page-intro { margin-bottom: 32px; }
+  .welcome-status { grid-template-columns: 1fr; }
+  .welcome-form { padding: 20px; }
+  .field-row, .field-row.three { grid-template-columns: 1fr; }
+  .auto-info { grid-template-columns: 1fr 1fr; }
+  .welcome-actions { margin-inline: -20px; padding-inline: 20px; }
+  .welcome-actions p { flex-basis: 100%; }
+  .welcome-actions .cta { flex: 1 1 0; padding-inline: 10px; }
+  .toast { right: 16px; bottom: 150px; }
+  .confirm-dialog { padding: 28px; }
+}
+</style>
+</head>
+<body>
+<!--
+THESIS: The welcome page is edited where officers already work, in the operations group of the existing console, with draft and published state always in view. It refuses a separate CMS look.
+OWN-WORLD: The live admin console as is: navy rail, filled group buttons, underlined section tabs, 12px bold labels over 44px fields, navy toast.
+STORY: An officer edits, saves a draft, previews it, then publishes, and always knows what visitors see right now.
+FIRST VIEWPORT: Console header and tabs with "웰컴 페이지 관리" selected, the published and draft status pair, section switch, form.
+FORM: Extension of an existing surface (no concept tournament).
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<div id="page">
+<div class="page shell">
+  <aside class="club-sidebar" aria-label="주 메뉴">
+    <a class="club-crest" href="#"><span>GC</span>경충FC</a>
+    <h2>클럽</h2>
+    <ul>
+      <li><a href="#"><i data-ic="house"></i>홈</a></li>
+      <li><a href="#"><i data-ic="calendar-days"></i>일정</a></li>
+      <li><a href="#"><i data-ic="users"></i>회원</a></li>
+      <li><a href="#"><i data-ic="megaphone"></i>공지</a></li>
+      <li><a href="#"><i data-ic="trophy"></i>랭킹</a></li>
+      <li><a href="#"><i data-ic="circle-dollar-sign"></i>회비</a></li>
+      <li><a href="#"><i data-ic="vote"></i>참여</a></li>
+      <li><a href="#"><i data-ic="message-square-text"></i>의견</a></li>
+    </ul>
+    <h2>운영진</h2>
+    <ul><li><a href="#" aria-current="page"><i data-ic="shield"></i>관리</a></li></ul>
+  </aside>
+
+  <div class="shell-main">
+    <div class="club-mobile-bar"><a class="club-crest" href="#"><span>GC</span>경충FC</a></div>
+    <main class="content" id="main">
+      <div class="page-intro"><span class="eyebrow">OPERATIONS DESK</span><h1>팀 운영 관리</h1><p>시스템 관리 권한은 회원 유형과 별도로 부여되며, 회장·부회장·총무는 직책별 운영 업무를 담당합니다.</p></div>
+      <div class="admin-groups"><button type="button" aria-pressed="false">회원</button><button type="button" aria-pressed="false">일정</button><button type="button" aria-pressed="true">운영</button></div>
+      <div class="admin-tabs"><button type="button" aria-pressed="false">공지 관리</button><button type="button" aria-pressed="false">의견 관리</button><button type="button" aria-pressed="false">참여 관리</button><button type="button" aria-pressed="false">권한 관리</button><button type="button" aria-pressed="true">웰컴 페이지 관리</button></div>
+
+      <div id="editor"><div id="ed-top"></div><div id="ed-forms"></div><div id="ed-actions"></div></div>
+    </main>
+  </div>
+</div>
+
+<div id="overlay"></div>
+
+<div class="preview" id="preview" role="dialog" aria-modal="true" aria-labelledby="preview-title" hidden>
+  <header>
+    <h2 id="preview-title">초안 미리보기<small>방문자에게는 아직 보이지 않습니다. 선택된 03 구단 소개형으로 표시합니다.</small></h2>
+    <span class="proto-seg" id="preview-size">
+      <button type="button" data-size="pc" aria-pressed="true">PC</button>
+      <button type="button" data-size="mobile" aria-pressed="false">모바일</button>
+    </span>
+    <button type="button" class="cta small ghost" data-close-preview>편집으로 돌아가기</button>
+  </header>
+  <div class="preview-stage" id="preview-stage"><iframe title="초안 미리보기 화면"></iframe></div>
+</div>
+</div>
+
+<script src="../shared/icons.js"></script>
+<script src="../shared/welcome.js"></script>
+<script>
+(function () {
+  "use strict";
+  var W = window.W, esc = W.esc, icon = W.icon, $ = function (id) { return document.getElementById(id); };
+
+  W.init({
+    name: "관리자 공통안",
+    key: "admin",
+    controls: [{ key: "admin", label: "편집 상태", options: [
+      ["synced", "게시본과 같음"], ["dirty", "저장 안 한 변경"], ["saving", "저장 중"], ["saved", "저장됨, 미게시"],
+      ["savefail", "저장 실패"], ["publishing", "게시 중"], ["published", "게시 완료"], ["publishfail", "게시 실패"],
+      ["conflict", "동시 편집 충돌"], ["invalid", "필수 항목 누락"], ["leave", "저장 안 하고 이탈"], ["preview", "미리보기"],
+      ["first", "최초 게시 전"], ["denied", "권한 없음"]
+    ] }]
+  });
+
+  var section = "basic", formsKey = null;
+  var SECTIONS = [["basic", "기본 안내"], ["rules", "회칙"], ["staff", "운영진 소개"], ["app", "앱 다운로드"]];
+
+  /* Example timestamps and editor names are placeholders for the layout. */
+  var VIEW = {
+    synced:     { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["게시본과 같음", "", "2026-10-02 09:08 저장"], note: ["변경 없음", "게시본과 초안이 같습니다."], save: false, publish: false },
+    dirty:      { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["저장 안 한 변경", "warn", "마지막 저장 2026-10-02 09:08"], note: ["저장하지 않은 변경이 있습니다", "초안을 저장해야 미리보기와 게시에 반영됩니다."], save: true, publish: false, changed: ["basic", "staff"] },
+    saving:     { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["저장 중", "neutral", "잠시만 기다려 주세요"], note: ["초안을 저장하는 중입니다", "공개 페이지는 바뀌지 않습니다."], save: "busy", publish: false, changed: ["basic", "staff"] },
+    saved:      { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["미게시 변경 있음", "warn", "2026-10-02 14:32 저장"], note: ["초안이 저장되었습니다", "게시하기 전까지 방문자는 이전 내용을 봅니다."], save: false, publish: true, toast: "초안을 저장했습니다. 공개 페이지는 아직 바뀌지 않았습니다." },
+    savefail:   { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["저장 안 한 변경", "warn", "마지막 저장 2026-10-02 09:08"], note: ["저장하지 못했습니다", "작성한 내용은 이 화면에 그대로 있습니다."], save: true, publish: false, changed: ["basic", "staff"], alert: "savefail" },
+    publishing: { pub: ["게시 중", "neutral", "잠시만 기다려 주세요"], draft: ["미게시 변경 있음", "warn", "2026-10-02 14:32 저장"], note: ["게시하는 중입니다", "끝나면 공개 페이지를 다시 읽어 확인합니다."], save: false, publish: "busy" },
+    published:  { pub: ["공개 중", "ok", "2026-10-02 14:35 게시"], draft: ["게시본과 같음", "", "2026-10-02 14:32 저장"], note: ["변경 없음", "게시본과 초안이 같습니다."], save: false, publish: false, toast: "게시했습니다. 방문자에게 새 내용이 보입니다." },
+    publishfail:{ pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["미게시 변경 있음", "warn", "2026-10-02 14:32 저장"], note: ["게시하지 못했습니다", "공개 페이지는 이전 내용 그대로입니다."], save: false, publish: true, alert: "publishfail" },
+    conflict:   { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["다른 변경과 충돌", "danger", "다른 운영진이 2026-10-02 14:28 저장"], note: ["저장이 보류되었습니다", "내 변경은 이 화면에 남아 있습니다."], save: false, publish: false, changed: ["basic"], alert: "conflict" },
+    invalid:    { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["미게시 변경 있음", "warn", "2026-10-02 14:32 저장"], note: ["게시할 수 없습니다", "필수 항목 2개를 채워 주세요."], save: false, publish: false, alert: "invalid", section: "app" },
+    leave:      { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["저장 안 한 변경", "warn", "마지막 저장 2026-10-02 09:08"], note: ["저장하지 않은 변경이 있습니다", "초안을 저장해야 미리보기와 게시에 반영됩니다."], save: true, publish: false, changed: ["basic", "staff"], dialog: true },
+    preview:    { pub: ["공개 중", "ok", "2026-10-02 09:10 게시"], draft: ["미게시 변경 있음", "warn", "2026-10-02 14:32 저장"], note: ["초안이 저장되었습니다", "게시하기 전까지 방문자는 이전 내용을 봅니다."], save: false, publish: true, preview: true },
+    first:      { pub: ["게시 전", "", "아직 게시한 적이 없습니다"], draft: ["미게시 변경 있음", "warn", "2026-10-02 14:32 저장"], note: ["처음 게시를 기다리고 있습니다", "지금 방문자에게는 준비 중 안내가 보입니다."], save: false, publish: true }
+  };
+
+  function alertHtml(kind) {
+    if (kind === "savefail") return '<div class="welcome-alert" role="alert"><b>' + icon("triangle-alert") + '초안을 저장하지 못했습니다</b><p>네트워크 연결을 확인한 뒤 다시 저장해 주세요. 작성한 내용은 지워지지 않았습니다.</p><div><button type="button" class="cta small" data-act="save">' + icon("refresh-cw") + "다시 저장</button></div></div>";
+    if (kind === "publishfail") return '<div class="welcome-alert" role="alert"><b>' + icon("triangle-alert") + '게시하지 못했습니다</b><p>공개 페이지는 이전 게시본 그대로이고, 저장한 초안도 그대로 있습니다. 잠시 후 다시 게시해 주세요.</p><div><button type="button" class="cta small" data-act="publish">' + icon("refresh-cw") + "다시 게시</button></div></div>";
+    if (kind === "conflict") return '<div class="welcome-alert warn" role="alert"><b>' + icon("triangle-alert") + '다른 운영진이 먼저 초안을 저장했습니다</b><p>지금 저장하면 그 변경을 덮어쓰게 되어 저장을 멈췄습니다. 내 변경은 이 화면에 그대로 있습니다. 최신 초안을 불러와 비교한 뒤 다시 저장해 주세요.</p><div><button type="button" class="cta small" data-act="compare">' + icon("git-compare") + '최신 초안과 비교</button><button type="button" class="cta small ghost" data-act="reload">내 변경을 버리고 최신 초안 불러오기</button></div></div>';
+    if (kind === "invalid") return '<div class="welcome-alert" role="alert"><b>' + icon("triangle-alert") + '게시하려면 아래 항목을 채워 주세요</b><ul><li><a href="#f-ios-url" data-goto="app">앱 다운로드: iOS 상태가 테스트 참여이면 배포 주소가 필요합니다</a></li><li><a href="#f-rules-title" data-goto="rules">회칙: 제목이 비어 있습니다</a></li></ul></div>';
+    return "";
+  }
+
+  function repeatHead(title, i, n, noun) {
+    return "<header><b>" + esc(title) + '</b><button type="button" aria-label="' + noun + ' 위로 이동"' + (i === 0 ? " disabled" : "") + ">" + icon("arrow-up") + '</button><button type="button" aria-label="' + noun + ' 아래로 이동"' + (i === n - 1 ? " disabled" : "") + ">" + icon("arrow-down") + '</button><button type="button" aria-label="' + noun + ' 삭제">' + icon("trash-2") + "</button></header>";
+  }
+
+  function forms(v) {
+    var invalid = W.state.admin === "invalid";
+    var hide = function (k) { return section === k ? "" : " hidden"; };
+    var steps = W.copy.accountSteps, staff = [["운영진 이름 예시 1", "회장", "예시 소개입니다. 모임 운영 전반을 맡습니다."], ["운영진 이름 예시 2", "부회장", "예시 소개입니다. 일정 조율과 구장 예약을 맡습니다."], ["운영진 이름 예시 3", "총무", "예시 소개입니다. 회비 정산과 장비 관리를 맡습니다."]];
+    return '' +
+      '<form class="welcome-form" id="form-basic"' + hide("basic") + ' aria-labelledby="h-basic"><h2 id="h-basic">기본 안내</h2><p>공개 페이지 첫 화면의 환영 문구와 이용 시작 안내입니다.</p>' +
+      '<label>환영 제목<input type="text" value="' + esc(W.copy.title) + '"></label>' +
+      '<label>소개 문구<textarea rows="2">' + esc(W.copy.intro) + '</textarea><span class="field-hint">한두 문장으로 짧게 씁니다.</span></label>' +
+      '<hr><h3>이용 시작 안내</h3><ol class="repeat">' + steps.map(function (s, i) {
+        return "<li>" + repeatHead((i + 1) + "단계", i, steps.length, "단계") + '<label>단계 제목<input type="text" value="' + esc(s[0]) + '"></label><label>안내 문구<textarea rows="2">' + esc(s[1]) + "</textarea></label></li>";
+      }).join("") + '</ol><button type="button" class="add-row">' + icon("plus") + "단계 추가</button></form>" +
+
+      '<form class="welcome-form" id="form-rules"' + hide("rules") + ' aria-labelledby="h-rules"><h2 id="h-rules">회칙</h2><p>제목, 문단, 목록만 쓸 수 있습니다. 줄 앞에 "- "를 쓰면 목록이 됩니다. HTML은 입력해도 실행되지 않습니다.</p>' +
+      '<label for="f-rules-title">회칙 제목<input id="f-rules-title" type="text" value="' + (invalid ? "" : "경충FC 회칙") + '"' + (invalid ? ' aria-invalid="true" aria-describedby="e-rules-title"' : "") + ">" + (invalid ? '<span class="field-error" id="e-rules-title">회칙 제목을 입력해 주세요.</span>' : "") + "</label>" +
+      '<div class="field-row"><label>시행일<input type="date" value="2026-10-01"></label><label>개정일 (선택)<input type="date"></label></div>' +
+      '<hr><h3>장과 조항</h3><ol class="repeat">' +
+      "<li>" + repeatHead("제1장", 0, 2, "장") + '<label>장 제목<input type="text" value="총칙"></label><label>제1조 제목<input type="text" value="목적"></label><label>제1조 본문<textarea rows="3">시안용 예시 문장입니다. 실제 회칙이 아닙니다.</textarea></label><button type="button" class="add-row">' + icon("plus") + "조항 추가</button></li>" +
+      "<li>" + repeatHead("제2장", 1, 2, "장") + '<label>장 제목<input type="text" value="회원"></label><label>제2조 제목<input type="text" value="가입"></label><label>제2조 본문<textarea rows="3">시안용 예시 문장입니다. 실제 회칙이 아닙니다.</textarea></label><button type="button" class="add-row">' + icon("plus") + "조항 추가</button></li>" +
+      '</ol><button type="button" class="add-row">' + icon("plus") + "장 추가</button></form>" +
+
+      '<form class="welcome-form" id="form-staff"' + hide("staff") + ' aria-labelledby="h-staff"><h2 id="h-staff">운영진 소개</h2><p>공개 페이지에 보이는 소개입니다. 연락처는 입력하지 않습니다.</p>' +
+      '<p class="welcome-note">' + icon("info") + "<span>여기서 바꾸는 공개 이름, 직책 표시명, 소개는 공개 페이지에만 쓰입니다. 계정의 회원 유형, 실제 직책, 시스템 권한은 바뀌지 않습니다.</span></p>" +
+      '<ol class="repeat">' + staff.map(function (m, i) {
+        return "<li>" + repeatHead("소개 " + (i + 1), i, staff.length, "소개") + '<div class="field-row"><label>공개 이름<input type="text" value="' + esc(m[0]) + '"></label><label>직책 표시명<input type="text" value="' + esc(m[1]) + '"></label></div><label>소개<textarea rows="2">' + esc(m[2]) + '</textarea></label><label>사진 주소 (선택)<input type="url" placeholder="https://"><span class="field-hint">비워 두면 사진 없이 표시합니다. 사진을 넣으면 대체 텍스트도 함께 입력합니다.</span></label></li>';
+      }).join("") + '</ol><button type="button" class="add-row">' + icon("plus") + "운영진 소개 추가</button></form>" +
+
+      '<form class="welcome-form" id="form-app"' + hide("app") + ' aria-labelledby="h-app"><h2 id="h-app">앱 다운로드</h2><p>Android 버전 정보는 배포 저장소에서 자동으로 가져옵니다. 여기서는 노출 여부와 안내 문구만 정합니다.</p>' +
+      "<h3>Android</h3>" +
+      '<div class="read-box"><dl class="auto-info"><div><dt>버전</dt><dd>0.1.0</dd></div><div><dt>빌드 코드</dt><dd>200010</dd></div><div><dt>파일 크기</dt><dd>85.6 MB</dd></div><div><dt>확인 시점</dt><dd>2026-10-02</dd></div></dl><span class="field-hint">읽기 전용입니다. 새 릴리스가 공개되면 게시 없이 자동으로 바뀝니다. 반영까지 최대 10분이 걸릴 수 있습니다.</span></div>' +
+      '<label class="check" style="margin-top:14px"><input type="checkbox" checked>공개 페이지에 Android 다운로드 표시</label>' +
+      '<label>설치 안내<textarea rows="3">APK를 내려받아 Android 기기에서 열고, 필요한 경우 이 출처의 설치를 허용하세요. 기존 앱이 있다면 삭제하지 않고 설치해 업데이트할 수 있습니다.</textarea></label>' +
+      "<hr><h3>iOS</h3>" +
+      '<div class="field-row"><label>상태<select><option' + (invalid ? "" : " selected") + ">준비 중</option><option" + (invalid ? " selected" : "") + ">테스트 참여 (TestFlight)</option><option>출시 (App Store)</option><option>숨김</option></select></label>" +
+      '<label for="f-ios-url">배포 주소<input id="f-ios-url" type="url" placeholder="https://"' + (invalid ? ' aria-invalid="true" aria-describedby="e-ios-url"' : ' aria-describedby="h-ios-url"') + ">" + (invalid ? '<span class="field-error" id="e-ios-url">테스트 참여 상태에는 https로 시작하는 배포 주소가 필요합니다.</span>' : '<span class="field-hint" id="h-ios-url">테스트 참여와 출시 상태에서만 필요합니다. 주소가 없으면 버튼을 만들지 않습니다.</span>') + "</label></div>" +
+      '<label>안내 문구<input type="text" value="iOS 앱 출시 준비 중"></label></form>';
+  }
+
+  function render() {
+    var key = W.state.admin, v = VIEW[key];
+    if (key === "denied") {
+      formsKey = null;
+      $("ed-forms").innerHTML = $("ed-actions").innerHTML = "";
+      $("ed-top").innerHTML = '<div class="welcome-denied">' + icon("lock") + "<h2>웰컴 페이지를 편집할 권한이 없습니다</h2><p>회장 또는 시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요. 공개 페이지는 누구나 볼 수 있습니다.</p></div>";
+      $("overlay").innerHTML = "";
+      $("preview").hidden = true;
+      return;
+    }
+    if (v.section) section = v.section;
+    var changed = v.changed || [];
+    $("ed-top").innerHTML =
+      '<dl class="welcome-status" aria-label="게시 상태"><div><dt>방문자가 보는 게시본 <span class="status ' + v.pub[1] + '">' + v.pub[0] + "</span></dt><dd>" + v.pub[2] + (key === "first" ? "" : '<small>게시한 사람: 운영진 이름 예시 1</small>') + "</dd>" + (key === "first" ? "" : '<a href="../concept-03/index.html">공개 페이지 열기</a>') + "</div>" +
+      '<div><dt>편집 중인 초안 <span class="status ' + v.draft[1] + '">' + v.draft[0] + "</span></dt><dd>" + v.draft[2] + '<small>저장한 사람: 운영진 이름 예시 1</small></dd></div></dl>' +
+      alertHtml(v.alert) +
+      '<div class="welcome-sections" role="group" aria-label="편집 영역">' + SECTIONS.map(function (s) {
+        var c = changed.indexOf(s[0]) !== -1;
+        return '<button type="button" data-section="' + s[0] + '" aria-pressed="' + (section === s[0]) + '">' + s[1] + (c ? '<span class="changed" aria-hidden="true"></span><span class="sr-only">저장 안 한 변경 있음</span>' : "") + "</button>";
+      }).join("") + "</div>";
+
+    /* Forms keep what the officer typed: they are rebuilt only when the validation view changes. */
+    var nextKey = key === "invalid" ? "invalid" : "normal";
+    if (formsKey !== nextKey) { formsKey = nextKey; $("ed-forms").innerHTML = forms(v); }
+    SECTIONS.forEach(function (s) { $("form-" + s[0]).hidden = s[0] !== section; });
+
+    $("ed-actions").innerHTML =
+      '<div class="welcome-actions"><p role="status">' + esc(v.note[0]) + "<small>" + esc(v.note[1]) + "</small></p>" +
+      '<button type="button" class="cta small ghost" data-act="save"' + (v.save === true ? "" : v.save === "busy" ? ' aria-busy="true" disabled' : " disabled") + ">" + icon(v.save === "busy" ? "loader-circle" : "save") + (v.save === "busy" ? "저장 중" : "초안 저장") + "</button>" +
+      '<button type="button" class="cta small ghost" data-act="preview"' + (key === "saving" || key === "publishing" ? " disabled" : "") + ">" + icon("eye") + "미리보기</button>" +
+      '<button type="button" class="cta small" data-act="publish"' + (v.publish === true ? "" : v.publish === "busy" ? ' aria-busy="true" disabled' : " disabled") + ">" + icon(v.publish === "busy" ? "loader-circle" : "send") + (v.publish === "busy" ? "게시 중" : "게시") + "</button></div>";
+
+    $("overlay").innerHTML =
+      (v.toast ? '<div class="toast" role="status">' + icon("circle-check") + esc(v.toast) + "</div>" : "") +
+      (v.dialog ? '<div class="modal-backdrop"><div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" aria-describedby="leave-desc"><h2 id="leave-title">저장하지 않고 나갈까요?</h2><p id="leave-desc">기본 안내와 운영진 소개에 저장하지 않은 변경이 있습니다. 나가면 이 변경은 사라집니다. 공개 페이지에는 영향이 없습니다.</p><div class="confirm-actions"><button type="button" class="cta ghost" data-act="discard">나가기</button><button type="button" class="cta" data-act="stay">계속 편집</button></div></div></div>' : "");
+
+    var pv = $("preview");
+    pv.hidden = !v.preview;
+    if (v.preview) {
+      var frame = pv.querySelector("iframe"), theme = document.documentElement.getAttribute("data-theme");
+      var src = "../concept-03/index.html?embed=1&draft=1&theme=" + theme;
+      if (frame.getAttribute("data-src") !== src) { frame.setAttribute("data-src", src); frame.src = src; }
+      pv.querySelector("[data-close-preview]").focus();
+    }
+    var d = document.querySelector(".confirm-dialog [data-act='stay']");
+    if (d) d.focus();
+  }
+
+  var timer;
+  document.addEventListener("click", function (e) {
+    var s = e.target.closest("[data-section]");
+    if (s) { section = s.getAttribute("data-section"); render(); document.querySelector('[data-section="' + section + '"]').focus(); return; }
+    var g = e.target.closest("[data-goto]");
+    if (g) { e.preventDefault(); section = g.getAttribute("data-goto"); render(); var f = document.querySelector(g.getAttribute("href")); if (f) f.focus(); return; }
+    if (e.target.closest("[data-close-preview]")) { W.set("admin", "saved"); return; }
+    var size = e.target.closest("[data-size]");
+    if (size) {
+      var mobile = size.getAttribute("data-size") === "mobile";
+      $("preview-stage").classList.toggle("mobile", mobile);
+      document.querySelectorAll("[data-size]").forEach(function (b) { b.setAttribute("aria-pressed", String(b === size)); });
+      return;
+    }
+    var a = e.target.closest("[data-act]");
+    if (!a || a.disabled) return;
+    clearTimeout(timer);
+    var act = a.getAttribute("data-act");
+    if (act === "save") { W.set("admin", "saving"); timer = setTimeout(function () { W.set("admin", "saved"); }, 900); }
+    else if (act === "publish") { W.set("admin", "publishing"); timer = setTimeout(function () { W.set("admin", "published"); }, 1100); }
+    else if (act === "preview") W.set("admin", "preview");
+    else if (act === "stay") W.set("admin", "dirty");
+    else if (act === "discard" || act === "reload") W.set("admin", "synced");
+    else if (act === "compare") W.set("admin", "dirty");
+  });
+
+  /* Any edit in a clean state becomes an unsaved change. */
+  document.addEventListener("input", function (e) {
+    if (!e.target.closest(".welcome-form")) return;
+    var k = W.state.admin;
+    if (k === "synced" || k === "saved" || k === "published" || k === "first") {
+      W.set("admin", "dirty");
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (W.state.admin === "preview") W.set("admin", "saved");
+    else if (W.state.admin === "leave") W.set("admin", "dirty");
+  });
+
+  render();
+  W.on(render);
+})();
+</script>
+</body>
+</html>

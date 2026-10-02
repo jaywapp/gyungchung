@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-02-welcome-page",
+    date: "2026-10-02",
+    source: "request",
+    title: "신규 회원을 위한 웰컴 페이지를 제공합니다",
+    summary: "공개 웰컴 페이지에서 운영진, 필수 앱 설치·계정 안내를 확인할 수 있으며 운영진은 초안을 저장하고 게시할 수 있습니다.",
+    changes: [
+      { kind: "added", text: "로그인 없이 열 수 있는 /welcome에 운영진 소개와 Android 다운로드·계정 안내를 마련했습니다." },
+      { kind: "added", text: "운영진 관리에서 안내 내용을 편집·미리보기·게시하고, iOS 배포 상태와 공식 링크를 관리할 수 있습니다." },
+    ],
+    pullRequests: [179],
+  },
+  {
     id: "2026-10-02-push-feedback-copy",
     date: "2026-10-02",
     source: "request",

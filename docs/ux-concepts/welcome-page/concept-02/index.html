@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>웰컴 시안 02 빠른 탐색형</title>
+<meta name="description" content="다운로드를 첫 화면에 두고 회칙, 운영진, 설치 안내를 탭과 조항 검색으로 바로 찾는 경충FC 웰컴 페이지 시안">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@900&display=swap">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+/* ==========================================================================
+   Concept 02: a reference desk.
+   Download sits in the first screen, everything else is one tab away, and
+   the rules have a searchable index. Built for the member who comes back
+   for one thing.
+   ========================================================================== */
+#page { --sticky-h: 64px; --gutter: clamp(16px, 4vw, 56px); padding-bottom: 0; }
+
+.bar {
+  position: sticky;
+  top: var(--proto-h);
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  min-height: 64px;
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid var(--line);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(8px);
+}
+
+.bar > a:first-child { display: flex; align-items: center; min-height: var(--tap); }
+.bar .gcfc-logo { width: 110px; }
+.bar .text-link { font-size: 15px; white-space: nowrap; }
+
+.tabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  align-self: stretch;
+}
+
+.tabs button {
+  position: relative;
+  min-width: 88px;
+  padding: 0 18px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .2s;
+}
+
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--ink); font-weight: 900; }
+
+.tabs button::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 3px;
+  background: var(--brand);
+  transform: scaleX(0);
+  transition: transform .3s var(--ease-out);
+}
+
+.tabs button[aria-selected="true"]::after { transform: scaleX(1); }
+
+/* First screen: what this is, and the download */
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+  align-items: center;
+  gap: 24px 56px;
+  padding: 36px var(--gutter);
+}
+
+.intro h1 { font-size: clamp(28px, 3.4vw, 44px); font-weight: 900; letter-spacing: -.03em; }
+.intro-lead { max-width: 30em; margin-top: 10px; color: var(--body); font-size: 17px; }
+
+.dock {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--card-edge);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.dock .cta { width: 100%; }
+.dock-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; color: var(--body); font-size: 14px; }
+.dock-meta div { display: flex; gap: 5px; }
+.dock-meta dt { color: var(--muted); }
+.dock-meta dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dock-msg { display: flex; align-items: flex-start; gap: 8px; color: var(--body); font-size: 14px; }
+.dock-msg .ic { width: 18px; height: 18px; margin-top: 1px; color: var(--muted); }
+.dock-msg.fail .ic { color: var(--danger-ink); }
+.dock-msg button { min-height: 0; padding: 0; font-size: 14px; }
+.dock-ios { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--body); font-size: 14px; }
+.dock-ios .ic { width: 18px; height: 18px; color: var(--muted); }
+.dock-ios b { color: var(--ink); }
+.dock-ios a { margin-left: auto; }
+
+/* Panels */
+.panel {
+  padding: 28px var(--gutter) 72px;
+  border-top: 1px solid var(--line);
+  animation: panel-in .28s var(--ease-out);
+}
+
+.panel[hidden] { display: none; }
+.panel:focus-visible { outline-offset: -3px; box-shadow: none; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(6px); } }
+
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 20px; }
+.panel-head h2 { font-size: 26px; font-weight: 900; }
+.panel-head .example-tag { margin-left: auto; }
+
+/* Rules: index and reader side by side */
+.reader-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.toc {
+  position: sticky;
+  top: calc(var(--proto-h) + var(--sticky-h) + 20px);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--proto-h) - var(--sticky-h) - 40px);
+}
+
+.find { display: grid; gap: 6px; }
+.find label { font-size: 14px; font-weight: 800; }
+.find-box { position: relative; }
+.find-box .ic { position: absolute; left: 12px; top: 50%; width: 18px; height: 18px; color: var(--muted); transform: translateY(-50%); pointer-events: none; }
+
+.find input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 44px 0 40px;
+  border: 1px solid var(--chalk-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  font-size: 16px;
+}
+
+.find input::placeholder { color: var(--muted); }
+.find input::-webkit-search-cancel-button { display: none; }
+
+.find-clear {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.find-count { min-height: 21px; color: var(--muted); font-size: 14px; }
+
+.toc-list { margin-top: 10px; padding-right: 6px; overflow-y: auto; }
+.toc-list h3 { margin: 14px 0 2px; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0; }
+.toc-list h3:first-child { margin-top: 0; }
+
+.toc-list a {
+  display: flex;
+  gap: 8px;
+  min-height: var(--tap);
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: var(--radius-inner);
+  color: var(--body);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.toc-list a span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.toc-list a:hover { background: var(--neutral-bg); color: var(--ink); }
+.toc-list a[aria-current] { background: var(--brand-soft); color: var(--ink); font-weight: 800; }
+.toc-list a[aria-current] span { color: var(--brand); }
+
+.reader { min-width: 0; max-width: 72ch; }
+.reader-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 24px; color: var(--body); font-size: 15px; }
+.reader-meta div { display: flex; gap: 6px; }
+.reader-meta dt { color: var(--muted); }
+.reader-meta dd { margin: 0; font-weight: 700; color: var(--ink); }
+
+.reader h3 {
+  margin: 40px 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ink);
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.reader h3:first-of-type { margin-top: 0; }
+
+.article { scroll-margin-top: calc(var(--proto-h) + var(--sticky-h) + 20px); }
+.article + .article { margin-top: 24px; }
+.article h4 { margin: 0 0 6px; font-size: 17px; font-weight: 800; }
+.article h4 span { margin-right: 8px; color: var(--brand); font-variant-numeric: tabular-nums; }
+.article p { color: var(--body); font-size: 17px; line-height: 1.8; }
+.article p + p { margin-top: 10px; }
+.article ol { margin-top: 8px; padding-left: 1.5em; list-style: decimal; color: var(--body); font-size: 17px; line-height: 1.8; }
+.article ol li::marker { color: var(--muted); font-weight: 700; }
+.article mark { padding: 0 2px; border-radius: 3px; background: var(--highlight); color: var(--on-highlight); }
+
+/* Staff: compact two-column directory */
+.staff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; }
+.staff-grid > li { display: grid; align-content: start; gap: 6px; padding: 18px 0; border-top: 1px solid var(--line); }
+.staff-grid b { font-size: 18px; font-weight: 800; }
+.staff-grid p { color: var(--body); font-size: 15px; }
+
+/* Install and account */
+.setup { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 56px; }
+.setup h3 { margin-bottom: 14px; font-size: 19px; font-weight: 800; }
+.setup ol { display: grid; gap: 0; counter-reset: s; }
+.setup ol li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); counter-increment: s; color: var(--body); }
+.setup ol li::before { content: counter(s); color: var(--brand); font-family: var(--font-display), var(--font-sans), sans-serif; font-size: 18px; font-weight: 900; }
+.setup ol li b { display: block; color: var(--ink); }
+.setup .cta { margin-top: 18px; }
+.setup-note { margin-top: 14px; color: var(--body); font-size: 15px; }
+
+/* States */
+.blank { padding: 24px; border: 1px dashed var(--chalk-strong); border-radius: var(--radius-card); color: var(--body); }
+.blank b { display: block; margin-bottom: 4px; color: var(--ink); font-size: 18px; }
+.blank .cta { margin-top: 14px; }
+.blank.fail { border-style: solid; border-color: var(--danger-ink); background: var(--danger-bg); }
+.loading-stack { display: grid; gap: 12px; max-width: 720px; }
+.loading-stack .skeleton { height: 20px; }
+.loading-stack .skeleton:nth-child(1) { height: 44px; }
+.loading-stack .skeleton:last-child { width: 58%; }
+
+/* Phone action bar and index sheet */
+.dockbar { display: none; }
+
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 82dvh;
+  margin: auto auto 0;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-top: 1px solid var(--card-edge);
+  border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.sheet[open] { animation: sheet-rise .28s var(--ease-out); }
+.sheet::backdrop { background: var(--overlay); }
+@keyframes sheet-rise { from { transform: translateY(24px); opacity: 0; } }
+.sheet header { position: sticky; top: -8px; display: flex; align-items: center; justify-content: space-between; min-height: 52px; background: var(--surface); }
+.sheet h2 { font-size: 20px; }
+.sheet-close { width: var(--tap); height: var(--tap); display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--surface-sunken); cursor: pointer; }
+.sheet .toc-list { margin-top: 4px; padding: 0; overflow: visible; }
+.sheet .toc-list a { min-height: 48px; font-size: 16px; }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 26px var(--gutter); background: var(--navy); color: var(--muted-on-navy); font-size: 14px; }
+.foot .gcfc-logo { width: 104px; }
+.foot a { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--highlight); font-weight: 700; }
+
+@media (max-width: 900px) {
+  #page { --sticky-h: 52px; }
+
+  /* Two rows; the sticky offset lets the logo row scroll away so only the tabs stay. */
+  .bar {
+    top: calc(var(--proto-h) - 56px);
+    grid-template-columns: auto auto;
+    grid-template-rows: 56px 52px;
+    justify-content: space-between;
+    gap: 0 16px;
+    padding: 0 calc(var(--gutter) - 4px);
+  }
+
+  .bar > a:first-child { grid-area: 1 / 1; padding-left: 4px; }
+  .bar > .text-link { grid-area: 1 / 2; padding-right: 4px; }
+  .tabs { grid-area: 2 / 1 / 3 / -1; }
+  .tabs button { flex: 1 1 0; min-width: 0; padding: 0 6px; }
+
+  .intro { grid-template-columns: 1fr; padding-top: 8px; padding-bottom: 28px; }
+  .dock { padding: 16px; }
+
+  .reader-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .toc { position: static; max-height: none; }
+  .toc > .toc-list { display: none; }
+  .staff-grid { grid-template-columns: 1fr; }
+  .setup { grid-template-columns: 1fr; }
+  .panel { padding-top: 22px; padding-bottom: 112px; }
+  .panel-head .example-tag { margin-left: 0; }
+
+  .dockbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    transform: translateY(110%);
+    transition: transform .3s var(--ease-out);
+  }
+
+  .dockbar.show { transform: none; }
+  .dockbar .cta { flex: 1 1 0; min-height: 50px; padding: 8px 12px; }
+  .dockbar .cta.ghost { flex: 0 0 auto; }
+  .foot { padding-bottom: 96px; }
+}
+
+.tabs-row { display: contents; }
+</style>
+</head>
+<body>
+<!--
+THESIS: A reference desk, not a brochure. Download is in the first screen, every other answer is one tab or one search away. It refuses the long scroll where a returning member hunts for one rule.
+OWN-WORLD: Live GCFC tokens. Sticky off-white bar with an underlined tab row in brand green, white surface dock for the download, lime only on the primary download action and search matches.
+STORY: A member arrives with one question, picks the tab, finds the article by index or keyword, leaves.
+FIRST VIEWPORT: Tab bar on top, compact welcome line left, download dock right, and the rules index with its search field already visible below.
+FORM: Tabbed lookup (brief-pinned starting point "빠른 탐색형"; no seed roll).
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<div id="page">
+  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+  <header class="bar">
+    <a href="#rules" aria-label="경충FC 웰컴 페이지" data-logo></a>
+    <div class="tabs-row">
+      <div class="tabs" role="tablist" aria-label="안내 항목">
+        <button type="button" role="tab" id="tab-rules" aria-controls="panel-rules" data-tab="rules">회칙</button>
+        <button type="button" role="tab" id="tab-staff" aria-controls="panel-staff" data-tab="staff">운영진</button>
+        <button type="button" role="tab" id="tab-download" aria-controls="panel-download" data-tab="download">설치와 계정</button>
+      </div>
+    </div>
+    <a class="text-link" data-web>웹으로 이용하기</a>
+  </header>
+
+  <main id="main">
+    <section class="intro" aria-labelledby="intro-title">
+      <div>
+        <h1 id="intro-title">경충FC에 오신 것을 환영합니다</h1>
+        <p class="intro-lead">회칙과 운영진을 확인하고 앱으로 함께 시작하세요.</p>
+      </div>
+      <div class="dock" id="dock"></div>
+    </section>
+
+    <section class="panel" id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0">
+      <div id="rules-body"></div>
+    </section>
+
+    <section class="panel" id="panel-staff" role="tabpanel" aria-labelledby="tab-staff" tabindex="0" hidden>
+      <div id="staff-body"></div>
+    </section>
+
+    <section class="panel" id="panel-download" role="tabpanel" aria-labelledby="tab-download" tabindex="0" hidden>
+      <div id="download-body"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span data-logo-dark></span>
+    <span>경충FC 웰컴 페이지 시안. 회칙과 운영진 정보는 예시입니다.</span>
+    <a href="#main">맨 위로</a>
+  </footer>
+
+  <div class="dockbar" id="dockbar"></div>
+
+  <dialog class="sheet" id="toc-sheet" aria-labelledby="sheet-title">
+    <header><h2 id="sheet-title">회칙 목차</h2><button type="button" class="sheet-close" data-close-sheet aria-label="목차 닫기"><i data-ic="x"></i></button></header>
+    <nav class="toc-list" id="sheet-toc" aria-label="회칙 목차"></nav>
+  </dialog>
+</div>
+
+<script src="../shared/icons.js"></script>
+<script src="../shared/welcome.js"></script>
+<script>
+(function () {
+  "use strict";
+  var W = window.W, esc = W.esc, icon = W.icon, $ = function (id) { return document.getElementById(id); };
+
+  W.init({ name: "시안 02 빠른 탐색형", key: "concept-02", controls: ["android", "ios", "rules", "staff", "page"] });
+
+  document.querySelector("[data-logo]").innerHTML = W.logo();
+  document.querySelector("[data-logo-dark]").innerHTML = W.logo("always-dark");
+  document.querySelector("[data-web]").href = W.webUrl;
+
+  var query = "";
+  var TABS = ["rules", "staff", "download"];
+  var active = "rules";
+
+  function pageBlock(kind) {
+    if (W.state.page === "loading") return '<div class="loading-stack" aria-busy="true"><span class="sr-only">' + kind + ' 불러오는 중</span><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div>';
+    if (W.state.page === "error") return '<div class="blank fail" role="alert"><b>' + kind + '을 불러오지 못했습니다</b>잠시 후 다시 시도해 주세요. 앱 다운로드는 그대로 이용할 수 있습니다.<br><button type="button" class="cta small" data-retry>' + icon("refresh-cw") + "다시 시도</button></div>";
+    return null;
+  }
+
+  function downloadButton(cls) {
+    var a = W.android();
+    if (a.status === "hidden") return "";
+    return '<a class="cta ' + (cls || "") + '" href="' + a.url + '">' + icon("download") + esc(W.copy.download) + "</a>";
+  }
+
+  function iosLine() {
+    var i = W.ios();
+    if (!i) return "";
+    return '<p class="dock-ios">' + icon("apple") + "<span><b>" + esc(i.title) + "</b> " + esc(i.note) + "</span>" +
+      (i.action ? '<a class="cta small" href="#download" data-ios-demo>' + esc(i.action) + "</a>" : "") + "</p>";
+  }
+
+  function renderDock() {
+    var a = W.android(), html = "";
+    if (a.status !== "hidden") {
+      html += downloadButton("secondary") +
+        (a.version ? '<dl class="dock-meta"><div><dt>버전</dt><dd>' + a.version + "</dd></div><div><dt>크기</dt><dd>" + a.size + '</dd></div><div><dt class="sr-only">확인일</dt><dd>' + a.checked + "</dd></div></dl>" : "") +
+        (a.status === "loading" ? '<p class="dock-msg" role="status">' + icon("loader-circle") + esc(a.message) + "</p>" : "") +
+        (a.status === "fail" ? '<p class="dock-msg fail" role="status">' + icon("triangle-alert") + "<span>" + esc(a.message) + ' <button type="button" class="text-link" data-android-retry>다시 확인</button></span></p>' : "");
+    } else {
+      html += '<a class="cta" href="' + W.webUrl + '">' + icon("globe") + esc(W.copy.web) + "</a>";
+    }
+    html += iosLine();
+    $("dock").innerHTML = html;
+
+    $("dockbar").innerHTML = '<button type="button" class="cta ghost" data-open-sheet>' + icon("list") + "목차</button>" + (downloadButton("secondary") || '<a class="cta" href="' + W.webUrl + '">' + esc(W.copy.web) + "</a>");
+    syncBar();
+  }
+
+  function tocHtml(r, match) {
+    return r.chapters.map(function (c) {
+      var arts = c.articles.filter(match);
+      if (!arts.length) return "";
+      return "<h3>" + esc(c.no + " " + c.title) + "</h3><ul>" + arts.map(function (a) {
+        return '<li><a href="#' + a.id + '"><span>' + a.label + "</span>" + esc(a.title) + "</a></li>";
+      }).join("") + "</ul>";
+    }).join("");
+  }
+
+  function hl(text) {
+    var safe = esc(text);
+    if (!query) return safe;
+    var q = esc(query).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return safe.replace(new RegExp(q, "gi"), function (m) { return "<mark>" + m + "</mark>"; });
+  }
+
+  function renderRules() {
+    var block = pageBlock("회칙"), r = W.rules(), el = $("rules-body");
+    if (block) { el.innerHTML = '<div class="panel-head"><h2>회칙</h2></div>' + block; return; }
+    if (!r) { el.innerHTML = '<div class="panel-head"><h2>회칙</h2></div><div class="blank"><b>회칙을 준비하고 있습니다</b>등록되면 이 자리에서 읽을 수 있습니다. 급한 문의는 운영진에게 해 주세요.</div>'; return; }
+    el.innerHTML =
+      '<div class="panel-head"><h2>' + esc(r.title) + '</h2><p class="example-tag">' + icon("info") + esc(W.copy.rulesExample) + "</p></div>" +
+      '<div class="reader-grid"><aside class="toc" aria-label="회칙 찾기">' +
+      '<div class="find"><label for="find-input">조항 검색</label><div class="find-box">' + icon("search") + '<input id="find-input" type="search" autocomplete="off" placeholder="예: 회비, 참석" value="' + esc(query) + '"><button type="button" class="find-clear" data-clear aria-label="검색어 지우기" hidden>' + icon("x") + '</button></div><p class="find-count" id="find-count" aria-live="polite"></p></div>' +
+      '<nav class="toc-list" id="toc" aria-label="회칙 목차"></nav></aside>' +
+      '<div class="reader"><dl class="reader-meta"><div><dt>시행일</dt><dd>' + esc(r.effective.replace(" 시행", "")) + "</dd></div>" +
+      (r.revised ? "<div><dt>개정일</dt><dd>" + esc(r.revised.replace(" 개정", "")) + "</dd></div>" : "") +
+      "<div><dt>분량</dt><dd>" + r.chapters.length + "장 " + r.articleCount + '조</dd></div></dl><div id="reader-text"></div></div></div>';
+    renderReader();
+  }
+
+  function renderReader() {
+    var r = W.rules();
+    if (!r || !$("reader-text")) return;
+    var q = query.trim().toLowerCase();
+    var match = function (a) {
+      if (!q) return true;
+      return (a.label + " " + a.title + " " + a.paras.join(" ") + " " + a.list.join(" ")).toLowerCase().indexOf(q) !== -1;
+    };
+    var found = 0;
+    var body = r.chapters.map(function (c) {
+      var arts = c.articles.filter(match);
+      if (!arts.length) return "";
+      found += arts.length;
+      return '<h3 id="' + c.id + '">' + esc(c.no + " " + c.title) + "</h3>" + arts.map(function (a) {
+        return '<article class="article" id="' + a.id + '"><h4><span>' + a.label + "</span>" + hl(a.title) + "</h4>" +
+          a.paras.map(function (p) { return "<p>" + hl(p) + "</p>"; }).join("") +
+          (a.list.length ? "<ol>" + a.list.map(function (l) { return "<li>" + hl(l) + "</li>"; }).join("") + "</ol>" : "") + "</article>";
+      }).join("");
+    }).join("");
+    $("reader-text").innerHTML = body || '<div class="blank"><b>\'' + esc(query) + '\'에 맞는 조항이 없습니다</b>다른 낱말로 찾거나 검색어를 지우면 전체 회칙이 보입니다.<br><button type="button" class="cta small" data-clear>검색어 지우기</button></div>';
+    var toc = tocHtml(r, match);
+    $("toc").innerHTML = toc;
+    $("sheet-toc").innerHTML = toc;
+    $("find-count").textContent = q ? "조항 " + found + "개 찾음" : "";
+    document.querySelector(".find-clear").hidden = !q;
+    watchArticles();
+  }
+
+  function renderStaff() {
+    var block = pageBlock("운영진 소개"), s = W.staff(), el = $("staff-body");
+    var head = '<div class="panel-head"><h2>운영진</h2>' + (s.length && !block ? '<p class="example-tag">' + icon("info") + esc(W.copy.staffExample) + "</p>" : "") + "</div>";
+    if (block) { el.innerHTML = head + block; return; }
+    if (!s.length) { el.innerHTML = head + '<div class="blank"><b>운영진 소개를 준비하고 있습니다</b>소개가 등록되면 이 자리에 표시됩니다.</div>'; return; }
+    el.innerHTML = head + '<ul class="staff-grid">' + s.map(function (m) {
+      return '<li><span class="status neutral">' + esc(m.role) + "</span><b>" + esc(m.name) + "</b>" + (m.bio ? "<p>" + esc(m.bio) + "</p>" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+
+  function renderDownload() {
+    var a = W.android(), i = W.ios();
+    var left = a.status !== "hidden"
+      ? "<div><h3>Android 설치 방법</h3><ol>" + W.copy.installSteps.map(function (s) { return "<li><span><b>" + esc(s[0]) + "</b>" + esc(s[1]) + "</span></li>"; }).join("") + "</ol>" + downloadButton("secondary") +
+        (i ? '<p class="setup-note"><b>' + esc(i.title) + "</b> " + esc(i.note) + "</p>" : "") + "</div>"
+      : "<div><h3>앱 설치</h3><p class=\"setup-note\">" + (i ? "<b>" + esc(i.title) + "</b> " + esc(i.note) : "앱 설치 안내를 준비하고 있습니다. 지금은 웹으로 이용해 주세요.") + "</p></div>";
+    $("download-body").innerHTML = '<div class="panel-head"><h2>설치와 계정</h2></div><div class="setup">' + left +
+      "<div><h3>계정으로 시작하기</h3><ol>" + W.copy.accountSteps.map(function (s) { return "<li><span><b>" + esc(s[0]) + "</b>" + esc(s[1]) + "</span></li>"; }).join("") +
+      '</ol><p class="setup-note">앱과 웹은 같은 계정을 씁니다. 공개 회원가입은 없습니다.</p><a class="cta ghost" href="' + W.webUrl + '">' + esc(W.copy.web) + "</a></div></div>";
+  }
+
+  function render() { renderDock(); renderRules(); renderStaff(); renderDownload(); }
+
+  /* Tabs: arrow keys move, the hash keeps each tab shareable */
+  function select(name, focus) {
+    active = name;
+    TABS.forEach(function (t) {
+      var on = t === name, tab = $("tab-" + t);
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+      $("panel-" + t).hidden = !on;
+      if (on && focus) tab.focus();
+    });
+    syncBar();
+  }
+
+  document.querySelector(".tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-tab]");
+    if (!b) return;
+    select(b.getAttribute("data-tab"));
+    history.replaceState(null, "", location.pathname + location.search + "#" + b.getAttribute("data-tab"));
+    var top = $("panel-" + active).getBoundingClientRect().top;
+    if (top < 0) $("panel-" + active).scrollIntoView();
+  });
+
+  document.querySelector(".tabs").addEventListener("keydown", function (e) {
+    var i = TABS.indexOf(active);
+    if (e.key === "ArrowRight") select(TABS[(i + 1) % 3], true);
+    else if (e.key === "ArrowLeft") select(TABS[(i + 2) % 3], true);
+    else if (e.key === "Home") select(TABS[0], true);
+    else if (e.key === "End") select(TABS[2], true);
+  });
+
+  function fromHash() {
+    var h = location.hash.slice(1);
+    if (TABS.indexOf(h) !== -1) { select(h); return; }
+    if (/^(a|ch)\d+$/.test(h)) {
+      select("rules");
+      var t = document.getElementById(h);
+      if (t) t.scrollIntoView();
+    }
+  }
+
+  /* Index highlight follows the article at the reading line. */
+  var spy;
+  function watchArticles() {
+    if (spy) spy.disconnect();
+    spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        document.querySelectorAll('.toc-list a[aria-current]').forEach(function (a) { a.removeAttribute("aria-current"); });
+        document.querySelectorAll('.toc-list a[href="#' + en.target.id + '"]').forEach(function (a) { a.setAttribute("aria-current", "location"); });
+      });
+    }, { rootMargin: "-25% 0px -70% 0px" });
+    document.querySelectorAll("#reader-text .article").forEach(function (a) { spy.observe(a); });
+  }
+
+  /* Phone bar appears once the dock's own button has scrolled away. */
+  var dockSeen = true;
+  function syncBar() {
+    var bar = $("dockbar");
+    bar.classList.toggle("show", !dockSeen);
+    var toc = bar.querySelector("[data-open-sheet]");
+    if (toc) toc.hidden = !(active === "rules" && W.rules() && W.state.page === "ok");
+  }
+  new IntersectionObserver(function (entries) {
+    dockSeen = entries[0].isIntersecting;
+    syncBar();
+  }).observe($("dock"));
+
+  document.addEventListener("input", function (e) {
+    if (e.target.id !== "find-input") return;
+    query = e.target.value;
+    renderReader();
+  });
+
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-retry]")) W.set("page", "ok");
+    if (e.target.closest("[data-android-retry]")) W.set("android", "ok");
+    if (e.target.closest("[data-ios-demo]")) e.preventDefault();
+    if (e.target.closest("[data-clear]")) { query = ""; renderRules(); $("find-input").focus(); }
+    if (e.target.closest("[data-open-sheet]")) $("toc-sheet").showModal();
+    if (e.target.closest("[data-close-sheet]") || e.target.closest("#sheet-toc a")) $("toc-sheet").close();
+    if (e.target === $("toc-sheet")) $("toc-sheet").close();
+  });
+
+  render();
+  select("rules");
+  fromHash();
+  window.addEventListener("hashchange", fromHash);
+  W.on(function () { render(); select(active); });
+})();
+</script>
+</body>
+</html>

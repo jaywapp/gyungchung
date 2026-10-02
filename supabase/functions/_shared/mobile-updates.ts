@@ -19,6 +19,7 @@ export type MobileMetadata = {
   sizeBytes: number;
   notes: string[];
   publishedAt: string;
+  downloadUrl: string;
 };
 type Asset = { id: number; name: string; state: string; size: number; digest?: unknown; browser_download_url?: unknown };
 type Release = { draft: boolean; prerelease: boolean; published_at: string; assets: Asset[] };
@@ -191,7 +192,7 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
               if (!object(manifest) || manifest.schemaVersion !== 1 || manifest.platform !== "android" || manifest.applicationId !== APPLICATION_ID || manifest.versionName !== match[1] || manifest.versionCode !== versionCode || manifest.assetName !== apk.name || manifest.sha256 !== checksum || manifest.sizeBytes !== apk.size) throw new MobileError(502, "invalid_release");
               notes = safeNotes(manifest.notes);
             }
-            validated.push({ assetUrl: url, metadata: { schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: match[1], versionCode, assetName: apk.name, sha256: checksum, sizeBytes: apk.size, notes, publishedAt: new Date(release.published_at).toISOString() } });
+            validated.push({ assetUrl: url, metadata: { schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: match[1], versionCode, assetName: apk.name, sha256: checksum, sizeBytes: apk.size, notes, publishedAt: new Date(release.published_at).toISOString(), downloadUrl: url } });
           }
           result.push(...validated);
         } catch (error) {

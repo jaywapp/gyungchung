@@ -52,9 +52,10 @@ test("public metadata sanitizes release bodies and selects greatest code despite
   assert.equal(response.status, 200);
   const metadata = await response.json();
   assert.equal(metadata.versionCode, 100018);
-  assert.deepEqual(Object.keys(metadata).sort(), ["schemaVersion", "platform", "applicationId", "versionName", "versionCode", "assetName", "sha256", "sizeBytes", "notes", "publishedAt"].sort());
+  assert.deepEqual(Object.keys(metadata).sort(), ["schemaVersion", "platform", "applicationId", "versionName", "versionCode", "assetName", "sha256", "sizeBytes", "notes", "publishedAt", "downloadUrl"].sort());
   assert.equal(metadata.applicationId, APPLICATION_ID);
-  assert.doesNotMatch(JSON.stringify(metadata), /private|server-only|github|commit/);
+  assert.equal(metadata.downloadUrl, publicUrl(metadata.versionCode, metadata.assetName));
+  assert.doesNotMatch(JSON.stringify(metadata), /private|server-only|gyungchung-mobile|commit|pull/);
 });
 
 test("partial upload is skipped and absent digest uses checksum for legacy release", async () => {

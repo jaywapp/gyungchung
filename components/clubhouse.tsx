@@ -37,7 +37,7 @@ const ConfirmDialog = dynamic(() => import("@/components/confirm-dialog"));
 const EventDetail = dynamic(() => import("@/components/event-detail"), { loading: () => <SectionSkeleton /> });
 
 type RawGuestPlayer = Omit<GuestPlayer, "appearance_count">;
-const systemAdminPermissions = ["roles.manage", "officers.manage", "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage", "elections.manage", "polls.manage", "surveys.manage"];
+const systemAdminPermissions = ["roles.manage", "officers.manage", "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage", "elections.manage", "polls.manage", "surveys.manage", "welcome.manage"];
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
 
 /** Results the auth callback and the OAuth redirect hand back on the URL. */
@@ -266,7 +266,11 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const eventLoadError = hasLoadError("events");
   const noticeLoadError = hasLoadError("notices");
 
-  const navigate = useCallback((next: Tab) => { setSheetOpen(false); router.push(tabPaths[next]); }, [router]);
+  const navigate = useCallback((next: Tab) => {
+    const proceed = () => { setSheetOpen(false); router.push(tabPaths[next]); };
+    const request = new CustomEvent("welcome-before-navigation", { cancelable: true, detail: { navigate: proceed } });
+    if (window.dispatchEvent(request)) proceed();
+  }, [router]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const accountSummary = { loading: authLoading, state: accountState, profile: me };
   const confirmDelete = async () => {
@@ -424,7 +428,7 @@ function LoginModal({ busy, onClose, onPasswordAuth }: { busy: boolean; onClose:
       <span className="eyebrow">MEMBER ACCESS</span>
       <h2>로그인</h2>
       <p>등록된 전화번호와 운영진에게 받은 비밀번호로 로그인하세요.</p>
-      <p className="form-description">처음 이용하시나요? 경충FC는 운영진이 회원 프로필과 로그인 계정을 직접 등록합니다. 운영진에게 이름과 전화번호를 알려 계정 등록을 요청해 주세요.</p>
+      <p className="form-description">처음 이용하시나요? <Link href="/welcome" className="text-link">신규 회원 안내 보기</Link><br />경충FC는 운영진이 회원 프로필과 로그인 계정을 직접 등록합니다. 운영진에게 이름과 전화번호를 알려 계정 등록을 요청해 주세요.</p>
       <form className="password-auth-form" onSubmit={submit}>
         <label>전화번호<input name="phone" type="tel" required inputMode="tel" autoComplete="username" placeholder="010-1234-5678" value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={errorMessage ? true : undefined} /></label>
         <label>비밀번호<input name="password" type="password" required minLength={4} autoComplete="current-password" placeholder="비밀번호 입력" /></label>
