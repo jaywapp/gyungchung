@@ -11,6 +11,8 @@ import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, Fe
 import type { EditorConfig } from "@/components/admin-console";
 import WinnerEditor from "@/components/winner-editor";
 import ThemeSwitch from "@/components/theme-switch";
+import WebPushSettings from "@/components/web-push-settings";
+import { createWebPushController, prepareWebPushWorker, WEB_PUSH_STORAGE_KEY, readWebPushSource, clearWebPushSource, type WebPushController } from "@/lib/web-push";
 import MemberHome from "@/components/member-home";
 import HeroMotion from "@/components/hero-motion";
 import MemberDirectory from "@/components/member-directory";
@@ -50,6 +52,7 @@ const authResults: Record<string, { message: string; kind: ToastKind }> = {
 
 export default function Clubhouse({ children }: { children?: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), []);
+  const webPush = useMemo(() => supabase ? createWebPushController(supabase) : null, [supabase]);
   const router = useRouter();
   const pathname = usePathname();
   /** `/events/20260816` keeps the 일정 tab lit while the leaf renders a single day. */
@@ -100,6 +103,19 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const publicRequestIdRef = useRef(0);
   const rsvpPendingEventIdsRef = useRef(new Set<string>());
   const toastTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => { void prepareWebPushWorker().catch(() => undefined); }, []);
+  useEffect(() => {
+    if (!webPush || authLoading || memberLoading) return;
+    const eligible = user && me?.auth_user_id === user.id && me.status === "active" && !me.must_change_password;
+    void webPush.setOwner(eligible ? user.id : null);
+  }, [webPush, user, me, authLoading, memberLoading]);
+  useEffect(() => {
+    if (!webPush) return;
+    const refresh = () => { if (document.visibilityState === "visible") void webPush.reload().catch(() => undefined); };
+    const storage = (event: StorageEvent) => { if (event.key === WEB_PUSH_STORAGE_KEY) refresh(); };
+    window.addEventListener("online", refresh); window.addEventListener("storage", storage); document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("online", refresh); window.removeEventListener("storage", storage); document.removeEventListener("visibilitychange", refresh); };
+  }, [webPush]);
 
   const dismissToast = useCallback(() => { window.clearTimeout(toastTimerRef.current); setToast(null); }, []);
   const showToast = useCallback((message: string, kind: ToastKind = "success") => {
@@ -187,6 +203,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       if (!active) return;
       const nextUser = session?.user ?? null;
       if (userRef.current?.id !== nextUser?.id) {
+        if (userRef.current) void webPush?.beforeLogout().catch(() => undefined);
         memberRequestIdRef.current += 1;
         publicRequestIdRef.current += 1;
         setPublicLoading(true);
@@ -209,7 +226,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       window.clearTimeout(pendingTimer);
       data.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, webPush]);
 
   const sessionUserId = user?.id;
   useEffect(() => {
@@ -232,6 +249,23 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [showToast]);
 
   useEffect(() => () => window.clearTimeout(toastTimerRef.current), []);
+  useEffect(() => {
+    if (authLoading || memberLoading || publicLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("gc_source")) return;
+    if (!user) { setLoginOpen(true); return; }
+    const source = readWebPushSource(user.id, window.location.search);
+    if (!source || me?.status !== "active" || me.must_change_password) {
+      clearWebPushSource(); showToast("현재 계정에서 이 알림을 열 수 없습니다.", "warning"); return;
+    }
+    if (tab !== "events" && tab !== "notices") return;
+    const item = tab === "events" ? events.find((event) => event.id === source) : notices.find((notice) => notice.id === source);
+    if (loadErrors.events || loadErrors.notices) return;
+    clearWebPushSource();
+    if (!item) { showToast("알림의 원본을 찾을 수 없습니다. 목록에서 최신 내용을 확인해 주세요.", "warning"); return; }
+    if (tab === "events" && "starts_at" in item) router.replace(eventDatePath(item.starts_at));
+    else requestAnimationFrame(() => { const target = document.getElementById(`notice-${source}`); target?.scrollIntoView({ block: "center" }); target?.focus({ preventScroll: true }); });
+  }, [authLoading, memberLoading, publicLoading, user, me, events, notices, loadErrors, tab, router, showToast]);
   const requiresPasswordChange = !memberLoading && Boolean(me?.must_change_password) && pathname !== "/auth/update-password";
   useEffect(() => {
     if (requiresPasswordChange) router.replace("/auth/update-password");
@@ -321,6 +355,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (!supabase || busy) return;
     setBusy(true);
     try {
+      await webPush?.beforeLogout();
       const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) return showToast("로그아웃을 완료하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.", "error");
       setAccountOpen(false);
@@ -400,7 +435,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <ClubTabBar tab={tab} pathname={pathname} sheetOpen={sheetOpen} onOpenSheet={() => setSheetOpen(true)} />
     <MoreSheet open={sheetOpen} tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onClose={closeSheet} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
-    {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
+    {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} webPush={webPush} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
     {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload("member"); }} onError={(message) => showToast(message, "error")} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
@@ -441,9 +476,9 @@ function LoginModal({ busy, onClose, onPasswordAuth }: { busy: boolean; onClose:
   </div>;
 }
 
-function AccountModal({ profile, busy, onClose, onSignOut }: { profile: Profile; busy: boolean; onClose: () => void; onSignOut: () => Promise<void> }) {
+function AccountModal({ profile, webPush, busy, onClose, onSignOut }: { profile: Profile; webPush: WebPushController | null; busy: boolean; onClose: () => void; onSignOut: () => Promise<void> }) {
   const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">등록된 전화번호와 비밀번호로 로그인합니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요.</p><ThemeSwitch /><button type="button" className="cta ghost" disabled={busy} onClick={() => void onSignOut()}><LogOut size={17} /> {busy ? "로그아웃 중…" : "로그아웃"}</button></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">등록된 전화번호와 비밀번호로 로그인합니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요.</p><ThemeSwitch />{webPush && <WebPushSettings controller={webPush} eligible={profile.status === "active" && !profile.must_change_password} />}<button type="button" className="cta ghost" disabled={busy} onClick={() => void onSignOut()}><LogOut size={17} /> {busy ? "로그아웃 중…" : "로그아웃"}</button></div></div>;
 }
 
 function UnlinkedAccountModal({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => Promise<void> }) {
@@ -581,7 +616,7 @@ function Notices({ notices, loading, loadError, canManage, onCreate, onEdit, onD
   const intro = <PageIntro kicker="NOTICE BOARD" title="공지사항" description="놓치면 안 되는 클럽 소식을 전합니다." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="공지를 불러오는 중" /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
-  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 공지 등록</button></div>}{notices.length === 0 ? <Empty icon={<Megaphone />} title="등록된 공지가 없습니다" description="운영진이 공지를 올리면 이곳에 표시됩니다." /> : <div className="notice-list">{notices.map((notice, index) => <article key={notice.id}><span className="notice-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">고정</small>}{isRecent(notice.created_at) && <small className="badge-new">새 공지</small>}<h2>{notice.title}</h2><p>{notice.body}</p><time dateTime={notice.created_at}>{formatDate(notice.created_at)}</time></div>{canManage && <div className="resource-actions"><button aria-label={`${notice.title} 수정`} onClick={() => onEdit(notice)}><Pencil size={16} /></button><button aria-label={`${notice.title} 삭제`} onClick={() => onDelete(notice.id, notice.title)}><Trash2 size={16} /></button></div>}</article>)}</div>}</section>;
+  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 공지 등록</button></div>}{notices.length === 0 ? <Empty icon={<Megaphone />} title="등록된 공지가 없습니다" description="운영진이 공지를 올리면 이곳에 표시됩니다." /> : <div className="notice-list">{notices.map((notice, index) => <article key={notice.id} id={`notice-${notice.id}`} tabIndex={-1}><span className="notice-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><div>{notice.is_pinned && <small className="pin">고정</small>}{isRecent(notice.created_at) && <small className="badge-new">새 공지</small>}<h2>{notice.title}</h2><p>{notice.body}</p><time dateTime={notice.created_at}>{formatDate(notice.created_at)}</time></div>{canManage && <div className="resource-actions"><button aria-label={`${notice.title} 수정`} onClick={() => onEdit(notice)}><Pencil size={16} /></button><button aria-label={`${notice.title} 삭제`} onClick={() => onDelete(notice.id, notice.title)}><Trash2 size={16} /></button></div>}</article>)}</div>}</section>;
 }
 
 /** The calendar owns day selection: each in-month day is one button, and the

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { FormError } from "@/components/section-states";
+import { disconnectWebPushBeforeLogout } from "@/lib/web-push";
 
 async function getPasswordChangeError(error: unknown) {
   if (error instanceof FunctionsHttpError) {
@@ -41,6 +42,7 @@ export default function UpdatePasswordPage() {
       if (error) {
         return setErrorMessage(await getPasswordChangeError(error));
       }
+      await disconnectWebPushBeforeLogout(supabase);
       await supabase.auth.signOut({ scope: "local" });
       window.location.replace("/?auth=password-updated");
     } catch {

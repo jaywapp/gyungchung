@@ -10,6 +10,7 @@ import { getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/ac
 import { AccountConnectionNotice, Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 import { buildGithubPublicationPreview } from "@/supabase/functions/_shared/feedback-publication";
 import { splitResponseLinks } from "@/lib/response-links";
+import { clearWebPushSource, readWebPushSource } from "@/lib/web-push";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 type FeedbackCardData = Pick<Feedback, "id" | "category" | "title" | "body" | "status" | "officer_response" | "created_at" | "github_issue_number" | "github_issue_url" | "github_issue_state">;
@@ -54,7 +55,7 @@ function FeedbackCard({ item, visibility, editable, publication, saving, onEdit,
   const detailId = useId();
   const [open, setOpen] = useState(false);
   return (
-    <article className={"feedback-card" + (open ? " open" : "")}>
+    <article id={`feedback-${item.id}`} tabIndex={-1} className={"feedback-card" + (open ? " open" : "")}>
       <div>
         <span className="feedback-statuses">
           <span className={"status " + item.status}>{statusLabels[item.status]}</span>
@@ -114,6 +115,17 @@ export default function FeedbackHub({ user, profile, feedback, feedbackFeed, sup
   const formLocked = loading || loadError || !user || profile?.status !== "active";
   const membershipRestriction = getMembershipRestriction(profile);
   const myFeedback = feedback.filter((item) => item.author_id === profile?.id);
+  useEffect(() => {
+    if (loading || loadError || !user || profile?.status !== "active" || profile.must_change_password) return;
+    const source = readWebPushSource(user.id, window.location.search);
+    if (!source) return;
+    const ownItems = feedback.filter((item) => item.author_id === profile.id);
+    const index = ownItems.findIndex((item) => item.id === source);
+    clearWebPushSource();
+    if (index < 0) { toast("알림의 의견을 찾을 수 없습니다. 내 제보 목록을 확인해 주세요.", "warning"); return; }
+    setHistoryTab("mine"); setVisibleCount(Math.max(PAGE_SIZE, index + 1));
+    requestAnimationFrame(() => { const target = document.getElementById(`feedback-${source}`); target?.scrollIntoView({ block: "center" }); target?.focus({ preventScroll: true }); });
+  }, [loading, loadError, user, profile, feedback, toast]);
   const linkedIssuesKey = feedback
     .filter((item) => item.github_issue_number)
     .map((item) => String(item.github_issue_number) + ":" + (item.github_issue_state ?? "unknown"))
