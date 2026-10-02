@@ -2207,6 +2207,9 @@ footer a {
   font-size: 12px;
 }
 
+.venue-history > label { display: block; margin-bottom: 10px; }
+.venue-history > label input { width: 100%; margin-top: 6px; }
+
 .venue-history > div {
   display: flex;
   flex-wrap: wrap;
@@ -2217,6 +2220,8 @@ footer a {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
   gap: 3px;
   min-height: var(--tap);
   padding: 9px 11px;
@@ -2228,6 +2233,9 @@ footer a {
 
 .venue-history button span { font-weight: 900; }
 .venue-history button small { color: var(--muted); }
+.venue-history button span,
+.venue-history button small { max-width: 100%; overflow-wrap: anywhere; text-align: start; }
+.venue-history .venue-history-more { margin-top: 10px; }
 
 /* Tables */
 .table-wrap {

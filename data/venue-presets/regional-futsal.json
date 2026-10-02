@@ -1,0 +1,1271 @@
+[
+  {
+    "preset_key": "public-gwangju-opo-youth",
+    "name": "경기 광주 오포 유소년 축구클럽",
+    "address": "경기도 광주시 세피내길 54-9",
+    "city": "광주시",
+    "note": null,
+    "source_urls": [
+      "https://www.plabfootball.com/match/657502/"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1432",
+    "name": "경기광주 ACT 풋살파크 · 야외구장",
+    "address": "경기도 광주시 매산동 204-27",
+    "city": "광주시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=923"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3510954,
+    "longitude": 127.25401494
+  },
+  {
+    "preset_key": "iamground-1835",
+    "name": "경기광주 AOC · 실내풋살장",
+    "address": "경기도 광주시 무들로8번길 26-7 2층",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1182"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3838599,
+    "longitude": 127.2928079
+  },
+  {
+    "preset_key": "iamground-2188",
+    "name": "경기광주 DP 풋살아레나 · 야외풋살장",
+    "address": "경기도 광주시 도평길110번길 19-10",
+    "city": "광주시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1464"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3959677,
+    "longitude": 127.3028564
+  },
+  {
+    "preset_key": "iamground-992",
+    "name": "경기광주 다이나믹 풋살클럽 실내풋살장 · 1층",
+    "address": "경기도 광주시 태전동 427-4 1층",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=602"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.396773,
+    "longitude": 127.21643343
+  },
+  {
+    "preset_key": "iamground-982",
+    "name": "경기광주 다이나믹 풋살클럽 실내풋살장 · 2층",
+    "address": "경기도 광주시 태전동 427-4 2층",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=602"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.396773,
+    "longitude": 127.21643343
+  },
+  {
+    "preset_key": "iamground-1834",
+    "name": "경기광주 드림풋볼 · 실내풋살장",
+    "address": "경기도 광주시 절골길11번길 3",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1181"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4008835,
+    "longitude": 127.2346803
+  },
+  {
+    "preset_key": "iamground-2027",
+    "name": "경기광주 디에이세븐 · 실내풋살장",
+    "address": "경기도 광주시 산이길 60",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1323"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3603674,
+    "longitude": 127.3088736
+  },
+  {
+    "preset_key": "iamground-1205",
+    "name": "경기광주 블루윙즈 · 야외풋살장",
+    "address": "경기도 광주시 마루들길35번길 16",
+    "city": "광주시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=772"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3882533,
+    "longitude": 127.2526204
+  },
+  {
+    "preset_key": "iamground-1568",
+    "name": "경기광주 성남FC광주점 · 실내풋살장",
+    "address": "경기도 광주시 경충대로1482번길 5",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1007"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4021523,
+    "longitude": 127.2717307
+  },
+  {
+    "preset_key": "iamground-1220",
+    "name": "경기광주 세븐축구클럽 · 실내풋살장",
+    "address": "경기도 광주시 오포로171번길 17-19",
+    "city": "광주시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=785",
+      "https://www.plabfootball.com/match/904280/"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3470613,
+    "longitude": 127.18031433,
+    "match_aliases": [
+      {
+        "name": "세븐풋살장",
+        "address": "오포로171번길 17-19"
+      }
+    ]
+  },
+  {
+    "preset_key": "public-gwangju-gyeongan",
+    "name": "경안 스포츠타운 다목적구장",
+    "address": "경기도 광주시 파발로 176",
+    "city": "광주시",
+    "note": null,
+    "source_urls": [
+      "https://www.gjcity.go.kr/depart/gym/view.do?idx=10&mId=0701010000"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-gwangju-jangji",
+    "name": "장지 풋살장",
+    "address": "경기도 광주시 장지동 131-58",
+    "city": "광주시",
+    "note": null,
+    "source_urls": [
+      "https://www.gjcity.go.kr/depart/gym/view.do?idx=3&mId=0701010000"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-gwangju-jungdae",
+    "name": "중대 풋살장",
+    "address": "경기도 광주시 중대동 321-2",
+    "city": "광주시",
+    "note": null,
+    "source_urls": [
+      "https://www.gjcity.go.kr/depart/gym/list.do?mId=0701010000"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-bosc",
+    "name": "BOSC옥상풋살장",
+    "address": "경기도 성남시 분당구 수내동 83-1 동한프라자 4층 옥상",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.plabfootball.com/stadium/2626/info/"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-daejang",
+    "name": "대장저류지 풋살장",
+    "address": "경기도 성남시 분당구 대장동 666",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://snvision.seongnam.go.kr/22299"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-moran-park",
+    "name": "모란공원 풋살장",
+    "address": "경기도 성남시 중원구 성남동 4861",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.seongnam.go.kr/apply/sports/step1?facilityId=S0016&instiCode=PARK_19"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-moran",
+    "name": "성남 모란 풋살장",
+    "address": "경기도 성남시 중원구 성남동 3182",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.plabfootball.com/stadium/136/info/"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-king-junior",
+    "name": "성남 분당 킹주니어 스포츠 클럽 1호점",
+    "address": "경기도 성남시 수정구 사송로 77번길 31",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.plabfootball.com/match/896340"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1797",
+    "name": "성남 스토피아 그린호크 · 스토밀라 풋살파크 실내",
+    "address": "경기도 성남시 수정구 동판교로 308",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=642"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4102278,
+    "longitude": 127.1155039
+  },
+  {
+    "preset_key": "iamground-1036",
+    "name": "성남 스토피아 그린호크 · 아레나 야외",
+    "address": "경기도 성남시 수정구 사송동 327-2",
+    "city": "성남시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=642"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4102699,
+    "longitude": 127.1158977
+  },
+  {
+    "preset_key": "iamground-1856",
+    "name": "성남 스토피아 아카데미 위례점 · 실내풋살장",
+    "address": "경기도 성남시 수정구 위례광장로 310 우성트램타워 A동 11층",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1199"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4727407,
+    "longitude": 127.1426931
+  },
+  {
+    "preset_key": "iamground-1201",
+    "name": "성남 챌린져 풋볼클럽 · 실내풋살장",
+    "address": "경기도 성남시 중원구 여수동 404 3층",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=770"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4189873,
+    "longitude": 127.13124544
+  },
+  {
+    "preset_key": "public-seongnam-dasan",
+    "name": "성남 판교 다산 풋살장",
+    "address": "경기도 성남시 분당구 대왕판교로644번길 49 디티씨타워 옥상",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://dasannetworks.com/sub/sub01_02.php"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-sports-complex",
+    "name": "성남종합운동장 풋살구장",
+    "address": "경기도 성남시 중원구 제일로 60",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://spo.isdc.co.kr/sns_centerFacGuide.do"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-cityhall",
+    "name": "시청공원 풋살장",
+    "address": "경기도 성남시 중원구 여수동 372",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.seongnam.go.kr/apply/sports/step1?facilityId=S0017&instiCode=PARK_20"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1132",
+    "name": "위례 킥킥(Kick Kick) · 실내풋살장",
+    "address": "경기도 성남시 수정구 위례광장로 300 창곡동 509번지 위례중앙타워 5층 506호",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=715"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4734319,
+    "longitude": 127.1424534
+  },
+  {
+    "preset_key": "public-seongnam-wirye",
+    "name": "위례공원 풋살장",
+    "address": "경기도 성남시 수정구 창곡동 578",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.seongnam.go.kr/apply/sports/step1?facilityId=S0018&instiCode=PARK_21"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1933",
+    "name": "위례시티 실내풋살장 · A구장",
+    "address": "경기도 성남시 수정구 위례동로 135-6 이너매스 위례 10층",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1255"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4730997,
+    "longitude": 127.1497093
+  },
+  {
+    "preset_key": "iamground-1934",
+    "name": "위례시티 실내풋살장 · B구장",
+    "address": "경기도 성남시 수정구 위례동로 135-6 이너매스 위례 10층",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1255"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4730997,
+    "longitude": 127.1497093
+  },
+  {
+    "preset_key": "iamground-1743",
+    "name": "판교 W 풋볼클럽 · 실내풋살장",
+    "address": "경기도 성남시 분당구 운중로 121 3층",
+    "city": "성남시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1121"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.392011,
+    "longitude": 127.0766641
+  },
+  {
+    "preset_key": "iamground-1905",
+    "name": "판교 도곡스포츠 · 야외풋살장",
+    "address": "경기도 성남시 수정구 대왕판교로972번길 3 옥상",
+    "city": "성남시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1232"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.4273177,
+    "longitude": 127.102929
+  },
+  {
+    "preset_key": "iamground-2274",
+    "name": "판교 리베라 풋볼아카데미 · 야외풋살장",
+    "address": "경기도 성남시 분당구 판교역로14번길 15 성음아트센터 4층",
+    "city": "성남시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1523"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3850391,
+    "longitude": 127.1110056
+  },
+  {
+    "preset_key": "iamground-1129",
+    "name": "판교축구클럽 · 야외풋살장",
+    "address": "경기도 성남시 분당구 두밀로 12",
+    "city": "성남시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=714"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3818355,
+    "longitude": 127.0749872
+  },
+  {
+    "preset_key": "public-seongnam-hwarang",
+    "name": "화랑공원 풋살장",
+    "address": "경기도 성남시 분당구 대왕판교로645번길 21",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.seongnam.go.kr/apply/sports/step1?facilityId=S0006&instiCode=PARK_10"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-hwangsaeul-a",
+    "name": "황새울공원 풋살장A",
+    "address": "경기도 성남시 분당구 황새울로 287",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.seongnam.go.kr/apply/sports/step1?facilityId=S0008&instiCode=PARK_13"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-seongnam-hwangsaeul-b",
+    "name": "황새울공원 풋살장B",
+    "address": "경기도 성남시 분당구 황새울로 287",
+    "city": "성남시",
+    "note": null,
+    "source_urls": [
+      "https://www.seongnam.go.kr/apply/sports/step1?facilityId=S0009&instiCode=PARK_13"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1103",
+    "name": "OK풋살클럽 용인점 · 실내풋살장",
+    "address": "경기도 용인시 기흥구 지삼로114번길 14",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=695"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2463166,
+    "longitude": 127.1291739
+  },
+  {
+    "preset_key": "iamground-1279",
+    "name": "고려대FC 풋살파크(구 용인 이우성 풋살파크) · 실내풋살장",
+    "address": "경기도 용인시 처인구 오산로 45-23",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=832"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3304166,
+    "longitude": 127.1610545
+  },
+  {
+    "preset_key": "public-yongin-gokhyeon-songi",
+    "name": "곡현·손기 하수처리시설 풋살장",
+    "address": "경기도 용인시 수지구 고기공원로 54",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://www.yongin.go.kr/home/water/pjIf/pjIfSwBs/pjIfSwBs02/pjIfSwBs02Tab2.jsp"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-gugal",
+    "name": "구갈레스피아 풋살장",
+    "address": "경기도 용인시 기흥구 중부대로 640",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://www.yongin.go.kr/user/bbs/BD_selectBbs.do?q_bbsCode=1076&q_bbscttSn=20240509140917976"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-nagok",
+    "name": "나곡체육공원 풋살장",
+    "address": "경기도 용인시 기흥구 보라동 661",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4294&pageIndex=16&pageUnit=8&resveId=14102"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-namsa",
+    "name": "남사배수지 풋살장",
+    "address": "경기도 용인시 처인구 남사읍 완장리 588-3",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=3&pageUnit=8&resveId=14409&searchFcltyFieldNm=ITEM_03"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-dongrim",
+    "name": "동림교하부 풋살장",
+    "address": "경기도 용인시 처인구 모현읍 동림리 154-25",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=16&pageUnit=8&resveId=14464"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-dunjeon",
+    "name": "둔전 풋살장",
+    "address": "경기도 용인시 처인구 포곡읍 둔전리 66-5",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=3&pageUnit=8&resveId=14203&searchFcltyFieldNm=ITEM_03"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-bojeong-depot",
+    "name": "보정차량기지하부 풋살장",
+    "address": "경기도 용인시 기흥구 보정동 195-6",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4270&pageIndex=1&pageUnit=8&resveId=12346&searchFcltyId=110"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-sambuk",
+    "name": "삼북체육공원 풋살장",
+    "address": "경기도 용인시 처인구 양지면 주북리 650",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=2&pageUnit=8&resveId=14412&searchFcltyFieldNm=ITEM_03"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1363",
+    "name": "수지 WON 실내풋살장 · 1구장",
+    "address": "경기도 용인시 수지구 동천로 120 준 프라자 3층",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=883"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3378159,
+    "longitude": 127.0899227
+  },
+  {
+    "preset_key": "iamground-1364",
+    "name": "수지 WON 실내풋살장 · 2구장",
+    "address": "경기도 용인시 수지구 동천로 120 준 프라자 3층",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=883"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3378159,
+    "longitude": 127.0899227
+  },
+  {
+    "preset_key": "iamground-1274",
+    "name": "수지 위너스 풋볼아카데미 · 실내풋살장 1층",
+    "address": "경기도 용인시 수지구 심곡로 12-8",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=828"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3051981,
+    "longitude": 127.07583101
+  },
+  {
+    "preset_key": "iamground-1275",
+    "name": "수지 위너스 풋볼아카데미 · 실내풋살장 2층",
+    "address": "경기도 용인시 수지구 심곡로 12-8",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=828"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3051981,
+    "longitude": 127.07583101
+  },
+  {
+    "preset_key": "iamground-1273",
+    "name": "수지 위너스 풋볼아카데미 · 야외풋살장",
+    "address": "경기도 용인시 수지구 심곡로 12-8",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=828"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3051981,
+    "longitude": 127.07583101
+  },
+  {
+    "preset_key": "iamground-1517",
+    "name": "수지광교 PPC · 야외풋살장",
+    "address": "경기도 용인시 수지구 성복동 628-26",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=977"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.320032,
+    "longitude": 127.04792503
+  },
+  {
+    "preset_key": "public-yongin-suji-park",
+    "name": "수지체육공원 풋살장",
+    "address": "경기도 용인시 수지구 풍덕천동 산12-3",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=11&pageUnit=8&resveId=11784"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-yeongdeok",
+    "name": "영덕레스피아 풋살장",
+    "address": "경기도 용인시 기흥구 흥덕1로 43",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=2&pageUnit=8&resveId=13400&searchFcltyFieldNm=ITEM_03"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-815",
+    "name": "오토허브 풋살장 · A면",
+    "address": "경기도 용인시 기흥구 중부대로 242-3",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=479"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.269139,
+    "longitude": 127.094583
+  },
+  {
+    "preset_key": "iamground-816",
+    "name": "오토허브 풋살장 · B면",
+    "address": "경기도 용인시 기흥구 중부대로 242-3",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=479"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.269139,
+    "longitude": 127.094583
+  },
+  {
+    "preset_key": "iamground-1553",
+    "name": "용인 JJ CLAN 드림파크 · 야외풋살장",
+    "address": "경기도 용인시 기흥구 언동로 87",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=997"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2863911,
+    "longitude": 127.13780718
+  },
+  {
+    "preset_key": "iamground-1443",
+    "name": "용인 PEC 챔피언스파크 · 야외풋살장",
+    "address": "경기도 용인시 기흥구 언동로30번길 15 구성적환장",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=931"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2883657,
+    "longitude": 127.13463674
+  },
+  {
+    "preset_key": "iamground-1642",
+    "name": "용인 YFC · 실내풋살장",
+    "address": "경기도 용인시 처인구 명지로 227",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1059"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2270883,
+    "longitude": 127.200514
+  },
+  {
+    "preset_key": "iamground-1467",
+    "name": "용인 경희풋볼클럽 · 실내풋살장",
+    "address": "경기도 용인시 처인구 곡현로480번길 12 2층",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=949"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3277331,
+    "longitude": 127.22282803
+  },
+  {
+    "preset_key": "iamground-1695",
+    "name": "용인 광주풋살장 · 실내구장",
+    "address": "경기도 용인시 처인구 백옥대로2101번길 63-32",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1086"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3171795,
+    "longitude": 127.23368166
+  },
+  {
+    "preset_key": "iamground-1694",
+    "name": "용인 광주풋살장 · 야외구장",
+    "address": "경기도 용인시 처인구 백옥대로2101번길 63-32",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1086"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3171795,
+    "longitude": 127.23368166
+  },
+  {
+    "preset_key": "public-yongin-nassau",
+    "name": "용인 기흥 낫소 풋살파크",
+    "address": "경기도 용인시 기흥구 신고매로 59 리빙파워센터 RF층",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://www.plabfootball.com/match/664831"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-giheung-stadium",
+    "name": "용인 기흥 풋살스타디움",
+    "address": "경기도 용인시 기흥구 강남서로 18",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://www.plabfootball.com/match/575737/"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1533",
+    "name": "용인 노리터 풋볼랩 · 실내풋살장",
+    "address": "경기도 용인시 기흥구 용구대로2145번길 19 2층",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=986"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.280847,
+    "longitude": 127.10453148
+  },
+  {
+    "preset_key": "iamground-1584",
+    "name": "용인 라온주니어 · 야외풋살장",
+    "address": "경기도 용인시 기흥구 지삼로17번길 7",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1020"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2554822,
+    "longitude": 127.1260709
+  },
+  {
+    "preset_key": "iamground-1969",
+    "name": "용인 리더스 · 실내풋살장",
+    "address": "경기도 용인시 기흥구 지삼로 51-1",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1279"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2525171,
+    "longitude": 127.1289149
+  },
+  {
+    "preset_key": "iamground-1968",
+    "name": "용인 리더스 · 야외풋살장",
+    "address": "경기도 용인시 기흥구 지삼로 51-1",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1279"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2525171,
+    "longitude": 127.1289149
+  },
+  {
+    "preset_key": "iamground-1102",
+    "name": "용인 메이저 풋볼스킬 1호점 · 실내구장",
+    "address": "경기도 용인시 수지구 죽전로 232 2층",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=694"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3304502,
+    "longitude": 127.1283098
+  },
+  {
+    "preset_key": "iamground-1306",
+    "name": "용인 메이저 풋볼스킬 2호점 · 실내구장",
+    "address": "경기도 용인시 처인구 포은대로 1100-36 티스톰",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=846"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3348519,
+    "longitude": 127.1664332
+  },
+  {
+    "preset_key": "iamground-1305",
+    "name": "용인 메이저 풋볼스킬 2호점 · 야외구장",
+    "address": "경기도 용인시 처인구 포은대로 1100-36 티스톰",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=846",
+      "https://www.plabfootball.com/match/816197/"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3348519,
+    "longitude": 127.1664332
+  },
+  {
+    "preset_key": "iamground-979",
+    "name": "용인 멘토링 축구아카데미 · 실내풋살장",
+    "address": "경기도 용인시 수지구 문인로13번길 2 광교프라자",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=599"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3329044,
+    "longitude": 127.1010149
+  },
+  {
+    "preset_key": "iamground-2183",
+    "name": "용인 미르주니어 · 야외풋살장",
+    "address": "경기도 용인시 수지구 용구대로 2701 죽전테이스티에비뉴",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1460"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3269143,
+    "longitude": 127.1082636
+  },
+  {
+    "preset_key": "iamground-1623",
+    "name": "용인 수 풋살장 · A구장",
+    "address": "경기도 용인시 기흥구 상하동 276-148",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1047"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2649741,
+    "longitude": 127.1454894
+  },
+  {
+    "preset_key": "iamground-1624",
+    "name": "용인 수 풋살장 · B구장",
+    "address": "경기도 용인시 기흥구 상하동 276-148",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1047"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2649741,
+    "longitude": 127.1454894
+  },
+  {
+    "preset_key": "iamground-1756",
+    "name": "용인 수지주니어FC · 실내풋살장",
+    "address": "경기도 용인시 수지구 동천동 676",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1129"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.348063,
+    "longitude": 127.05944465
+  },
+  {
+    "preset_key": "iamground-1755",
+    "name": "용인 수지주니어FC · 야외풋살장",
+    "address": "경기도 용인시 수지구 동천동 676",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1129"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.348063,
+    "longitude": 127.05944465
+  },
+  {
+    "preset_key": "iamground-2213",
+    "name": "용인 아마렐라 · 풋살파크",
+    "address": "경기도 용인시 처인구 포곡읍 양지촌로 4-38 에어론",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1480"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.305116,
+    "longitude": 127.2268818
+  },
+  {
+    "preset_key": "iamground-1302",
+    "name": "용인 유림풋살장 · 1구장",
+    "address": "경기도 용인시 처인구 한터로58번길 29 거룡산업",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=845"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2522167,
+    "longitude": 127.214863
+  },
+  {
+    "preset_key": "iamground-1303",
+    "name": "용인 유림풋살장 · 2구장",
+    "address": "경기도 용인시 처인구 한터로58번길 29 거룡산업",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=845"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2522167,
+    "longitude": 127.214863
+  },
+  {
+    "preset_key": "iamground-1304",
+    "name": "용인 유림풋살장 · 3구장",
+    "address": "경기도 용인시 처인구 한터로58번길 29 거룡산업",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=845"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2522167,
+    "longitude": 127.214863
+  },
+  {
+    "preset_key": "iamground-1482",
+    "name": "용인 유투고 · 실내풋살장",
+    "address": "경기도 용인시 처인구 오산로13번길 62",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=955"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.3331008,
+    "longitude": 127.1616171
+  },
+  {
+    "preset_key": "iamground-767",
+    "name": "용인 이창현 축구아카데미 · 실내풋살장",
+    "address": "경기도 용인시 수지구 신봉2로14번길 16 신봉프라자 지하1층",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=445"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.323589,
+    "longitude": 127.079162
+  },
+  {
+    "preset_key": "iamground-1950",
+    "name": "용인 카이로스 실내 풋살파크 · A구장",
+    "address": "경기도 용인시 처인구 백옥대로489번길 47",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1266"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.18323,
+    "longitude": 127.20100104
+  },
+  {
+    "preset_key": "iamground-1951",
+    "name": "용인 카이로스 실내 풋살파크 · B구장",
+    "address": "경기도 용인시 처인구 백옥대로489번길 47",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1266"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.18323,
+    "longitude": 127.20100104
+  },
+  {
+    "preset_key": "iamground-1397",
+    "name": "용인 캡틴FC 실내풋살장 · 블랙구장",
+    "address": "경기도 용인시 기흥구 서그내로53번길 23",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=905"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2412832,
+    "longitude": 127.0716561
+  },
+  {
+    "preset_key": "iamground-1398",
+    "name": "용인 캡틴FC 실내풋살장 · 옐로우구장",
+    "address": "경기도 용인시 기흥구 서그내로53번길 23",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=905"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2412832,
+    "longitude": 127.0716561
+  },
+  {
+    "preset_key": "iamground-1566",
+    "name": "용인 코오버풋볼파크 · 실내구장",
+    "address": "경기도 용인시 처인구 성산로121번길 21",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1006"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2486482,
+    "longitude": 127.18889455
+  },
+  {
+    "preset_key": "iamground-1565",
+    "name": "용인 코오버풋볼파크 · 야외구장",
+    "address": "경기도 용인시 처인구 성산로121번길 21",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1006"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2486482,
+    "longitude": 127.18889455
+  },
+  {
+    "preset_key": "iamground-1974",
+    "name": "용인 팀스타 · 야외풋살장",
+    "address": "경기도 용인시 기흥구 용구대로2335번길 39",
+    "city": "용인시",
+    "note": "야외",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1283"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2979749,
+    "longitude": 127.1066778
+  },
+  {
+    "preset_key": "iamground-2264",
+    "name": "용인 프렌즈 스포츠 · 실내풋살장",
+    "address": "경기도 용인시 기흥구 흥덕중앙로 41 흥덕웰스프라자 702호",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1515"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.27651,
+    "longitude": 127.0715468
+  },
+  {
+    "preset_key": "iamground-2251",
+    "name": "용인시티FC · 실내풋살장",
+    "address": "경기도 용인시 처인구 양지읍 한터로439번길 40-20",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=1504"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2636103,
+    "longitude": 127.2543863
+  },
+  {
+    "preset_key": "public-yongin-wonsam",
+    "name": "원삼면 풋살장",
+    "address": "경기도 용인시 처인구 원삼면 목신리 910-8",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4236&pageIndex=2&pageUnit=8&resveId=14468&searchFcltyFieldNm=ITEM_03"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "public-yongin-idong-seori",
+    "name": "이동서리 풋살장",
+    "address": "경기도 용인시 처인구 이동읍 백자로133번길 38",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4270&pageIndex=28&pageUnit=8&resveId=14017"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  },
+  {
+    "preset_key": "iamground-1330",
+    "name": "지곡 블루버드 · 실내풋살장",
+    "address": "경기도 용인시 기흥구 지삼로17번길 7-2",
+    "city": "용인시",
+    "note": "실내",
+    "source_urls": [
+      "https://web.iamground.kr/68?facility_id=865"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": 37.2556627,
+    "longitude": 127.1259911
+  },
+  {
+    "preset_key": "public-yongin-pogok",
+    "name": "포곡대교하부 풋살장",
+    "address": "경기도 용인시 처인구 포곡읍 삼계리 579-15",
+    "city": "용인시",
+    "note": null,
+    "source_urls": [
+      "https://publicsports.yongin.go.kr/publicsports/sports/selectFcltyRceptResveViewU.do?checkSearchMonthNow=false&key=4270&pageIndex=41&pageUnit=8&resveId=13922"
+    ],
+    "source_checked_at": "2026-10-02",
+    "latitude": null,
+    "longitude": null
+  }
+]
