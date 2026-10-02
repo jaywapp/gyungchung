@@ -4,13 +4,13 @@ select no_plan();
 -- These identities exist only inside this rolled-back test transaction.
 insert into public.profiles (id, name, phone, role, officer_title, fee_plan, status, is_system_admin)
 values
-  ('89810000-0000-0000-0000-000000000001', 'Welcome President', '010-8980-0001', 'manager', 'president', 'monthly', 'active', false),
+  ('89810000-0000-0000-0000-000000000001', 'Welcome President', '010-8980-0001', 'manager', 'president', null, 'active', false),
   ('89810000-0000-0000-0000-000000000002', 'Welcome Member', '010-8980-0002', 'member', null, 'monthly', 'active', false),
-  ('89810000-0000-0000-0000-000000000003', 'Welcome Delegate', '010-8980-0003', 'manager', 'vice_president', 'monthly', 'active', false),
-  ('89810000-0000-0000-0000-000000000004', 'Welcome Inactive', '010-8980-0004', 'manager', 'president', 'monthly', 'inactive', false),
-  ('89810000-0000-0000-0000-000000000005', 'Welcome Unlinked', '010-8980-0005', 'manager', 'president', 'monthly', 'active', false),
+  ('89810000-0000-0000-0000-000000000003', 'Welcome Delegate', '010-8980-0003', 'manager', 'vice_president', null, 'active', false),
+  ('89810000-0000-0000-0000-000000000004', 'Welcome Inactive', '010-8980-0004', 'manager', 'president', null, 'inactive', false),
+  ('89810000-0000-0000-0000-000000000005', 'Welcome Unlinked', '010-8980-0005', 'manager', 'president', null, 'active', false),
   ('89810000-0000-0000-0000-000000000006', 'Welcome Admin', '010-8980-0006', 'member', null, 'monthly', 'active', true),
-  ('89810000-0000-0000-0000-000000000007', 'Welcome Pending', '010-8980-0007', 'manager', 'president', 'monthly', 'pending', false);
+  ('89810000-0000-0000-0000-000000000007', 'Welcome Pending', '010-8980-0007', 'manager', 'president', null, 'pending', false);
 insert into auth.users (id, instance_id, aud, role, phone, raw_app_meta_data, raw_user_meta_data)
 select ('89800000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
   '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',

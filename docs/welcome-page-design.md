@@ -97,8 +97,8 @@ iOS는 준비 중에는 설명만 제공한다. 실제 TestFlight·App Store URL
 - 공유 렌더러·다운로드: `components/welcome-page.tsx`, `components/welcome-downloads.tsx`, 전용 CSS
 - 편집기·통합: `components/welcome-editor.tsx`, 전용 CSS, `components/admin-console.tsx`, `components/clubhouse.tsx`
 - 계약·검사: `lib/welcome-content.ts`, 대응 테스트
-- DB: `supabase/migrations/20261001234143_welcome_page.sql`, `supabase/tests/database/welcome_page.test.sql`
+- DB: `supabase/migrations/20261002005032_welcome_page.sql`, `supabase/tests/database/welcome_page.test.sql`
 - 앱 정보: `app/api/welcome/android/route.ts`, `supabase/functions/_shared/mobile-updates.ts`, 대응 테스트
 - 기존 설치형 시작 화면·변경 안내: `lib/splash-motion.ts`, `lib/update-notes.ts`
 
-마이그레이션 파일의 날짜는 Supabase CLI가 생성한 UTC 시각이며 KST 2026-10-02 작업이다. 운영 DB에 적용·권한 검증한 뒤 웹을 배포한다. 첫 운영 콘텐츠는 회장·시스템 관리자가 초안을 저장·미리보기·게시한다. 원격 반영과 실기기 검사는 [검증 기록](welcome-page-verification.md)의 남은 항목을 따른다.
+마이그레이션 파일의 버전은 운영 MCP가 실제 적용한 20261002005032에 맞춰 동기화했다. 초기 파일은 CLI로 생성했으며 SQL 내용은 동일하다. 운영 DB에 적용·권한 검증한 뒤 웹을 배포한다. 최초에는 lib/welcome-content.ts의 검증된 기본 안내를 시스템 작업으로 리비전 1에 저장·게시했다(updated_by=null). 실제 운영진 소개는 회장·시스템 관리자가 초안을 저장·미리보기·게시한다. 원격 반영과 실기기 검사는 [검증 기록](welcome-page-verification.md)의 남은 항목을 따른다.

@@ -43,7 +43,10 @@ try {
       name text not null, phone text, email text, role public.account_role,
       officer_title public.officer_title, fee_plan public.member_fee_plan,
       status public.member_status, is_system_admin boolean not null default false,
-      updated_at timestamptz not null default now()
+      updated_at timestamptz not null default now(),
+      constraint profiles_base_role_check check (role in ('member','manager')),
+      constraint profiles_manager_officer_title_check check ((role = 'manager' and officer_title is not null) or (role <> 'manager' and officer_title is null)),
+      constraint profiles_member_fee_plan_check check ((role = 'member' and fee_plan is not null) or (role <> 'member' and fee_plan is null))
     );
     create table public.role_permissions (
       role public.account_role not null, permission text not null,
@@ -94,7 +97,7 @@ try {
     ? await readFile(path.resolve(process.argv[3]), 'utf8')
     : await (await fetch('https://raw.githubusercontent.com/theory/pgtap/v1.3.4/sql/pgtap.sql.in')).text();
   await db.exec(pgtap.replaceAll('__VERSION__', '1.034').replaceAll('__OS__', 'PGlite'));
-  await db.exec(await source('20261001234143_welcome_page.sql'));
+  await db.exec(await source('20261002005032_welcome_page.sql'));
   const testSql = await readFile(path.join(root, 'supabase/tests/database/welcome_page.test.sql'), 'utf8');
   // Also compare the actual SQL rejection fixtures against the client contract.
   const results = await db.exec(testSql.replace('rollback;',
