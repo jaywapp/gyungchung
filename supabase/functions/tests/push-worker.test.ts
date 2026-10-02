@@ -47,6 +47,22 @@ test("binding eligibility is rechecked immediately before provider dispatch", as
     assert.equal(h.calls.some(call => call.name === "finish_notification_delivery"), false);
   }
 });
+test("Bearer worker authentication accepts only the worker secret and rejects ambiguous credentials", async () => {
+  const h = harness({ prepared: null });
+  const bearerRequest = (authorization: string, legacySecret?: string) => new Request("https://example.test/push-worker", {
+    method: "POST", headers: { Authorization: authorization, ...(legacySecret ? { "x-push-worker-secret": legacySecret } : {}) },
+    body: JSON.stringify({ action: "dispatch" }),
+  });
+  assert.equal((await h.handler(bearerRequest("Bearer " + secret))).status, 200);
+  const authorizedCalls = h.calls.length;
+  for (const authorization of ["Bearer wrong", "Bearer public-client-key", "Basic " + secret, "Bearer", "Bearer " + secret + " extra"]) {
+    assert.equal((await h.handler(bearerRequest(authorization))).status, 401);
+  }
+  assert.equal((await h.handler(bearerRequest("Bearer wrong", secret))).status, 401);
+  assert.equal((await h.handler(bearerRequest("Bearer " + secret, "wrong"))).status, 401);
+  assert.equal(h.calls.length, authorizedCalls);
+  assert.equal(h.sent.length, 0);
+});
 test("a ticket is persisted separately from actual provider receipt", async () => {
   const h = harness();
   assert.equal((await h.handler(request())).status, 200);
