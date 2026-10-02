@@ -212,6 +212,7 @@ export interface MomLeaderboardEntry {
 export interface Feedback {
   id: string;
   author_id: string;
+  submission_source?: "web" | "app" | null;
   category: "operation" | "system" | "facility" | "finance" | "safety" | "other";
   title: string;
   body: string;

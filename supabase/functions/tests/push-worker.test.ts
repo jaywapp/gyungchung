@@ -71,6 +71,7 @@ test("a ticket is persisted separately from actual provider receipt", async () =
   assert.equal(message.channelId, "attendance");
   assert.equal(message.sound, "default");
   assert.equal((message.data as Record<string, unknown>).binding_revision, 1);
+  assert.deepEqual((message.data as Record<string, unknown>).display, { title: message.title, body: message.body });
   const outcome = h.calls.find(call => call.name === "finish_notification_delivery")!;
   assert.equal(outcome.args?.target_outcome, "ticket");
   assert.equal(outcome.args?.target_ticket_id, "test-ticket");
@@ -105,9 +106,70 @@ test("missing receipts remain pending and do not resend", async () => {
   await h.handler(request("receipts"));
   assert.equal(h.calls.find(call => call.name === "finish_notification_receipt")?.args?.target_outcome, "pending");
 });
-test("feedback push text excludes the private response body", () => {
+test("legacy feedback snapshot does not expose an uncaptured response", () => {
   const message = buildPushMessage({ ...delivery, snapshot: { title: "My feedback", officer_response: "private response text", has_response: true }, data: { ...delivery.data, kind: "feedback_updated", category: "feedback", source_type: "feedback" } });
   assert.doesNotMatch(JSON.stringify(message), /private response text/);
+});
+test("attendance count and message copy match the foreground display contract", () => {
+  for (const [kind, count, suffix] of [["attendance_added", 12, "참석"], ["attendance_declined", 11, "불참"]] as const) {
+    const message = buildPushMessage({ ...delivery, snapshot: { title: "주말 풋살", member_name: "김회원", going_count: count }, data: { ...delivery.data, kind } });
+    assert.equal(message.title, `주말 풋살 참석 인원이 변경되었습니다 (${count})`);
+    assert.equal(message.body, `김회원님이 ${suffix}으로 변경하였습니다.`);
+    assert.deepEqual(message.data.display, { title: message.title, body: message.body });
+  }
+  const legacy = buildPushMessage(delivery);
+  assert.equal(legacy.title, "참석자가 추가되었습니다");
+});
+test("schedule address and venue changes identify each field", () => {
+  const data = { ...delivery.data, kind: "schedule_changed", category: "schedule" };
+  const before = { starts_at: "2030-01-01T00:00:00Z", venue: "기존 장소", address: "기존 주소" };
+  const address = buildPushMessage({ ...delivery, data, snapshot: { title: "일정", before, after: { ...before, address: "새 주소" } } });
+  assert.match(address.body, /주소: 기존 주소 → 새 주소/);
+  assert.doesNotMatch(address.body, /장소:/);
+  const removed = buildPushMessage({ ...delivery, data, snapshot: { title: "일정", before, after: { ...before, address: null } } });
+  assert.match(removed.body, /주소가 삭제되었습니다/);
+  const both = buildPushMessage({ ...delivery, data, snapshot: { title: "일정", before, after: { ...before, venue: "새 장소", address: "새 주소" } } });
+  assert.match(both.body, /장소: 기존 장소 → 새 장소 · 주소: 기존 주소 → 새 주소/);
+});
+test("feedback distinguishes response and status changes", () => {
+  const data = { ...delivery.data, kind: "feedback_updated", category: "feedback", source_type: "feedback" };
+  const base = { title: "내 의견", before_status: "reviewing", after_status: "reviewing", has_response: true };
+  const status = buildPushMessage({ ...delivery, data, snapshot: { ...base, after_status: "resolved", status_changed: true, response_changed: false } });
+  assert.equal(status.title, "의견 처리 상태가 변경되었습니다");
+  assert.match(status.body, /검토 중 → 처리 완료/);
+  const answer = buildPushMessage({ ...delivery, data, snapshot: { ...base, response_changed: true, response_change: "edited", response_summary: "짧은 답변" } });
+  assert.equal(answer.title, "의견의 답변이 수정되었습니다");
+  assert.match(answer.body, /답변: 짧은 답변/);
+  const legacy = buildPushMessage({ ...delivery, data, snapshot: { ...base, after_status: "resolved" } });
+  assert.equal(legacy.title, "의견 처리 상태가 변경되었습니다");
+});
+test("long schedule changes retain time, venue and the new address within the body limit", () => {
+  const data = { ...delivery.data, kind: "schedule_changed", category: "schedule" };
+  const message = buildPushMessage({ ...delivery, data, snapshot: {
+    title: "긴 일정 이름 ".repeat(20),
+    before: { starts_at: "2030-01-01T00:00:00Z", venue: "기존 장소 ".repeat(20), address: "기존 주소 ".repeat(20) },
+    after: { starts_at: "2030-12-31T03:59:00Z", venue: "새 장소 ".repeat(20), address: "NEW ADDRESS ".repeat(20) },
+  } });
+  assert.ok(message.body.length <= 240);
+  assert.match(message.body, /1\. 1\./);
+  assert.match(message.body, /12\. 31\./);
+  assert.match(message.body, /장소:/);
+  assert.match(message.body, /주소:.*NEW ADDRESS/);
+  assert.match(message.body, /…$/);
+  assert.deepEqual(message.data.display, { title: message.title, body: message.body });
+});
+test("display copy normalizes whitespace and excludes control characters", () => {
+  const message = buildPushMessage({ ...delivery, snapshot: { title: "일정\n이름", member_name: "김\u0000회원", going_count: 12 } });
+  assert.equal(message.title, "일정 이름 참석 인원이 변경되었습니다 (12)");
+  assert.equal(message.body, "김회원님이 참석으로 변경하였습니다.");
+});
+test("manual RSVP reminder has distinct copy", () => {
+  const data = { ...delivery.data, kind: "rsvp_reminder", category: "rsvp_reminders" };
+  const snapshot = { title: "주말 풋살", deadline: "2030-01-01T00:00:00Z" };
+  const automatic = buildPushMessage({ ...delivery, data, snapshot: { ...snapshot, manual: false } });
+  const manual = buildPushMessage({ ...delivery, data, snapshot: { ...snapshot, manual: true } });
+  assert.notEqual(automatic.title, manual.title);
+  assert.match(manual.body, /운영진 재알림/);
 });
 
 
