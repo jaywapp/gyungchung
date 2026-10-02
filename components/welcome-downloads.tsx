@@ -69,6 +69,16 @@ export function WelcomeDownloadButton() {
   return <a className="cta secondary" href={state.release?.downloadUrl ?? ANDROID_DOWNLOAD_URL}><Download size={20} aria-hidden="true" />Android 앱 다운로드</a>;
 }
 
+export function WelcomeAppButtons({ ios }: { ios: WelcomeContent["ios"] }) {
+  const { enabled } = useDownloads();
+  const pwaIos = ios.status === "pwa" || ios.status === "preparing";
+  if (!enabled && !pwaIos) return null;
+  return <div className="welcome-platform-actions">
+    <WelcomeDownloadButton />
+    {pwaIos && <a className="cta ghost welcome-on-dark" href="#iphone-install"><Apple size={20} aria-hidden="true" />iPhone 설치 안내</a>}
+  </div>;
+}
+
 function Guide({ title, steps, id }: { title: string; steps: WelcomeStep[]; id?: string }) {
   return <div id={id}><h3>{title}</h3><ol>{steps.map((step, index) => <li key={index}><span><b>{step.title}</b>{step.body}</span></li>)}</ol></div>;
 }
@@ -93,7 +103,7 @@ export default function WelcomeDownloads({ content }: { content: WelcomeContent 
         {enabled && state.status === "loading" && <p className="welcome-app-msg" role="status"><LoaderCircle size={18} aria-hidden="true" /><span>버전 정보를 확인하는 중입니다.</span></p>}
         {enabled && state.status === "error" && <div className="welcome-app-msg" role="status"><TriangleAlert size={18} aria-hidden="true" /><span>버전 정보를 불러오지 못했습니다. 최신 설치 파일은 그대로 받을 수 있습니다.<br /><button type="button" className="text-link welcome-on-dark" onClick={retry}>다시 확인</button></span></div>}
         <div className="welcome-kickoff-actions">
-          <WelcomeDownloadButton />
+          <WelcomeAppButtons ios={ios} />
           {!enabled && <a className="cta ghost welcome-on-dark" href="#account-guide">계정 이용 안내</a>}
           <Link className="cta ghost welcome-on-dark" href="/">웹으로 이용하기</Link>
         </div>
