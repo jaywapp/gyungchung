@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import ThemeSwitch from "@/components/theme-switch";
-import WelcomeDownloads, { WelcomeDownloadButton, WelcomeDownloadsProvider } from "@/components/welcome-downloads";
+import WelcomeDownloads, { WelcomeAppButtons, WelcomeDownloadsProvider } from "@/components/welcome-downloads";
 import type { WelcomeContent, WelcomePageState } from "@/lib/welcome-content";
 import "./welcome-page.css";
 
@@ -57,7 +57,7 @@ export default function WelcomePage({ content, state = "published", preview = fa
             <h1>{titleLines.map((line, index) => index === 0 ? <span key={index}>{line}</span> : <em key={index}>{line}</em>)}</h1>
             <p className="welcome-hero-lead">{content.introduction}</p>
             <div className="welcome-hero-actions">
-              <WelcomeDownloadButton />
+              <WelcomeAppButtons ios={content.ios} />
               <a className="cta ghost welcome-on-dark" href="#account-guide">계정 이용 안내</a>
               <Link className="text-link welcome-on-dark" href="/">웹으로 이용하기</Link>
             </div>

@@ -22,6 +22,17 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-02-iphone-install-button",
+    date: "2026-10-02",
+    source: "request",
+    title: "Android 다운로드 아래에서 iPhone 설치 안내를 열 수 있습니다",
+    summary: "웰컴 페이지의 Android 다운로드 버튼 바로 아래에 iPhone 설치 안내 버튼을 추가했습니다.",
+    changes: [
+      { kind: "added", text: "상단과 하단의 iPhone 설치 안내 버튼으로 홈 화면 설치 방법을 바로 확인할 수 있습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-02-iphone-home-screen-push",
     date: "2026-10-02",
     source: "request",
