@@ -9,7 +9,7 @@
 | 서비스워커·브라우저 구독·계정/설치 UI | ios_plan_review | 상속 GPT-6 | high | 분석, 서버 계약 | implementation | 완료 |
 | 운영 환경·키 설정·배포 절차 조사 | ios_release | 상속 GPT-6 | high | 분석 | release | 완료 |
 | 통합·보안 리뷰·브라우저/빌드 검증 | root | 상속 GPT-6 | high | 구현 | verification | 완료 |
-| DB/함수/웹 운영 배포·검증 | root | 상속 GPT-6 | high | 검증 | release | DB/함수 완료, 웹 PR 진행 |
+| DB/함수/웹 운영 배포·검증 | root | 상속 GPT-6 | high | 검증 | release | 완료 — PR #182 main 배포·운영 URL/로그 확인 |
 | iPhone 사용 안내·검증 결과 문서 | root, ios_storage_push | 상속 GPT-6 | high | 통합 | documentation | 완료 |
 | 실제 iPhone 설치·종료 상태 수신·클릭 | 실제 기기 사용자 | 해당 없음 | 해당 없음 | 운영 배포 | device | 실기기 확인 대기 |
 
