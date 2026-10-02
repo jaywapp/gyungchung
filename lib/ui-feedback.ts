@@ -1,3 +1,5 @@
+import { memberLoadResources, publicLoadResources, type ClubhouseResource } from "./load-state";
+
 export type ToastKind = "success" | "warning" | "error";
 export type ToastHandler = (message: string, kind?: ToastKind) => void;
 
@@ -7,36 +9,41 @@ export function showError(toast: ToastHandler, message: string) {
 }
 
 /**
- * Which half of the clubhouse data set a mutation invalidated. `public` covers
- * events, notices and participation forms; `member` covers everything that
- * requires a signed-in session. Passing the narrower scope keeps a single
- * save from refetching all eighteen queries.
+ * Initial loads keep the full data set; mutations invalidate their dependencies.
+ * Identity and permission changes retain a full refresh because they affect RLS.
  */
-export type ReloadScope = "all" | "public" | "member";
+export type ReloadScope = "all" | "public" | "member" | readonly ClubhouseResource[];
 export type ReloadHandler = (scope?: ReloadScope) => void;
 
-/** Which half of the data set a delete on each table invalidates. */
+export function getReloadResources(scope: ReloadScope): ClubhouseResource[] {
+  const resources = scope === "all" ? [...publicLoadResources, ...memberLoadResources]
+    : scope === "public" ? publicLoadResources : scope === "member" ? memberLoadResources : scope;
+  return [...new Set(resources)];
+}
+
+/** Deletions also invalidate dependent rows changed by foreign-key actions. */
 export const tableScopes: Record<string, ReloadScope> = {
-  fees: "member",
-  notices: "public",
+  fees: ["fees"],
+  notices: ["notices"],
   events: "all",
-  venues: "public",
-  participation_forms: "public",
-  feedback: "member",
+  venues: ["venues", "events"],
+  participation_forms: ["forms", "submissions"],
+  feedback: ["feedback", "feedbackFeed"],
 };
 
 /** Same, keyed by the admin editor that saved. */
 export const editorScopes: Record<string, ReloadScope> = {
-  members: "member",
-  guests: "member",
-  fees: "member",
-  notices: "public",
-  events: "all",
-  venues: "public",
-  attendance: "member",
-  teams: "public",
-  feedback: "member",
-  forms: "public",
+  members: "all",
+  guests: ["guestPlayers", "guestFees", "events"],
+  fees: ["fees", "guestFees"],
+  notices: ["notices"],
+  // Guest roster writes generate/delete guest fees; creating a venue updates its picker.
+  events: ["events", "venues", "guestFees"],
+  venues: ["venues"],
+  attendance: ["attendance"],
+  teams: ["events"],
+  feedback: ["feedback", "feedbackFeed"],
+  forms: ["forms", "submissions"],
 };
 
 type ErrorLike = { code?: string | null; message?: string | null; userFacing?: boolean };

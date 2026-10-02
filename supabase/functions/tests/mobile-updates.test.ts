@@ -43,6 +43,17 @@ function fakeGithub(items: ReturnType<typeof release>[], extra: Record<string, s
   };
   return { calls, fetcher };
 }
+function completeGithub(codes: number[]) {
+  const items = codes.map(code => release(code));
+  const extra: Record<string, string> = {};
+  for (const item of items) {
+    const apk = item.assets[0];
+    item.assets.push({ id: apk.id + 2, name: "update.json", size: 500, state: "uploaded", digest: undefined, browser_download_url: publicUrl(apk.id, "update.json") });
+    extra[apk.id + 2] = JSON.stringify({ schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: "1.0.0", versionCode: apk.id, assetName: apk.name, sha256: sha, sizeBytes: apk.size, notes: ["앱 안정성을 개선했습니다."] });
+  }
+  return { items, ...fakeGithub(items, extra) };
+}
+const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 const request = (query = "", authorized = false) => new Request(`https://example.test/functions/v1/mobile-updates${query}`, { headers: authorized ? { authorization: "Bearer user-jwt" } : {} });
 
 test("public metadata sanitizes release bodies and selects greatest code despite older latest", async () => {
@@ -326,4 +337,178 @@ test("public asset URLs reject other repositories, credentials, ports, queries a
   const upstream = fakeGithub([item]);
   assert.equal((await createMobileUpdatesHandler({ fetch: upstream.fetcher })(request())).status, 502);
   assert.equal(upstream.calls.length, 1);
+});
+
+test("release validation bounds active reads and starts checksum and manifest together", async () => {
+  const codes = [100000, 100010, 100020, 100030, 100040, 100050, 100060];
+  const upstream = completeGithub(codes);
+  const waiting: { url: string; resolve: () => void }[] = [];
+  let active = 0;
+  let peak = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    if (new URL(String(input)).hostname === "api.github.com") return upstream.fetcher(input, init);
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await new Promise<void>(resolve => waiting.push({ url: String(input), resolve }));
+      return await upstream.fetcher(input, init);
+    } finally { active--; }
+  };
+  const handler = createMobileUpdatesHandler({ fetch: fetcher });
+  const response = handler(request());
+  await nextTurn();
+  assert.equal(waiting.length, 6);
+  for (const code of codes.slice(0, 3)) {
+    assert.ok(waiting.some(item => item.url === publicUrl(code, "checksums.sha256")));
+    assert.ok(waiting.some(item => item.url === publicUrl(code, "update.json")));
+  }
+  waiting[0].resolve();
+  await nextTurn();
+  assert.equal(waiting.length, 6, "a release keeps its slot until both files finish");
+  for (let round = 0; round < 4; round++) {
+    for (const item of waiting) item.resolve();
+    await nextTurn();
+  }
+  assert.equal((await (await response).json()).versionCode, codes.at(-1));
+  assert.equal(waiting.length, 14);
+  assert.equal(peak, 6);
+  assert.equal(active, 0);
+  const before = upstream.calls.length;
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(upstream.calls.length, before, "warm cache makes no upstream requests");
+});
+
+test("parallel metadata redirects stay manual and never forward credentials", async () => {
+  const upstream = completeGithub([100000, 100010, 100020, 100030]);
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const redirectedAssets = new Map<string, string>();
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (new URL(url).hostname === "github.com") {
+      const redirected = "https://release-assets.githubusercontent.com/" + encodeURIComponent(url) + "?signature=fixture";
+      redirectedAssets.set(redirected, url);
+      return new Response(null, { status: 302, headers: { location: redirected } });
+    }
+    return upstream.fetcher(redirectedAssets.get(url) ?? url, init);
+  };
+  const handler = createMobileUpdatesHandler({ githubToken: "server-only", fetch: fetcher });
+  const responses = await Promise.all([handler(request()), handler(request()), handler(request())]);
+  assert.deepEqual(responses.map(response => response.status), [200, 200, 200]);
+  assert.equal((await responses[0].json()).versionCode, 100030);
+  assert.equal(calls.length, 17);
+  assert.equal(calls.filter(call => new URL(call.url).hostname === "api.github.com").length, 1);
+  for (const call of calls) {
+    assert.equal(call.init?.redirect, "manual");
+    assert.equal(new Headers(call.init?.headers).get("authorization"), new URL(call.url).hostname === "api.github.com" ? "Bearer server-only" : null);
+  }
+});
+
+test("one metadata deadline aborts all active reads without starting queued releases", async () => {
+  const upstream = completeGithub([100000, 100010, 100020, 100030, 100040, 100050]);
+  let blocked = true;
+  const signals: AbortSignal[] = [];
+  let aborted = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    if (!blocked || new URL(String(input)).hostname === "api.github.com") return upstream.fetcher(input, init);
+    const signal = init!.signal!;
+    signals.push(signal);
+    return new Promise((_resolve, reject) => {
+      const onAbort = () => { aborted++; reject(new Error("private upstream timeout")); };
+      if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+  const handler = createMobileUpdatesHandler({ fetch: fetcher, metadataTimeoutMs: 20 });
+  const responses = await Promise.all([handler(request()), handler(request()), handler(request())]);
+  assert.deepEqual(responses.map(response => response.status), [502, 502, 502]);
+  assert.equal(signals.length, 6);
+  assert.equal(new Set(signals).size, 1);
+  assert.equal(aborted, 6);
+  assert.deepEqual(await responses[0].json(), { error: "upstream_unavailable" });
+  blocked = false;
+  assert.equal((await handler(request())).status, 200, "a failed single flight is cleared for retry");
+  assert.equal(upstream.calls.filter(call => new URL(call.url).hostname === "api.github.com").length, 2);
+});
+
+test("metadata deadline cancels unfinished bodies after response headers arrive", async () => {
+  const upstream = completeGithub([100000, 100010, 100020, 100030]);
+  let bodies = 0;
+  let canceled = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    if (new URL(String(input)).hostname === "api.github.com") return upstream.fetcher(input, init);
+    bodies++;
+    return new Response(new ReadableStream({ cancel() { canceled++; } }));
+  };
+  const handler = createMobileUpdatesHandler({ fetch: fetcher, metadataTimeoutMs: 20 });
+  const response = await handler(request());
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: "upstream_unavailable" });
+  assert.equal(bodies, 6);
+  assert.equal(canceled, 6);
+});
+
+test("a corrupt last release cannot mask the shared deadline and cache a partial success", async () => {
+  const upstream = completeGithub([100000, 100010]);
+  let blocked = true;
+  let canceled = false;
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (blocked && url === publicUrl(100010, "checksums.sha256")) return new Response("x".repeat(16385));
+    if (blocked && url === publicUrl(100010, "update.json")) return new Response(new ReadableStream({ cancel() { canceled = true; } }));
+    return upstream.fetcher(input, init);
+  };
+  const handler = createMobileUpdatesHandler({ fetch: fetcher, metadataTimeoutMs: 20 });
+  const timedOut = await handler(request());
+  assert.equal(timedOut.status, 502);
+  assert.deepEqual(await timedOut.json(), { error: "upstream_unavailable" });
+  assert.equal(canceled, true);
+  blocked = false;
+  assert.equal((await (await handler(request())).json()).versionCode, 100010);
+  assert.equal(upstream.calls.filter(call => new URL(call.url).hostname === "api.github.com").length, 2);
+});
+
+test("a fatal refresh aborts sibling releases and never serves the expired success cache", async () => {
+  const upstream = completeGithub([100000, 100010, 100020, 100030]);
+  let current = 0;
+  let failing = false;
+  let started = 0;
+  let aborted = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (!failing || new URL(url).hostname === "api.github.com") return upstream.fetcher(input, init);
+    started++;
+    if (url === publicUrl(100000, "checksums.sha256")) return new Response("private upstream details", { status: 503 });
+    if (url === publicUrl(100000, "update.json")) return upstream.fetcher(input, init);
+    return new Promise((_resolve, reject) => {
+      const signal = init!.signal!;
+      const onAbort = () => { aborted++; reject(new Error("private sibling details")); };
+      if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+  const handler = createMobileUpdatesHandler({ fetch: fetcher, now: () => current });
+  assert.equal((await handler(request())).status, 200);
+  current = 600000;
+  failing = true;
+  const responses = await Promise.all([handler(request()), handler(request())]);
+  assert.deepEqual(responses.map(response => response.status), [502, 502]);
+  assert.deepEqual(await responses[0].json(), { error: "upstream_unavailable" });
+  assert.equal(started, 6);
+  assert.equal(aborted, 4);
+  failing = false;
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(upstream.calls.filter(call => new URL(call.url).hostname === "api.github.com").length, 3);
+});
+
+test("all batches preserve incomplete/corrupt release handling and duplicate code rejection", async () => {
+  const corrupt = release(100030);
+  corrupt.assets[0].digest = `sha256:${"b".repeat(64)}`;
+  const incomplete = release(100100);
+  incomplete.assets[1].state = "new";
+  const upstream = fakeGithub([release(100000), corrupt, incomplete, release(100020)]);
+  const handler = createMobileUpdatesHandler({ fetch: upstream.fetcher });
+  assert.equal((await (await handler(request())).json()).versionCode, 100020);
+  const duplicate = fakeGithub([release(100000), release(100010), release(100020), release(100000)]);
+  const rejected = await createMobileUpdatesHandler({ fetch: duplicate.fetcher })(request());
+  assert.equal(rejected.status, 502);
+  assert.deepEqual(await rejected.json(), { error: "invalid_release" });
 });

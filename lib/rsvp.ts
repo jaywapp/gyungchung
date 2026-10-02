@@ -87,3 +87,12 @@ export function applyRsvpStatus(rows: Attendance[], eventId: string, memberId: s
 export function restoreRsvpStatus(rows: Attendance[], eventId: string, memberId: string, previous?: Attendance) {
   return replaceAttendanceRow(rows, eventId, memberId, previous);
 }
+
+export type PendingRsvpChange = { memberId: string; status: Attendance["status"] };
+
+/** A background read must not replace an RSVP while its write is still in flight. */
+export function mergePendingRsvpChanges(rows: Attendance[], pending: ReadonlyMap<string, PendingRsvpChange>) {
+  let merged = rows;
+  for (const [eventId, change] of pending) merged = applyRsvpStatus(merged, eventId, change.memberId, change.status);
+  return merged;
+}

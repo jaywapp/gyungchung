@@ -1,5 +1,10 @@
 import type { Attendance, Event, Profile } from "./types";
 
+const seasonYearFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" });
+export function getSeasonYear(value: string | Date) {
+  return Number(seasonYearFormatter.format(typeof value === "string" ? new Date(value) : value));
+}
+
 export interface EventWinningMember {
   event_id: string;
   member_id: string;
@@ -20,7 +25,7 @@ export function buildSeasonRankings(
   profiles: Profile[],
 ) {
   const members = new Map(profiles.filter((profile) => profile.status === "active" && !profile.is_test_account).map((profile) => [profile.id, profile.name]));
-  const seasonEvents = events.filter((event) => Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date(event.starts_at))) === year);
+  const seasonEvents = events.filter((event) => getSeasonYear(event.starts_at) === year);
   const eventIds = new Set(seasonEvents.map((event) => event.id));
   const wins = new Map<string, number>();
   const goals = new Map<string, number>();

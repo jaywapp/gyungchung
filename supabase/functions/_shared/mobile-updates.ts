@@ -6,6 +6,7 @@ const SHA = /^[a-f0-9]{64}$/;
 const MAX_APK_BYTES = 250 * 1024 * 1024;
 const MAX_SMALL_BYTES = 16 * 1024;
 const MAX_JSON_BYTES = 1024 * 1024;
+const RELEASE_CONCURRENCY = 3;
 const DEFAULT_NOTES = ["앱의 안정성과 사용성을 개선했습니다."];
 
 export type MobileMetadata = {
@@ -84,22 +85,27 @@ function timer(milliseconds: number, external?: AbortSignal) {
   const timeout = setTimeout(onAbort, milliseconds);
   return { signal: controller.signal, abort: onAbort, cleanup: () => { clearTimeout(timeout); external?.removeEventListener("abort", onAbort); } };
 }
-async function limitedText(response: Response, limit: number) {
+async function limitedText(response: Response, limit: number, signal: AbortSignal) {
   if (!response.body) throw new MobileError(502, "invalid_release");
   const length = Number(response.headers.get("content-length"));
   if (length > limit) { await response.body.cancel(); throw new MobileError(502, "invalid_release"); }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  const onAbort = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
   try {
     while (true) {
+      if (signal.aborted) throw new MobileError(502, "upstream_unavailable");
       const { value, done } = await reader.read();
+      if (signal.aborted) throw new MobileError(502, "upstream_unavailable");
       if (done) break;
       size += value.byteLength;
       if (size > limit) { await reader.cancel(); throw new MobileError(502, "invalid_release"); }
       chunks.push(value);
     }
-  } finally { reader.releaseLock(); }
+  } finally { signal.removeEventListener("abort", onAbort); reader.releaseLock(); }
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
@@ -152,31 +158,37 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
   }
   async function smallAsset(value: Asset, signal: AbortSignal) {
     if (value.size > MAX_SMALL_BYTES) throw new MobileError(502, "invalid_release");
-    return limitedText(await publicAsset(publicAssetUrl(value), signal), MAX_SMALL_BYTES);
+    return limitedText(await publicAsset(publicAssetUrl(value), signal), MAX_SMALL_BYTES, signal);
   }
   async function loadReleases(): Promise<ValidatedRelease[]> {
     const deadline = timer(dependencies.metadataTimeoutMs ?? 15000);
     try {
-      const payload: unknown = JSON.parse(await limitedText(await githubListing(deadline.signal), MAX_JSON_BYTES));
+      const payload: unknown = JSON.parse(await limitedText(await githubListing(deadline.signal), MAX_JSON_BYTES, deadline.signal));
       if (!Array.isArray(payload) || payload.length > 20) throw new MobileError(502, "invalid_release");
-      const result: ValidatedRelease[] = [];
       let corrupt = false;
-      for (const value of payload) {
-        if (!object(value) || value.draft !== false || value.prerelease !== false) continue;
-        if (!Array.isArray(value.assets) || typeof value.published_at !== "string" || !Number.isFinite(Date.parse(value.published_at))) { corrupt = true; continue; }
+      async function validateRelease(value: unknown): Promise<ValidatedRelease[]> {
+        if (!object(value) || value.draft !== false || value.prerelease !== false) return [];
+        if (!Array.isArray(value.assets) || typeof value.published_at !== "string" || !Number.isFinite(Date.parse(value.published_at))) { corrupt = true; return []; }
         const release = value as unknown as Release;
         const apks = release.assets.filter(item => asset(item) && APK_NAME.test(item.name));
-        if (!apks.length) continue;
+        if (!apks.length) return [];
         const checksumCandidates = release.assets.filter(item => object(item) && item.name === "checksums.sha256");
         // The checksum asset is the release uploader's final completion marker.
-        if (checksumCandidates.length === 0 || checksumCandidates.some(item => !asset(item))) continue;
-        if (checksumCandidates.length !== 1) { corrupt = true; continue; }
+        if (checksumCandidates.length === 0 || checksumCandidates.some(item => !asset(item))) return [];
+        if (checksumCandidates.length !== 1) { corrupt = true; return []; }
         try {
           const apksWithUrls = apks.map(apk => ({ apk, url: publicAssetUrl(apk) }));
-          const checksums = await smallAsset(checksumCandidates[0], deadline.signal);
           const manifestCandidates = release.assets.filter(item => object(item) && item.name === "update.json");
           if (manifestCandidates.length > 1 || manifestCandidates.some(item => !asset(item))) throw new MobileError(502, "invalid_release");
-          const manifest: unknown = manifestCandidates.length ? JSON.parse(await smallAsset(manifestCandidates[0], deadline.signal)) : undefined;
+          // Await both bodies so a corrupt file cannot leave an uncounted request running.
+          const [checksumResult, manifestResult] = await Promise.allSettled([
+            smallAsset(checksumCandidates[0], deadline.signal),
+            manifestCandidates.length ? smallAsset(manifestCandidates[0], deadline.signal) : Promise.resolve(undefined),
+          ]);
+          if (checksumResult.status === "rejected") throw checksumResult.reason;
+          if (manifestResult.status === "rejected") throw manifestResult.reason;
+          const checksums = checksumResult.value;
+          const manifest: unknown = manifestResult.value !== undefined ? JSON.parse(manifestResult.value) : undefined;
           const validated: ValidatedRelease[] = [];
           for (const { apk, url } of apksWithUrls) {
             const match = APK_NAME.exec(apk.name)!;
@@ -194,12 +206,32 @@ export function createMobileUpdatesHandler(dependencies: MobileDependencies) {
             }
             validated.push({ assetUrl: url, metadata: { schemaVersion: 1, platform: "android", applicationId: APPLICATION_ID, versionName: match[1], versionCode, assetName: apk.name, sha256: checksum, sizeBytes: apk.size, notes, publishedAt: new Date(release.published_at).toISOString(), downloadUrl: url } });
           }
-          result.push(...validated);
+          return validated;
         } catch (error) {
           if (!(error instanceof MobileError) || error.message !== "invalid_release") throw error;
           corrupt = true;
+          return [];
         }
       }
+      const validated: ValidatedRelease[][] = new Array(payload.length);
+      let nextIndex = 0;
+      const workers = Array.from({ length: Math.min(RELEASE_CONCURRENCY, payload.length) }, async () => {
+        while (nextIndex < payload.length) {
+          if (deadline.signal.aborted) throw new MobileError(502, "upstream_unavailable");
+          const index = nextIndex++;
+          validated[index] = await validateRelease(payload[index]);
+        }
+      });
+      try {
+        await Promise.all(workers);
+        if (deadline.signal.aborted) throw new MobileError(502, "upstream_unavailable");
+      } catch (error) {
+        deadline.abort();
+        // Keep single-flight ownership until every worker has stopped using this refresh.
+        await Promise.allSettled(workers);
+        throw error;
+      }
+      const result = validated.flat();
       result.sort((a, b) => b.metadata.versionCode - a.metadata.versionCode);
       // Conflicting releases must never pick an arbitrary APK for the same code.
       for (let index = 1; index < result.length; index++) if (result[index].metadata.versionCode === result[index - 1].metadata.versionCode) throw new MobileError(502, "invalid_release");

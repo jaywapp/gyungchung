@@ -18,15 +18,16 @@ import HeroMotion from "@/components/hero-motion";
 import MemberDirectory from "@/components/member-directory";
 import { ClubMobileBar, ClubSidebar, ClubTabBar, MoreSheet, tabPaths, type Tab } from "@/components/club-nav";
 import { FEE_AMOUNTS, feeRuleBadges, formatWon } from "@/lib/fee-rules";
-import { buildSeasonRankings, type EventWinningMember } from "@/lib/season-rankings";
-import { editorScopes, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
+import { buildSeasonRankings, getSeasonYear, type EventWinningMember } from "@/lib/season-rankings";
+import { editorScopes, getReloadResources, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
 import { getCheckInStatus } from "@/lib/attendance";
 import { getAccountState, getMembershipRestriction, getMembershipRestrictionCopy } from "@/lib/account-state";
 import { getEventCapacity } from "@/lib/event-capacity";
 import { eventDatePath, isWeeklyScheduleEvent, parseEventDateKey, toDateKey, toEventDateKey } from "@/lib/event-date";
-import { applyRsvpStatus, beginRsvpSave, getRsvpCapacityWarning, restoreRsvpStatus } from "@/lib/rsvp";
+import { applyRsvpStatus, beginRsvpSave, getRsvpCapacityWarning, mergePendingRsvpChanges, restoreRsvpStatus, type PendingRsvpChange } from "@/lib/rsvp";
 import { createPhoneLoginCredentials, getPhoneLoginError } from "@/lib/phone-login";
-import { getLoadErrors, type LoadErrors, type LoadResource } from "@/lib/load-state";
+import { getLoadErrors, memberLoadResources, publicLoadResources, type ClubhouseResource, type MemberLoadResource, type PublicLoadResource, type LoadErrors, type LoadResource } from "@/lib/load-state";
+import { ResourceRequests, type LoadedResource, type ResourceQueryResult } from "@/lib/resource-requests";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { CapacityStatus, RsvpControls } from "@/components/rsvp-controls";
 import { AccountConnectionNotice, Empty, FormError, LoadError, LoginGate, SectionSkeleton } from "@/components/section-states";
@@ -99,9 +100,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [authError, setAuthError] = useState(false);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const userRef = useRef<User | null>(null);
-  const memberRequestIdRef = useRef(0);
-  const publicRequestIdRef = useRef(0);
+  const requestsRef = useRef(new ResourceRequests<ClubhouseResource>());
+  const profileSourcesRef = useRef<{ directory: Profile[]; private: Profile[] }>({ directory: [], private: [] });
   const rsvpPendingEventIdsRef = useRef(new Set<string>());
+  const rsvpPendingChangesRef = useRef(new Map<string, PendingRsvpChange>());
   const toastTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => { void prepareWebPushWorker().catch(() => undefined); }, []);
   useEffect(() => {
@@ -124,79 +126,114 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     toastTimerRef.current = window.setTimeout(() => setToast(null), kind === "error" ? 8000 : 4000);
   }, []);
 
-  const loadPublicData = useCallback(async (showSkeleton = false) => {
-    const requestId = ++publicRequestIdRef.current;
-    const requestUserId = userRef.current?.id;
+  const loadPublicData = useCallback(async (showSkeleton = false, resources: readonly PublicLoadResource[] = publicLoadResources, refresh = showSkeleton) => {
     if (!supabase) { setPublicLoading(false); return; }
+    const owner = userRef.current?.id ?? null;
+    const epoch = requestsRef.current.epoch;
     if (showSkeleton) setPublicLoading(true);
-    const [eventRes, noticeRes, formRes, venueRes] = await Promise.all([
-      supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at"),
-      supabase.from("notices").select("id, title, body, is_pinned, created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }),
-      supabase.from("venues").select("id, name, address, city, note, created_at, updated_at").order("name"),
-    ]);
-    /** Keep the app usable if the frontend deploy reaches production before its migration. */
-    const resolvedEventRes = eventRes.error
-      ? await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at")
-      : eventRes;
-    if (requestId !== publicRequestIdRef.current || requestUserId !== userRef.current?.id) return;
-    setEvents(resolvedEventRes.error ? [] : ((resolvedEventRes.data as Event[] | null) ?? []).map((event) => ({ ...event, venue_id: event.venue_id ?? null })));
-    setVenues(venueRes.error ? [] : (venueRes.data as Venue[] | null) ?? []);
-    setNotices(noticeRes.error ? [] : (noticeRes.data as Notice[] | null) ?? []);
-    setLoadErrors((current) => ({ ...current, ...getLoadErrors({ events: resolvedEventRes, notices: noticeRes, forms: formRes, venues: venueRes }) }));
-    if (formRes.data) setForms((formRes.data as ParticipationForm[]).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
-    setPublicLoading(false);
+    const queries: Record<PublicLoadResource, (signal: AbortSignal) => PromiseLike<ResourceQueryResult>> = {
+      events: async (signal) => {
+        const result = await supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at").abortSignal(signal);
+        // Keep the migration fallback, but never retry an obsolete identity's request.
+        return result.error && !signal.aborted
+          ? await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal)
+          : result;
+      },
+      notices: (signal) => supabase.from("notices").select("id, title, body, is_pinned, created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }).abortSignal(signal),
+      forms: (signal) => supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }).abortSignal(signal),
+      venues: (signal) => supabase.from("venues").select("id, name, address, city, note, created_at, updated_at").order("name").abortSignal(signal),
+    };
+    const results = await Promise.all(resources.map(async (resource) => [resource, await requestsRef.current.load(resource, owner, queries[resource], refresh)] as const));
+    if (epoch !== requestsRef.current.epoch || owner !== (userRef.current?.id ?? null)) return;
+    const accepted: Partial<Record<LoadResource, LoadedResource>> = {};
+    for (const [resource, result] of results) {
+      if (!result.isCurrent()) continue;
+      accepted[resource] = result;
+      if (resource === "events") setEvents(result.error ? [] : ((result.data as Event[] | null) ?? []).map((event) => ({ ...event, venue_id: event.venue_id ?? null })));
+      if (resource === "venues") setVenues(result.error ? [] : (result.data as Venue[] | null) ?? []);
+      if (resource === "notices") setNotices(result.error ? [] : (result.data as Notice[] | null) ?? []);
+      if (resource === "forms") setForms(result.error ? [] : ((result.data as ParticipationForm[] | null) ?? []).map((form) => ({ ...form, participation_questions: [...(form.participation_questions ?? [])].sort((a, b) => a.position - b.position).map((question) => ({ ...question, participation_options: [...(question.participation_options ?? [])].sort((a, b) => a.position - b.position) })) })));
+    }
+    setLoadErrors((current) => ({ ...current, ...getLoadErrors(accepted) }));
+    if (showSkeleton) setPublicLoading(false);
   }, [supabase]);
 
-  const loadMemberData = useCallback(async (currentUser?: User | null, showSkeleton = false) => {
-    const requestId = ++memberRequestIdRef.current;
+  const loadMemberData = useCallback(async (currentUser?: User | null, showSkeleton = false, resources: readonly MemberLoadResource[] = memberLoadResources, refresh = showSkeleton) => {
     if (!supabase) { setMemberLoading(false); return; }
     if (!currentUser) {
+      profileSourcesRef.current = { directory: [], private: [] };
       setProfiles([]); setMe(null); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setFeedbackFeed([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setRawGuestPlayers([]); setWinners([]); setMomVotes([]); setMomResults([]);
-      setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: { error: null }, profiles: { error: null }, fees: { error: null }, guestFees: { error: null }, attendance: { error: null }, feedback: { error: null }, feedbackFeed: { error: null }, submissions: { error: null }, rolePermissions: { error: null }, officerPermissions: { error: null }, guestPlayers: { error: null }, winners: { error: null }, momVotes: { error: null }, momResults: { error: null } }) }));
+      setLoadErrors((current) => ({ ...current, ...getLoadErrors(Object.fromEntries(memberLoadResources.map((resource) => [resource, { error: null }]))) }));
       setMemberLoading(false); return;
     }
+    const owner = currentUser.id;
+    const epoch = requestsRef.current.epoch;
     if (showSkeleton) setMemberLoading(true);
-    const [profileRes, allProfileRes, feeRes, guestFeeRes, attendanceRes, feedbackRes, feedbackFeedRes, submissionRes, permissionRes, officerPermissionRes, guestRes, winnerRes, momVoteRes, momResultRes] = await Promise.all([
-      supabase.rpc("get_member_directory"),
-      supabase.from("profiles").select("*").order("name"),
-      supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }),
-      supabase.from("event_guest_fees").select("*, guest_players(name), events(title, starts_at)").order("created_at", { ascending: false }),
-      supabase.from("attendance").select("*"),
-      supabase.from("feedback").select("*").order("created_at", { ascending: false }),
-      supabase.from("feedback_feed").select("*").order("created_at", { ascending: false }),
-      supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at, participation_answers(question_id, answer), profiles!inner(auth_user_id)").eq("profiles.auth_user_id", currentUser.id),
-      supabase.from("role_permissions").select("role, permission"),
-      supabase.from("officer_permissions").select("officer_title, permission"),
-      supabase.from("guest_players").select("*"),
-      supabase.rpc("get_event_winners"),
-      supabase.from("event_mom_votes").select("*"),
-      supabase.rpc("get_event_mom_results"),
-    ]);
-    if (requestId !== memberRequestIdRef.current || currentUser.id !== userRef.current?.id) return;
-    const privateProfiles = (allProfileRes.data as Profile[] | null) ?? [];
-    const visibleProfiles = new Map(((profileRes.data as Profile[] | null) ?? []).map((profile) => [profile.id, profile]));
-    privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
-    const enrichedProfiles = Array.from(visibleProfiles.values())
-      .filter((profile) => !profile.is_test_account)
-      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
-    const ownProfile = privateProfiles.find((profile) => profile.auth_user_id === currentUser.id) ?? null;
-    setProfiles(enrichedProfiles);
-    setMe(ownProfile);
-    setFees((feeRes.data as unknown as Fee[]) ?? []); setGuestFees((guestFeeRes.data as unknown as GuestFee[]) ?? []); setAttendance((attendanceRes.data as Attendance[]) ?? []); setFeedback((feedbackRes.data as Feedback[]) ?? []); setFeedbackFeed((feedbackFeedRes.data as FeedbackFeedItem[]) ?? []); setSubmissions((submissionRes.data as ParticipationSubmission[]) ?? []); setRolePermissions((permissionRes.data as RolePermission[]) ?? []); setOfficerPermissions((officerPermissionRes.data as OfficerPermission[]) ?? []); setRawGuestPlayers((guestRes.data as RawGuestPlayer[]) ?? []); setWinners((winnerRes.data as EventWinningMember[]) ?? []); setMomVotes((momVoteRes.data as EventMomVote[]) ?? []); setMomResults((momResultRes.data as EventMomResult[]) ?? []);
-    setLoadErrors((current) => ({ ...current, ...getLoadErrors({ memberDirectory: profileRes, profiles: allProfileRes, fees: feeRes, guestFees: guestFeeRes, attendance: attendanceRes, feedback: feedbackRes, feedbackFeed: feedbackFeedRes, submissions: submissionRes, rolePermissions: permissionRes, officerPermissions: officerPermissionRes, guestPlayers: guestRes, winners: winnerRes, momVotes: momVoteRes, momResults: momResultRes }) }));
-    setMemberLoading(false);
+    const queries: Record<MemberLoadResource, (signal: AbortSignal) => PromiseLike<ResourceQueryResult>> = {
+      memberDirectory: (signal) => supabase.rpc("get_member_directory").abortSignal(signal),
+      profiles: (signal) => supabase.from("profiles").select("*").order("name").abortSignal(signal),
+      fees: (signal) => supabase.from("fees").select("*, profiles(name)").order("month", { ascending: false }).abortSignal(signal),
+      guestFees: (signal) => supabase.from("event_guest_fees").select("*, guest_players(name), events(title, starts_at)").order("created_at", { ascending: false }).abortSignal(signal),
+      attendance: (signal) => supabase.from("attendance").select("*").abortSignal(signal),
+      feedback: (signal) => supabase.from("feedback").select("*").order("created_at", { ascending: false }).abortSignal(signal),
+      feedbackFeed: (signal) => supabase.from("feedback_feed").select("*").order("created_at", { ascending: false }).abortSignal(signal),
+      submissions: (signal) => supabase.from("participation_submissions").select("id, form_id, participant_id, submitted_at, participation_answers(question_id, answer), profiles!inner(auth_user_id)").eq("profiles.auth_user_id", owner).abortSignal(signal),
+      rolePermissions: (signal) => supabase.from("role_permissions").select("role, permission").abortSignal(signal),
+      officerPermissions: (signal) => supabase.from("officer_permissions").select("officer_title, permission").abortSignal(signal),
+      guestPlayers: (signal) => supabase.from("guest_players").select("*").abortSignal(signal),
+      winners: (signal) => supabase.rpc("get_event_winners").abortSignal(signal),
+      momVotes: (signal) => supabase.from("event_mom_votes").select("*").abortSignal(signal),
+      momResults: (signal) => supabase.rpc("get_event_mom_results").abortSignal(signal),
+    };
+    const results = await Promise.all(resources.map(async (resource) => [resource, await requestsRef.current.load(resource, owner, queries[resource], refresh)] as const));
+    if (epoch !== requestsRef.current.epoch || owner !== userRef.current?.id) return;
+    const accepted: Partial<Record<LoadResource, LoadedResource>> = {};
+    let profilesChanged = false;
+    for (const [resource, result] of results) {
+      if (!result.isCurrent()) continue;
+      accepted[resource] = result;
+      const rows = result.error ? [] : result.data ?? [];
+      if (resource === "memberDirectory" || resource === "profiles") {
+        profileSourcesRef.current[resource === "profiles" ? "private" : "directory"] = rows as Profile[];
+        profilesChanged = true;
+      }
+      if (resource === "fees") setFees(rows as Fee[]);
+      if (resource === "guestFees") setGuestFees(rows as GuestFee[]);
+      if (resource === "attendance") setAttendance(mergePendingRsvpChanges(rows as Attendance[], rsvpPendingChangesRef.current));
+      if (resource === "feedback") setFeedback(rows as Feedback[]);
+      if (resource === "feedbackFeed") setFeedbackFeed(rows as FeedbackFeedItem[]);
+      if (resource === "submissions") setSubmissions(rows as ParticipationSubmission[]);
+      if (resource === "rolePermissions") setRolePermissions(rows as RolePermission[]);
+      if (resource === "officerPermissions") setOfficerPermissions(rows as OfficerPermission[]);
+      if (resource === "guestPlayers") setRawGuestPlayers(rows as RawGuestPlayer[]);
+      if (resource === "winners") setWinners(rows as EventWinningMember[]);
+      if (resource === "momVotes") setMomVotes(rows as EventMomVote[]);
+      if (resource === "momResults") setMomResults(rows as EventMomResult[]);
+    }
+    if (profilesChanged) {
+      const { directory, private: privateProfiles } = profileSourcesRef.current;
+      const visibleProfiles = new Map(directory.map((profile) => [profile.id, profile]));
+      privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
+      setProfiles(Array.from(visibleProfiles.values()).filter((profile) => !profile.is_test_account).sort((a, b) => a.name.localeCompare(b.name, "ko")));
+      setMe(privateProfiles.find((profile) => profile.auth_user_id === owner) ?? null);
+    }
+    setLoadErrors((current) => ({ ...current, ...getLoadErrors(accepted) }));
+    if (showSkeleton) setMemberLoading(false);
   }, [supabase]);
 
   const reload = useCallback(async (scope: ReloadScope = "all") => {
+    const resources = new Set(getReloadResources(scope));
+    const publicResources = publicLoadResources.filter((resource) => resources.has(resource));
+    const memberResources = memberLoadResources.filter((resource) => resources.has(resource));
     await Promise.all([
-      scope === "member" ? null : loadPublicData(),
-      scope === "public" ? null : loadMemberData(userRef.current),
+      publicResources.length > 0 ? loadPublicData(false, publicResources, true) : null,
+      memberResources.length > 0 ? loadMemberData(userRef.current, false, memberResources, true) : null,
     ]);
   }, [loadMemberData, loadPublicData]);
 
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); setAuthError(true); return; }
+    const requests = requestsRef.current;
     let active = true;
     const pendingTimer = window.setTimeout(() => { if (active) setAuthError(true); }, 12000);
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -204,10 +241,17 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       const nextUser = session?.user ?? null;
       if (userRef.current?.id !== nextUser?.id) {
         if (userRef.current) void webPush?.beforeLogout().catch(() => undefined);
-        memberRequestIdRef.current += 1;
-        publicRequestIdRef.current += 1;
+        requests.reset();
+        profileSourcesRef.current = { directory: [], private: [] };
+        rsvpPendingEventIdsRef.current.clear();
+        rsvpPendingChangesRef.current.clear();
+        setRsvpPendingEventIds(new Set());
         setPublicLoading(true);
         setMe(null);
+        // Clear owner-bound data before any new session's request can finish.
+        setProfiles([]); setFees([]); setGuestFees([]); setAttendance([]); setFeedback([]); setFeedbackFeed([]); setSubmissions([]); setRolePermissions([]); setOfficerPermissions([]); setRawGuestPlayers([]); setWinners([]); setMomVotes([]); setMomResults([]);
+        setEvents([]); setVenues([]); setNotices([]); setForms([]);
+        setQuickEditor(null); setWinnerEvent(null); setPendingDelete(null); setPendingKick(null);
         setMemberLoading(true);
       }
       userRef.current = nextUser;
@@ -221,8 +265,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     }).catch(() => { if (active) setAuthError(true); });
     return () => {
       active = false;
-      memberRequestIdRef.current += 1;
-      publicRequestIdRef.current += 1;
+      requests.reset();
       window.clearTimeout(pendingTimer);
       data.subscription.unsubscribe();
     };
@@ -286,13 +329,14 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [events, rawGuestPlayers]);
   const isOfficer = permissions.size > 0;
   const manageableParticipationKinds = (["election", "poll", "survey"] as ParticipationKind[]).filter((kind) => permissions.has(`${kind === "election" ? "elections" : kind === "poll" ? "polls" : "surveys"}.manage`));
-  const activeProfiles = profiles.filter((profile) => profile.status === "active");
+  const activeProfiles = useMemo(() => profiles.filter((profile) => profile.status === "active"), [profiles]);
   const upcoming = events.find((event) => new Date(event.starts_at) >= new Date());
   /** RLS already narrows a regular member to their own rows; an officer reads the club, so the home card still has to filter. */
   const myFees = useMemo(() => fees.filter((fee) => fee.member_id === me?.id), [fees, me?.id]);
-  const myStanding = myFees.length > 0 ? summarizeFees(myFees) : null;
+  const myStanding = useMemo(() => myFees.length > 0 ? summarizeFees(myFees) : null, [myFees]);
   /** The home ranking module reads the current season, the same data the rankings page uses. */
-  const seasonAwards = useMemo(() => buildSeasonRankings(new Date().getFullYear(), events, attendance, winners, profiles), [events, attendance, winners, profiles]);
+  const currentSeasonYear = getSeasonYear(new Date());
+  const seasonAwards = useMemo(() => buildSeasonRankings(currentSeasonYear, events, attendance, winners, profiles), [currentSeasonYear, events, attendance, winners, profiles]);
   const goingCount = upcoming ? attendance.filter((item) => item.event_id === upcoming.id && item.status === "going").length : 0;
   /** Sections gated behind a session must not flash their signed-out state first. */
   const sessionPending = authLoading || memberLoading;
@@ -328,7 +372,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     setDeleting(false); setPendingKick(null);
     if (error) return showToast(toErrorMessage(error), "error");
     showToast(`${target.name} 회원을 강퇴했습니다.`);
-    await reload("member");
+    await reload("all");
   };
   const passwordAuth = async (identifier: string, password: string) => {
     if (!supabase) return "로그인 연결을 준비 중입니다.";
@@ -384,18 +428,31 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       if (warning && !window.confirm(warning)) return;
     }
     if (!beginRsvpSave(rsvpPendingEventIdsRef.current, eventId)) return;
+    const owner = user.id;
+    const epoch = requestsRef.current.epoch;
+    const isCurrent = () => userRef.current?.id === owner && requestsRef.current.epoch === epoch;
+    requestsRef.current.invalidate("attendance");
+    rsvpPendingChangesRef.current.set(eventId, { memberId: me.id, status });
     setRsvpPendingEventIds((current) => new Set(current).add(eventId));
     setAttendance((rows) => applyRsvpStatus(rows, eventId, me.id, status));
     try {
       const { error } = await supabase.from("attendance").upsert({ event_id: eventId, member_id: me.id, status }, { onConflict: "event_id,member_id" });
       if (error) throw error;
+      if (!isCurrent()) return;
+      setAttendance((rows) => applyRsvpStatus(rows, eventId, me.id, status));
       showToast(status === "going" ? "참석으로 저장했습니다." : status === "not_going" ? "불참으로 저장했습니다." : "참석 응답을 취소했습니다.");
     } catch (error) {
+      if (!isCurrent()) return;
       setAttendance((rows) => restoreRsvpStatus(rows, eventId, me.id, existing));
       showToast(`참석 여부를 저장하지 못해 이전 상태로 되돌렸습니다. ${toErrorMessage(error)}`, "error");
     } finally {
-      rsvpPendingEventIdsRef.current.delete(eventId);
-      setRsvpPendingEventIds((current) => { const next = new Set(current); next.delete(eventId); return next; });
+      if (isCurrent()) {
+        // Discard reads started during the write before removing the optimistic overlay.
+        requestsRef.current.invalidate("attendance");
+        rsvpPendingChangesRef.current.delete(eventId);
+        rsvpPendingEventIdsRef.current.delete(eventId);
+        setRsvpPendingEventIds((current) => { const next = new Set(current); next.delete(eventId); return next; });
+      }
     }
   };
 
@@ -418,14 +475,14 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={hasLoadError("fees", "profiles")} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
-      {view === "rankings" && <Rankings events={events} attendance={attendance} winners={winners} profiles={profiles} user={user} profile={me} loading={sessionPending || publicLoading} loadError={hasLoadError("events", "attendance", "winners", "profiles")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
-      {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} feedbackFeed={feedbackFeed} supabase={supabase} loading={sessionPending} loadError={hasLoadError("feedback", "feedbackFeed", "profiles")} canManage={permissions.has("feedback.manage")} onEdit={(item) => setQuickEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
-      {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={hasLoadError("forms", "submissions")} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload("member")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
+      {view === "rankings" && <Rankings currentYear={currentSeasonYear} currentAwards={seasonAwards} events={events} attendance={attendance} winners={winners} profiles={profiles} user={user} profile={me} loading={sessionPending || publicLoading} loadError={hasLoadError("events", "attendance", "winners", "profiles")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
+      {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} feedbackFeed={feedbackFeed} supabase={supabase} loading={sessionPending} loadError={hasLoadError("feedback", "feedbackFeed", "profiles")} canManage={permissions.has("feedback.manage")} onEdit={(item) => setQuickEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload(["feedback", "feedbackFeed"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
+      {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={hasLoadError("forms", "submissions")} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload(["submissions"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
       {view === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
       {view === "admin" && sessionPending && <SectionSkeleton />}
       {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} sectionLoadErrors={{ members: hasLoadError("memberDirectory", "profiles"), guests: hasLoadError("guestPlayers"), fees: hasLoadError("fees", "guestFees", "profiles"), notices: noticeLoadError, venues: hasLoadError("venues"), events: eventLoadError, attendance: hasLoadError("events", "attendance"), teams: eventLoadError, feedback: hasLoadError("feedback"), forms: hasLoadError("forms"), permissions: hasLoadError("rolePermissions", "officerPermissions") }} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}
-      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload("member")} toast={showToast} />}
+      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload(["momVotes", "momResults"])} toast={showToast} />}
       {children}
     </main>
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
@@ -436,7 +493,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <MoreSheet open={sheetOpen} tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onClose={closeSheet} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
     {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} webPush={webPush} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
-    {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload("member"); }} onError={(message) => showToast(message, "error")} />}
+    {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload(["winners"]); }} onError={(message) => showToast(message, "error")} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
@@ -529,7 +586,8 @@ function Fees({ fees, profiles, profile, events, user, loading, loadError, canMa
 
 /** One member reading their own ledger: what is owed, what it is based on, what the plan is. */
 function FeeMemberView({ fees, profile, events, onAsk }: { fees: Fee[]; profile: Profile | null; events: Event[]; onAsk: () => void }) {
-  const standing = summarizeFees(fees);
+  const standing = useMemo(() => summarizeFees(fees), [fees]);
+  const eventsById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
   const plan = feePlan(profile);
   /* Participation fees are raised per schedule, so one month can hold several
      rows. Grouping by month keeps that legible instead of flattening it. */
@@ -551,7 +609,7 @@ function FeeMemberView({ fees, profile, events, onAsk }: { fees: Fee[]; profile:
     {standing.unpaidCount > 0 ? <div className="unpaid-callout"><CircleDollarSign size={20} /><span><b>납부 계좌와 방법은 총무가 안내합니다</b>이미 입금했는데 미납으로 남아 있으면 의견 보내기로 알려 주세요.</span>{ask}</div> : <div className="unpaid-callout settled"><Check size={20} /><span><b>확인이 필요한 회비가 없습니다</b>금액이나 기준이 실제와 다르면 의견 보내기로 알려 주세요.</span>{ask}</div>}
     {fees.length === 0 ? <Empty icon={<CircleDollarSign />} title="등록된 회비 내역이 없습니다" description="총무가 회비를 등록하면 월별 납부 내역이 이곳에 쌓입니다." /> : <ol className="fee-month-list">{months.map((group) => <li key={group.key}>
       <div className="fee-month-head"><b>{formatFeeMonth(group.key)}</b><small>{group.composition}</small><span className={group.standing.unpaidCount > 0 ? "owing" : undefined}>{group.standing.unpaidCount > 0 ? `미납 ${group.standing.unpaidCount}건 · ${group.standing.unpaidTotal.toLocaleString()}원` : "미납 없음"}</span></div>
-      <ul className="fee-entry-list">{group.rows.map((fee) => <li key={fee.id} className={`fee-entry ${fee.fee_type} ${fee.status}`}><span className="fee-entry-kind">{fee.fee_type === "participation" ? "참여비" : "월회비"}</span><span className="fee-entry-basis"><b>{feeBasis(fee, events, false)}</b><small>{fee.status === "paid" && fee.paid_at ? `${formatDate(fee.paid_at)} 납부` : fee.status === "exempt" ? "총무가 면제 처리한 회비" : fee.fee_type === "participation" ? "참여한 일정에 대한 회비" : "해당 월의 정기 회비"}</small></span><span className="fee-entry-amount">{fee.amount.toLocaleString()}원</span><FeeStatus status={fee.status} /></li>)}</ul>
+      <ul className="fee-entry-list">{group.rows.map((fee) => <li key={fee.id} className={`fee-entry ${fee.fee_type} ${fee.status}`}><span className="fee-entry-kind">{fee.fee_type === "participation" ? "참여비" : "월회비"}</span><span className="fee-entry-basis"><b>{feeBasis(fee, eventsById, false)}</b><small>{fee.status === "paid" && fee.paid_at ? `${formatDate(fee.paid_at)} 납부` : fee.status === "exempt" ? "총무가 면제 처리한 회비" : fee.fee_type === "participation" ? "참여한 일정에 대한 회비" : "해당 월의 정기 회비"}</small></span><span className="fee-entry-amount">{fee.amount.toLocaleString()}원</span><FeeStatus status={fee.status} /></li>)}</ul>
     </li>)}</ol>}
   </>;
 }
@@ -559,16 +617,18 @@ function FeeMemberView({ fees, profile, events, onAsk }: { fees: Fee[]; profile:
 /** The officer answer to "has 김OO paid?": one row group per member, unpaid members first. */
 function FeeLedger({ fees, profiles, events, myFees, onCreate, onEdit, onDelete, onAsk }: { fees: Fee[]; profiles: Profile[]; events: Event[]; myFees: Fee[]; onCreate: () => void; onEdit: (fee: Fee) => void; onDelete: (id: string, label: string) => void; onAsk: () => void }) {
   const [unpaidOnly, setUnpaidOnly] = useState(false);
+  const profilesById = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
+  const eventsById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
   const groups = useMemo(() => {
     const byMember = new Map<string, { id: string; name: string; plan: ReturnType<typeof feePlan>; rows: Fee[] }>();
     fees.forEach((fee) => {
-      const owner = profiles.find((item) => item.id === fee.member_id);
+      const owner = profilesById.get(fee.member_id);
       const group = byMember.get(fee.member_id) ?? { id: fee.member_id, name: fee.profiles?.name ?? owner?.name ?? "회원", plan: feePlan(owner), rows: [] };
       group.rows.push(fee);
       byMember.set(fee.member_id, group);
     });
     return Array.from(byMember.values()).map((group) => ({ ...group, standing: summarizeFees(group.rows) })).sort((a, b) => b.standing.unpaidTotal - a.standing.unpaidTotal || b.standing.unpaidCount - a.standing.unpaidCount || a.name.localeCompare(b.name, "ko"));
-  }, [fees, profiles]);
+  }, [fees, profilesById]);
   const owing = groups.filter((group) => group.standing.unpaidCount > 0);
   const owingTotal = owing.reduce((sum, group) => sum + group.standing.unpaidTotal, 0);
   const myUnpaidCount = myFees.filter((fee) => fee.status === "unpaid").length;
@@ -584,7 +644,7 @@ function FeeLedger({ fees, profiles, events, myFees, onCreate, onEdit, onDelete,
     <dl className="fee-ledger-summary"><div className={owing.length > 0 ? "owing" : undefined}><dt>미납 회원</dt><dd>{owing.length}명</dd></div><div className={owingTotal > 0 ? "owing" : undefined}><dt>미납 합계</dt><dd>{owingTotal.toLocaleString()}원</dd></div><div><dt>등록 회원</dt><dd>{groups.length}명</dd></div><div><dt>등록 건수</dt><dd>{fees.length}건</dd></div></dl>
     {visible.length === 0 ? <Empty icon={<CircleDollarSign />} title={fees.length === 0 ? "등록된 회비 내역이 없습니다" : "미납 회원이 없습니다"} description={fees.length === 0 ? "회비 등록으로 회원별 납부 상태를 만들어 주세요." : "등록된 회비가 모두 납부되었거나 면제 처리되었습니다."} /> : <div className="table-wrap fee-ledger scroll-region" tabIndex={0} role="region" aria-label="회원별 회비 납부 현황"><table><caption className="sr-only">회원별 회비 납부 현황. 회원 이름 행 아래에 그 회원의 회비 내역이 이어집니다.</caption><thead><tr><th scope="col">기준</th><th scope="col">구분</th><th scope="col">금액</th><th scope="col">상태</th><th scope="col">관리</th></tr></thead>{visible.map((group) => <tbody key={group.id}>
       <tr className={group.standing.unpaidCount > 0 ? "fee-member-row owing" : "fee-member-row"}><th scope="colgroup" colSpan={5}><div><span className="fee-member-mark" aria-hidden="true">{group.name.slice(0, 1)}</span><span className="fee-member-name"><b>{group.name}</b><small>{group.plan ? `${group.plan.label} ${group.plan.amount.toLocaleString()}원` : "회비 기준 미설정"}</small></span><span className="fee-member-standing">{group.standing.unpaidCount > 0 ? `미납 ${group.standing.unpaidCount}건 · ${group.standing.unpaidTotal.toLocaleString()}원` : `미납 없음 · 납부 ${group.standing.paidCount}건`}</span></div></th></tr>
-      {group.rows.map((fee) => { const feeLabel = `${group.name} · ${fee.month.slice(0, 7)} ${fee.fee_type === "participation" ? "참여비" : "월회비"}`; return <tr key={fee.id}><th scope="row">{feeBasis(fee, events)}</th><td>{fee.fee_type === "participation" ? "참여비" : "월회비"}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td><td><div className="resource-actions"><button aria-label={`${feeLabel} 수정`} onClick={() => onEdit(fee)}><Pencil size={16} /></button><button aria-label={`${feeLabel} 삭제`} onClick={() => onDelete(fee.id, feeLabel)}><Trash2 size={16} /></button></div></td></tr>; })}
+      {group.rows.map((fee) => { const feeLabel = `${group.name} · ${fee.month.slice(0, 7)} ${fee.fee_type === "participation" ? "참여비" : "월회비"}`; return <tr key={fee.id}><th scope="row">{feeBasis(fee, eventsById)}</th><td>{fee.fee_type === "participation" ? "참여비" : "월회비"}</td><td>{fee.amount.toLocaleString()}원</td><td><FeeStatus status={fee.status} /></td><td><div className="resource-actions"><button aria-label={`${feeLabel} 수정`} onClick={() => onEdit(fee)}><Pencil size={16} /></button><button aria-label={`${feeLabel} 삭제`} onClick={() => onDelete(fee.id, feeLabel)}><Trash2 size={16} /></button></div></td></tr>; })}
     </tbody>)}</table></div>}
   </>;
 }
@@ -606,9 +666,9 @@ function feePlan(profile: Profile | null | undefined) {
 }
 function formatFeeMonth(month: string) { const [year, value] = month.slice(0, 7).split("-"); return `${year}년 ${Number(value)}월`; }
 /** A participation fee belongs to a schedule, a monthly fee to a month — naming the source is what makes five rows in one month readable. */
-function feeBasis(fee: Fee, events: Event[], withMonth = true) {
+function feeBasis(fee: Fee, events: ReadonlyMap<string, Event>, withMonth = true) {
   if (fee.fee_type !== "participation") return withMonth ? `${formatFeeMonth(fee.month)} 정기 회비` : "정기 회비";
-  const event = events.find((item) => item.id === fee.event_id);
+  const event = fee.event_id ? events.get(fee.event_id) : undefined;
   if (event) return `${new Date(event.starts_at).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} · ${event.title}`;
   return withMonth ? `${formatFeeMonth(fee.month)} 참여 일정` : "참여 일정";
 }
@@ -750,7 +810,7 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
             {myTeam && <span className="event-card-chip mine">{myTeam.team_name}</span>}
             {hasTeams && <span className="event-card-chip">{teams.length}팀 편성</span>}
             {event.is_competitive && <span className="event-card-chip">커피 내기</span>}
-            {hasTeams && !myTeam && <a className="event-card-chip unassigned" href={`${eventDatePath(event.starts_at)}?section=teams`}>팀 명단 보기</a>}
+            {hasTeams && !myTeam && <Link className="event-card-chip unassigned" href={`${eventDatePath(event.starts_at)}?section=teams`}>팀 명단 보기</Link>}
           </div>}
           <section className="event-card-section event-card-attendance" aria-labelledby={`event-card-attendance-${event.id}`}>
             <div className="event-card-section-heading"><h3 id={`event-card-attendance-${event.id}`}>참석 현황</h3><span>{isPast ? "출석 기록" : "현재 등록 기준"}</span></div>
@@ -772,11 +832,10 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
   </section>}</section>;
 }
 
-function Rankings({ events, attendance, winners, profiles, user, profile, loading, loadError, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; winners: EventWinningMember[]; profiles: Profile[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
-  const currentYear = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date()));
+function Rankings({ currentYear, currentAwards, events, attendance, winners, profiles, user, profile, loading, loadError, onLogin, onRetry }: { currentYear: number; currentAwards: ReturnType<typeof buildSeasonRankings>; events: Event[]; attendance: Attendance[]; winners: EventWinningMember[]; profiles: Profile[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
   const [year, setYear] = useState(currentYear);
-  const years = [...new Set([currentYear, ...events.map((event) => Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date(event.starts_at))))])].sort((a, b) => b - a);
-  const awards = useMemo(() => buildSeasonRankings(year, events, attendance, winners, profiles), [year, events, attendance, winners, profiles]);
+  const years = useMemo(() => [...new Set([currentYear, ...events.map((event) => getSeasonYear(event.starts_at))])].sort((a, b) => b - a), [currentYear, events]);
+  const awards = useMemo(() => year === currentYear ? currentAwards : buildSeasonRankings(year, events, attendance, winners, profiles), [year, currentYear, currentAwards, events, attendance, winners, profiles]);
   const intro = <PageIntro kicker="CLUB RANKING" title="클럽 랭킹" description="올해의 우승, 득점, 출석 기록을 확인하세요." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="랭킹을 불러오는 중" /></section>;
   if (!user) return <section className="content">{intro}<LoginGate icon={<Shield />} title="로그인 후 클럽 기록을 확인하세요" description="회원 전용 연간 랭킹입니다." onLogin={onLogin} /></section>;

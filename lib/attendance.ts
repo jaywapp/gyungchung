@@ -14,3 +14,16 @@ export function isCheckedIn(record?: Attendance) {
   const status = getCheckInStatus(record);
   return status === "present" || status === "late";
 }
+
+/** Count each row once instead of rescanning the complete history for every event. */
+export function countAttendanceByEvent(records: Attendance[]) {
+  const counts = new Map<string, { present: number; late: number; absent: number }>();
+  for (const record of records) {
+    const status = getCheckInStatus(record);
+    if (!status) continue;
+    const eventCounts = counts.get(record.event_id) ?? { present: 0, late: 0, absent: 0 };
+    eventCounts[status]++;
+    counts.set(record.event_id, eventCounts);
+  }
+  return counts;
+}
