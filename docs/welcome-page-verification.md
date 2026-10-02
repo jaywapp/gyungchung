@@ -68,9 +68,9 @@ node --experimental-default-type=module supabase/tests/welcome-pglite.mjs <pglit
 - 제거한 검증용 `/welcome-qa`: 404.
 - 공개 페이지 브라우저: 페이지·콘솔 오류, 가로 넘침·중복 ID, 회원·초안·인증 API 요청 없음.
 
-운영 DB 마이그레이션은 아직 적용하지 않았으므로 현재 연결 대상에는 게시 조회 실패 안내가 표시된다. 기본 앱·계정 안내와 다운로드는 정상 동작한다. 실제 게시 콘텐츠의 서버 왕복 검사는 DB 적용 후 수행한다.
+당시에는 운영 DB 적용 전이라 게시 조회 실패 안내가 표시됐다. 이후 DB 적용·기본 콘텐츠 게시·웹 운영 배포를 완료했고, 아래 운영 검사에서 오류 안내 없이 실제 게시본이 렌더되는 것을 확인했다.
 
-## 운영 반영 전 남은 검사
+## 최초 로컬 검증 시 운영 확인 계획
 
 1. 실제 Supabase 전체 마이그레이션 호환, migration history, security/performance advisor, 복수 연결의 저장·게시 잠금 검사.
 2. 익명·활동 회원·회장·시스템 관리자·위임·회수 계정으로 직접 API/RLS와 실제 저장·미리보기·게시 흐름 검사.
@@ -78,8 +78,9 @@ node --experimental-default-type=module supabase/tests/welcome-pglite.mjs <pglit
 4. 운영 APK 링크·앱 정보 일치, Android 실기기 첫 설치·기존 앱 업데이트, 배포 오류 로그 확인.
 5. 운영진 공개 자료 등록·최초 게시. 실제 iOS 배포 시 공식 링크 등록·기기 검증.
 
-현재 결과만으로 운영 배포·실기기 설치·최초 콘텐츠 게시가 완료됐다고 보지 않는다.
-## 운영 반영 진행 (2026-10-02)
+위 목록은 최초 로컬 검증 시 작성한 계획이다. 실제 완료 범위는 아래 운영 기록으로 판단하며, 실기기 설치·실제 운영진 브라우저 편집과 복수 연결 경쟁은 미실시다.
+
+## 운영 반영 완료 (2026-10-02)
 
 사용자가 “다 진행해”로 DB 적용·푸시·PR·병합·배포를 승인했다. 최신 main의 푸시 운영과 알림 피드백 변경을 통합하고 각 업데이트 안내 항목을 모두 유지했다.
 
@@ -91,6 +92,24 @@ node --experimental-default-type=module supabase/tests/welcome-pglite.mjs <pglit
 - 익명 실제 REST: 게시본 200·1행, 초안 SELECT 401, 저장 RPC 401.
 - mobile-updates: 배포 버전 5 ACTIVE. 기존 verify_jwt=false와 함수 내부 다운로드 인증을 유지했다. 익명 metadata 200·코드 200011·공개 downloadUrl, 유효한 APK 프록시의 무인증 요청 401.
 - Advisor: 새 보안 경고 없음. 기존 보안/성능 경고는 이번 범위에서 변경하지 않았다. 단일 행 초안 테이블의 updated_by 외래키에 unindexed_foreign_keys INFO 1건이 추가됐으며 최대 1행 구조라 별도 인덱스를 추가하지 않았다.
-- 웹 PR·Vercel 배포·운영 URL·브라우저·오류 로그 검사는 진행 중이다.
+- 웹 [PR #179](https://github.com/jaywapp/gyungchung/pull/179): Vercel 검사 통과 후 squash 병합. 운영 코드 commit `bf85495948fa7e05e7f598b4f17be00301402fd9`.
+- Vercel 운영 배포 `dpl_AjBg5hWLy8teEsd9ycuZ1YS9VS9n`: READY, 빌드 약 49초, 운영 alias `gyungchung.vercel.app` 연결. 프리뷰에서 게시 조회 오류가 있었으나 운영 배포에서는 실제 DB 게시본 정상 조회를 확인했다.
+
+### 실제 운영 URL·브라우저 검사
+
+| 검사 | 실제 결과 |
+| --- | --- |
+| [공개 /welcome](https://gyungchung.vercel.app/welcome) | 비로그인 200. 오류·미게시 안내 없이 기본 게시본 표시. 회칙 없음, 앱 설치 필수, 운영진 0명인 영역·목차 숨김 |
+| 검색 | noindex·nofollow, /sitemap.xml 200·/welcome 미포함 |
+| Android metadata | /api/welcome/android 200. versionCode 200011, 공개 downloadUrl 제공 |
+| APK 일치 | 첫 화면·설치 영역 두 다운로드 주소가 metadata의 검증 릴리스와 일치. 공개 APK HEAD 200, 85,611,780 bytes로 sizeBytes와 일치 |
+| 프록시 제한·임시 라우트 | /api/welcome/android?download=1 → 400, /welcome-qa → 404 |
+| 기존 웹 진입 | / 응답 200 |
+| 공개 브라우저 | 1440·360 폭에서 가로 넘침 없음, 중복 ID 없음, 모바일 다운로드 버튼 높이 54px |
+| 공개 네트워크 | 회원·초안·인증 REST 요청 없음. 앱 정보 API만 조회 |
+| 브라우저 오류 | 페이지·콘솔 오류 없음 |
+| 운영 로그 | /welcome·/api/welcome/android 최근 1시간 runtime error 없음. 해당 운영 deployment error/fatal 로그 0건 |
+
+운영 화면 캡처는 로컬 .work/tasks/welcome-page-20261002/production-mobile-360.png와 production-desktop-1440.png에 저장했다. 캡처는 저장소에 커밋하지 않는다.
 
 실제 운영진 소개 등록, Android 실기기 설치, 실제 운영진 세션의 브라우저 편집 E2E, 복수 연결에서의 잠금 경쟁과 스크린 리더 검사는 이번 자동 운영 검사에 포함하지 않는다. 과거의 미실시 항목은 이 운영 기록에서 명시적으로 확인한 것만 완료로 바뀐다.
