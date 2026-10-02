@@ -1,0 +1,253 @@
+[
+  {
+    "stadium_id": 1926,
+    "facility_id": 1251,
+    "facility_name": "용인 풋볼존 1앤1",
+    "court_name": "실내 트레이닝존",
+    "address": "경기도 용인시 기흥구 중부대로746번길 2 루벤스빌딩 4층",
+    "city": "경기도 용인시",
+    "latitude": 37.2617203,
+    "longitude": 127.1397401,
+    "facility_type": "실내",
+    "candidate_only": true,
+    "candidate_reason": "개인연습 트레이닝존",
+    "source_url": "https://web.iamground.kr/68?facility_id=1251",
+    "source_kind": "current_official_api",
+    "verified_at": "2026-10-02T02:12:32Z"
+  },
+  {
+    "stadium_id": 2248,
+    "facility_id": 1501,
+    "facility_name": "용인 솔라피데 축구클럽",
+    "court_name": "실내트레이닝존",
+    "address": "경기도 용인시 처인구 동부로29번길 5 목원주택 지하1층",
+    "city": "경기도 용인시",
+    "latitude": 37.2306412,
+    "longitude": 127.2148179,
+    "facility_type": "실내",
+    "candidate_only": true,
+    "candidate_reason": "개인연습 트레이닝존",
+    "source_url": "https://web.iamground.kr/68?facility_id=1501",
+    "source_kind": "current_official_api",
+    "verified_at": "2026-10-02T02:12:32Z"
+  },
+  {
+    "name": "경기 광주 DP 풋살 아레나",
+    "address": "경기도 광주시 초월읍 도평리 82",
+    "city": "광주시",
+    "source_url": "https://www.plabfootball.com/match/859064",
+    "source_kind": "booking_platform",
+    "verified_at": "2026-10-02",
+    "candidate_only": true,
+    "candidate_reason": "기존 IAM 코트와 중복 가능성이 있으나 코트 대응 미확정. 추가 프리셋 생성 보류."
+  },
+  {
+    "name": "용인 참스포츠 클럽 풋살장",
+    "address": "경기 용인시 기흥구 지삼로 51-1",
+    "city": "용인시",
+    "source_url": "https://www.plabfootball.com/match/814947/",
+    "source_kind": "booking_platform",
+    "verified_at": "2026-10-02",
+    "candidate_only": true,
+    "candidate_reason": "기존 IAM 코트와 중복 가능성이 있으나 코트 대응 미확정. 추가 프리셋 생성 보류."
+  },
+  {
+    "name": "우리동네 풋살장",
+    "address": "경기도 광주시 초월읍 산이리 31-1",
+    "city": "경기도 광주시",
+    "source_url": "https://www.iamground.kr/futsal/detail/205",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "courts": [
+      {
+        "name": "A면(실내)",
+        "facility_type": "실내 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/205"
+      }
+    ],
+    "notes": "구 상세 색인에 B면 표기도 있으나 B면 주소·상세 URL을 별도 확인하지 못해 기록하지 않음. 현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/205"
+    ]
+  },
+  {
+    "name": "옥상달빛 풋살장(크레이지 풋볼)",
+    "address": "경기도 성남시 수정구 태평 3동 3678-1 주민신협빌딩 6층 옥상",
+    "city": "경기도 성남시",
+    "source_url": "https://www.iamground.kr/futsal/detail/53",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "facility_type": "야외 인조잔디",
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/53"
+    ]
+  },
+  {
+    "name": "판교종합사회복지관 풋살장",
+    "address": "경기도 성남시 분당구 판교동 628",
+    "city": "경기도 성남시",
+    "source_url": "https://www.iamground.kr/futsal/detail/722",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "facility_type": "야외 인조잔디",
+    "notes": "현재 운영 및 대관 가능 여부 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/722"
+    ]
+  },
+  {
+    "name": "노메이커 실내 풋살장",
+    "address": "경기도 용인시 처인구 마평동 416",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/765",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "facility_type": "실내 인조잔디",
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/765"
+    ]
+  },
+  {
+    "name": "용인 와드 풋살장",
+    "address": "경기도 용인시 처인구 남사읍 산정로 51-24",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/1418",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "courts": [
+      {
+        "name": "야외풋살장",
+        "facility_type": "야외 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/1418"
+      },
+      {
+        "name": "실내풋살장",
+        "facility_type": "실내 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/1419"
+      }
+    ],
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/1418"
+    ]
+  },
+  {
+    "name": "위펠 풋볼클럽 풋살장(실내)",
+    "address": "경기도 용인시 기흥구 보정동 461",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/893",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "facility_type": "실내 인조잔디",
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/893"
+    ]
+  },
+  {
+    "name": "캡틴필드",
+    "address": "경기도 용인시 기흥구 서천동 274-3",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/681",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "facility_type": "야외 인조잔디",
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/681"
+    ]
+  },
+  {
+    "name": "탑 스포츠클럽 옥상풋살장(풍덕천 지점)",
+    "address": "경기도 용인시 수지구 풍덕천동 1078 수지로얄 스포츠센터 5층",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/705",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "courts": [
+      {
+        "name": "B면",
+        "facility_type": "야외 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/705"
+      }
+    ],
+    "notes": "구 상세 색인에 A면 표기 있으나 별도 상세 주소·URL 미확인. 구 상세에 '대관 운영 하지 않음' 명시. 일정 장소 후보에서 제외 검토 필요.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/705"
+    ]
+  },
+  {
+    "name": "탑 스포츠클럽 풋살장(성복동점)",
+    "address": "경기도 용인시 수지구 성복동 522-1",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/703",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "facility_type": "야외 인조잔디",
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/703"
+    ]
+  },
+  {
+    "name": "SCG 축구교실 풋살장",
+    "address": "경기도 용인시 수지구 동천동 536-5",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/790",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "courts": [
+      {
+        "name": "야외풋살장",
+        "facility_type": "야외 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/790"
+      },
+      {
+        "name": "실내풋살장",
+        "facility_type": "실내 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/791"
+      }
+    ],
+    "notes": "현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/790"
+    ]
+  },
+  {
+    "name": "YS축구클럽 풋살장",
+    "address": "경기도 용인시 지곡동 564-2",
+    "city": "경기도 용인시",
+    "source_url": "https://www.iamground.kr/futsal/detail/1148",
+    "source_kind": "legacy_official_detail_search_index",
+    "verified_at": "2026-10-02T02:04:25Z",
+    "courts": [
+      {
+        "name": "실내A면",
+        "facility_type": "실내 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/1148"
+      },
+      {
+        "name": "야외B면",
+        "facility_type": "야외 인조잔디",
+        "source_url": "https://www.iamground.kr/futsal/detail/1202"
+      }
+    ],
+    "notes": "구 상세 색인에 야외C면 표기가 있으나 C면 상세 주소·URL 미확인. 현재 운영 미확인.",
+    "candidate_only": true,
+    "source_urls": [
+      "https://www.iamground.kr/futsal/detail/1148"
+    ]
+  }
+]

@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-02-venue-presets",
+    date: "2026-10-02",
+    source: "request",
+    title: "주변 풋살장을 더 쉽게 찾을 수 있습니다",
+    summary: "일정 등록·수정에서 광주시·용인시·성남시의 구장을 이름·지역·주소로 검색해 선택할 수 있습니다.",
+    changes: [
+      { kind: "added", text: "경기 일정의 구장 선택 목록에서 구장명·지역·주소 검색을 지원합니다." },
+      { kind: "improved", text: "검색 결과가 없어도 기존처럼 구장명과 주소를 직접 입력할 수 있습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-02-welcome-page",
     date: "2026-10-02",
     source: "request",

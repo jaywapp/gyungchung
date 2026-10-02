@@ -65,6 +65,7 @@ export interface Venue {
   id: string;
   name: string;
   address: string;
+  city?: string | null;
   note: string | null;
   created_at: string;
   updated_at: string;
