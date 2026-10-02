@@ -14,21 +14,24 @@ import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
 import { filterAdminRows } from "@/lib/admin-list-filters";
 import { applyPermissionBatch, updatePendingPermissionChanges, type PendingPermissionChange } from "@/lib/permission-batch.mjs";
 import ConfirmDialog from "@/components/confirm-dialog";
+import dynamic from "next/dynamic";
 import { Empty, LoadError } from "@/components/section-states";
 import ParticipationFormQuestionEditor from "@/components/participation-form-question-editor";
 import { answeredFormPolicyViolation, createQuestionDrafts, requiresResponseImpactConfirmation, serializeQuestionDrafts, validateQuestionDrafts } from "@/lib/participation-form-editor";
 import { FEE_AMOUNTS, formatWon } from "@/lib/fee-rules";
 
+const WelcomeEditor = dynamic(() => import("@/components/welcome-editor"));
+
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
-type Section = "members" | "guests" | "fees" | "notices" | "venues" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions";
-export type EditorConfig = { type: Exclude<Section, "permissions">; row?: Record<string, unknown> };
+type Section = "members" | "guests" | "fees" | "notices" | "venues" | "events" | "attendance" | "teams" | "feedback" | "forms" | "permissions" | "welcome";
+export type EditorConfig = { type: Exclude<Section, "permissions" | "welcome">; row?: Record<string, unknown> };
 
 const groupDefinitions: { key: string; label: string; sections: Section[] }[] = [
   { key: "roster", label: "회원", sections: ["members", "guests", "fees"] },
   { key: "schedule", label: "일정", sections: ["venues", "events", "attendance", "teams"] },
-  { key: "operations", label: "운영", sections: ["notices", "feedback", "forms", "permissions"] },
+  { key: "operations", label: "운영", sections: ["notices", "feedback", "forms", "welcome", "permissions"] },
 ];
-const sectionLabels: Record<Section, string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", venues: "구장", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여", permissions: "권한" };
+const sectionLabels: Record<Section, string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", venues: "구장", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여", permissions: "권한", welcome: "웰컴 페이지" };
 const editorTitles: Record<EditorConfig["type"], string> = { members: "회원", guests: "용병", fees: "회비", notices: "공지", venues: "구장", events: "일정", attendance: "출석", teams: "팀 편성", feedback: "의견", forms: "참여 항목" };
 
 const roleLabels: Record<AccountRole, string> = { member: "일반 회원", manager: "관리자" };
@@ -47,7 +50,7 @@ const rosterPositions = ["GK", "DF", "MF", "FW", "ANY"] as const;
 const rosterPosition = (position: string | null | undefined) => rosterPositions.find((code) => code === position) ?? "ANY";
 
 const permissionLabels: Record<string, string> = {
-  "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
+  "roles.manage": "계정·직책 설정", "officers.manage": "운영 권한 위임", "members.manage": "회원 관리", "fees.manage": "회비 관리", "notices.manage": "공지 관리", "welcome.manage": "웰컴 페이지 관리", "events.manage": "일정·출석 관리", "feedback.manage": "의견 관리", "elections.manage": "선거 관리", "polls.manage": "투표 관리", "surveys.manage": "설문 관리",
 };
 
 const listStatusOptions: Partial<Record<Section, Array<{ value: string; label: string }>>> = {
@@ -59,7 +62,7 @@ const listStatusOptions: Partial<Record<Section, Array<{ value: string; label: s
 };
 
 const listSearchPlaceholders: Record<Section, string> = {
-  members: "이름 또는 전화번호 검색", guests: "이름 또는 전화번호 검색", fees: "회원 또는 용병 이름 검색", notices: "제목 또는 내용 검색", venues: "구장 또는 주소 검색", events: "일정 제목 또는 날짜 검색", attendance: "일정 제목 또는 날짜 검색", teams: "일정 제목 또는 날짜 검색", feedback: "의견 제목 또는 내용 검색", forms: "제목 또는 설명 검색", permissions: "",
+  members: "이름 또는 전화번호 검색", guests: "이름 또는 전화번호 검색", fees: "회원 또는 용병 이름 검색", notices: "제목 또는 내용 검색", venues: "구장 또는 주소 검색", events: "일정 제목 또는 날짜 검색", attendance: "일정 제목 또는 날짜 검색", teams: "일정 제목 또는 날짜 검색", feedback: "의견 제목 또는 내용 검색", forms: "제목 또는 설명 검색", permissions: "", welcome: "",
 };
 
 export default function AdminConsole({ profiles, guestPlayers, attendance, fees, guestFees, notices, venues, events, feedback, forms, rolePermissions, officerPermissions, sectionLoadErrors, permissions, currentProfileId, supabase, reload, toast }: {
@@ -73,6 +76,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     if (permissions.has("members.manage")) allowed.add("members");
     if (permissions.has("fees.manage")) allowed.add("fees");
     if (permissions.has("notices.manage")) allowed.add("notices");
+    if (permissions.has("welcome.manage")) allowed.add("welcome");
     if (permissions.has("feedback.manage")) allowed.add("feedback");
     if (permissions.has("events.manage")) ["guests", "venues", "events", "attendance", "teams"].forEach((key) => allowed.add(key as Section));
     if (permissions.has("elections.manage") || permissions.has("polls.manage") || permissions.has("surveys.manage")) allowed.add("forms");
@@ -92,7 +96,39 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
   const [listQuery, setListQuery] = useState("");
   const [listStatus, setListStatus] = useState("all");
   const resetListFilters = () => { setListQuery(""); setListStatus("all"); };
-  const selectListSection = (nextSection: Section) => { setSection(nextSection); resetListFilters(); };
+  const [welcomeDirty, setWelcomeDirty] = useState(false);
+  const [pendingWelcomeLeave, setPendingWelcomeLeave] = useState<(() => void) | null>(null);
+  const requestNavigation = (action: () => void) => {
+    if (section === "welcome" && welcomeDirty) setPendingWelcomeLeave(() => action);
+    else action();
+  };
+  const selectListSection = (nextSection: Section) => {
+    if (nextSection === section) return;
+    requestNavigation(() => { setWelcomeDirty(false); setSection(nextSection); resetListFilters(); });
+  };
+  useEffect(() => {
+    if (section !== "welcome" || !welcomeDirty) return;
+    const handleLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      const destination = new URL(link.href, window.location.href);
+      if (destination.origin === window.location.origin && destination.pathname === window.location.pathname && destination.search === window.location.search) return;
+      event.preventDefault(); event.stopPropagation();
+      setPendingWelcomeLeave(() => () => window.location.assign(destination.href));
+    };
+    const handleNavigation = (event: globalThis.Event) => {
+      const request = event as CustomEvent<{ navigate: () => void }>;
+      event.preventDefault();
+      setPendingWelcomeLeave(() => request.detail.navigate);
+    };
+    document.addEventListener("click", handleLink, true);
+    window.addEventListener("welcome-before-navigation", handleNavigation);
+    return () => {
+      document.removeEventListener("click", handleLink, true);
+      window.removeEventListener("welcome-before-navigation", handleNavigation);
+    };
+  }, [section, welcomeDirty]);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -130,9 +166,9 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
     <div className="page-intro"><span className="eyebrow">OPERATIONS DESK</span><h1>팀 운영 관리</h1><p>시스템 관리 권한은 회원 유형과 별도로 부여되며, 회장·부회장·총무는 직책별 운영 업무를 담당합니다.</p></div>
     <div className="admin-groups">{sectionGroups.map((group) => <button key={group.key} type="button" aria-pressed={group.key === activeGroup?.key} onClick={() => selectListSection(group.sections[0])}>{group.label}</button>)}</div>
     <div className="admin-tabs">{(activeGroup?.sections ?? []).map((key) => <button key={key} type="button" aria-pressed={section === key} onClick={() => selectListSection(key)}>{sectionLabels[key]} 관리{key === "members" && pendingMemberCount > 0 && <span className="admin-tab-badge" aria-label={`승인 대기 ${pendingMemberCount}명`}>{pendingMemberCount}</span>}</button>)}</div>
-    <div className="admin-toolbar"><b>{hasListFilters ? `검색 결과 ${filteredCount}개` : `${filteredCount}개 항목`}</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>
-    {section !== "permissions" && <div className="admin-list-filters"><label><span className="sr-only">{sectionLabels[section]} 검색</span><input type="search" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder={listSearchPlaceholders[section]} /></label>{hasStatusFilter && <label><span className="sr-only">상태 필터</span><select value={listStatus} onChange={(event) => setListStatus(event.target.value)}><option value="all">모든 상태</option>{listStatusOptions[section]?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}{hasListFilters && <button type="button" className="text-link" onClick={resetListFilters}>필터 초기화</button>}</div>}
-    {sectionLoadErrors[section] ? <LoadError onRetry={() => reload()} /> : section === "permissions" ? <PermissionMatrix profiles={profiles} roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
+    {section !== "welcome" && <div className="admin-toolbar"><b>{hasListFilters ? `검색 결과 ${filteredCount}개` : `${filteredCount}개 항목`}</b><div className="resource-actions">{section === "fees" && <button className="cta small secondary" onClick={() => setBulkFeeOpen(true)}><CalendarPlus size={17} /> 월회비 일괄 등록</button>}{!(["attendance", "teams", "permissions"].includes(section)) && <button className="cta small" onClick={() => setEditor({ type: section as EditorConfig["type"] })}><Plus size={17} /> 새로 등록</button>}</div></div>}
+    {section !== "welcome" && section !== "permissions" && <div className="admin-list-filters"><label><span className="sr-only">{sectionLabels[section]} 검색</span><input type="search" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder={listSearchPlaceholders[section]} /></label>{hasStatusFilter && <label><span className="sr-only">상태 필터</span><select value={listStatus} onChange={(event) => setListStatus(event.target.value)}><option value="all">모든 상태</option>{listStatusOptions[section]?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}{hasListFilters && <button type="button" className="text-link" onClick={resetListFilters}>필터 초기화</button>}</div>}
+    {section === "welcome" ? <WelcomeEditor supabase={supabase} toast={toast} onDirtyChange={setWelcomeDirty} canManage={permissions.has("welcome.manage")} /> : sectionLoadErrors[section] ? <LoadError onRetry={() => reload()} /> : section === "permissions" ? <PermissionMatrix profiles={profiles} roleRows={rolePermissions} officerRows={officerPermissions} canManageSystemRoles={permissions.has("roles.manage")} supabase={supabase} reload={reload} toast={toast} /> : <div className="admin-list">
       {filteredCount === 0 ? emptyState : <>
         {section === "members" && filteredProfiles.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.position ?? "포지션 미정"} · ${row.auth_user_id ? "로그인 연결" : "로그인 미연결"}`} badges={[{ label: row.role === "manager" && row.officer_title ? officerTitleLabels[row.officer_title] : roleLabels[row.role], tone: row.role === "manager" ? "exempt" : "closed" }, ...(row.is_system_admin ? [{ label: "시스템 관리자", tone: "paid" }] : []), { label: memberStatusLabels[row.status], tone: row.status === "active" ? "paid" : row.status === "pending" ? "reviewing" : "unpaid" }]} onEdit={() => setEditor({ type: "members", row: row as unknown as Record<string, unknown> })} />)}
         {section === "guests" && filteredGuests.map((row) => <AdminRow key={row.id} title={row.name} meta={`${row.preferred_position ?? "포지션 미정"} · ${row.appearance_count}회 참여 · 참여비 ${row.fee_amount.toLocaleString()}원 · ${row.is_active ? "활동" : "비활동"}`} onEdit={() => setEditor({ type: "guests", row: row as unknown as Record<string, unknown> })} />)}
@@ -147,6 +183,7 @@ export default function AdminConsole({ profiles, guestPlayers, attendance, fees,
         {section === "forms" && filteredForms.map((row) => <AdminRow key={row.id} title={row.title} meta={`${formKindLabels[row.kind]}${row.secret_ballot ? " · 비밀투표" : ""}`} badges={[{ label: formStatusLabels[row.status], tone: row.status === "open" ? "paid" : "closed" }]} onEdit={() => setEditor({ type: "forms", row: row as unknown as Record<string, unknown> })} onDelete={(label) => setPendingDelete({ table: "participation_forms", id: row.id, label })} />)}
       </>}
     </div>}
+    {pendingWelcomeLeave && <ConfirmDialog title="편집 화면을 나갈까요?" description="저장하지 않은 변경은 사라집니다. 계속 편집하려면 취소를 선택하세요." confirmLabel="저장하지 않고 나가기" onCancel={() => setPendingWelcomeLeave(null)} onConfirm={() => { const action = pendingWelcomeLeave; setPendingWelcomeLeave(null); setWelcomeDirty(false); window.dispatchEvent(new globalThis.Event("welcome-navigation-confirmed")); action(); }} />}
     {editor && <AdminEditor config={editor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={currentProfileId} supabase={supabase} onClose={() => setEditor(null)} onSaved={(result) => { const scope = editorScopes[editor.type] ?? "all"; if (result?.close !== false) setEditor(null); toast(result?.message ?? "저장했습니다.", result?.kind); reload(scope); }} onError={(message) => toast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {bulkFeeOpen && <BulkFeeDialog profiles={profiles} fees={fees} supabase={supabase} onClose={() => setBulkFeeOpen(false)} onSaved={(created) => { setBulkFeeOpen(false); toast(`${created}명의 월회비를 등록했습니다.`); reload("member"); }} onError={(message) => toast(message, "error")} />}
