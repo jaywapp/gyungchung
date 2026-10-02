@@ -7,7 +7,7 @@ export interface WelcomeContent {
   accountSteps: WelcomeStep[];
   officers: WelcomeOfficer[];
   android: { enabled: boolean; installSteps: WelcomeStep[] };
-  ios: { status: "preparing" | "testflight" | "released" | "hidden"; message: string; url: string };
+  ios: { status: "pwa" | "preparing" | "testflight" | "released" | "hidden"; message: string; url: string };
 }
 export interface WelcomeDraft {
   id: boolean;
@@ -40,7 +40,7 @@ export const DEFAULT_WELCOME_CONTENT: WelcomeContent = {
     { title: "설치 허용", body: "파일을 열고 Android 안내에 따라 이 출처의 앱 설치를 허용하세요." },
     { title: "앱 열기", body: "설치가 끝나면 경충FC 앱을 여세요. 다운로드가 막히면 외부 브라우저에서 이 페이지를 열어 주세요." },
   ] },
-  ios: { status: "preparing", message: "iOS 앱은 준비 중입니다. 웹에서 같은 계정으로 이용할 수 있습니다.", url: "" },
+  ios: { status: "pwa", message: "Safari에서 홈 화면에 추가하면 앱처럼 이용하고 알림을 받을 수 있습니다. iOS 16.4 이상이 필요합니다.", url: "" },
 };
 
 /** This exact ASCII URL policy is also enforced by the database. */
@@ -76,9 +76,10 @@ export function validateWelcomeContent(content: WelcomeContent, publish = false)
     ids.add(officer.id);
     text(officer.name, "운영진 이름", 100, publish); text(officer.role, "운영진 직책", 100, publish); text(officer.bio, "운영진 소개", 2000);
   });
-  if (!["preparing", "testflight", "released", "hidden"].includes(content.ios.status)) errors.push("iOS 배포 상태를 확인해 주세요.");
+  if (!["pwa", "preparing", "testflight", "released", "hidden"].includes(content.ios.status)) errors.push("iOS 배포 상태를 확인해 주세요.");
   text(content.ios.message, "iOS 안내", 1000);
   text(content.ios.url, "iOS 링크", 2000);
+  if (content.ios.status === "pwa" && content.ios.url) errors.push("홈 화면 앱에는 별도 배포 주소가 필요하지 않습니다. iOS 링크를 비워 주세요.");
   if (content.ios.url && !isApprovedIosUrl(content.ios.url)) errors.push("iOS 링크는 공식 App Store 또는 TestFlight HTTPS 주소여야 합니다.");
   if (publish && ["testflight", "released"].includes(content.ios.status) && !isApprovedIosUrl(content.ios.url)) errors.push("활성 iOS 배포에는 공식 HTTPS 링크가 필요합니다.");
   if (new TextEncoder().encode(JSON.stringify(content)).length > 500000) errors.push("콘텐츠가 너무 큽니다. 전체 500KB 이내로 입력해 주세요.");

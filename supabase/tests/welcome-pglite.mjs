@@ -98,6 +98,7 @@ try {
     : await (await fetch('https://raw.githubusercontent.com/theory/pgtap/v1.3.4/sql/pgtap.sql.in')).text();
   await db.exec(pgtap.replaceAll('__VERSION__', '1.034').replaceAll('__OS__', 'PGlite'));
   await db.exec(await source('20261002005032_welcome_page.sql'));
+  await db.exec(await source('20261002122625_welcome_pwa_distribution.sql'));
   const testSql = await readFile(path.join(root, 'supabase/tests/database/welcome_page.test.sql'), 'utf8');
   // Also compare the actual SQL rejection fixtures against the client contract.
   const results = await db.exec(testSql.replace('rollback;',
@@ -111,7 +112,15 @@ try {
   console.log(`PGlite PostgreSQL + pgTAP 1.3.4: ${assertions.length} passed, ${failures.length} failed`);
   console.log(tap.find((line) => /^1\.\./.test(line)) ?? 'Missing TAP plan');
   if (failures.length || !assertions.length) process.exitCode = 1;
-  const { isApprovedIosUrl, validateWelcomeContent } = await import(pathToFileURL(path.join(root, 'lib/welcome-content.ts')).href);
+  const { DEFAULT_WELCOME_CONTENT, isApprovedIosUrl, validateWelcomeContent } = await import(pathToFileURL(path.join(root, 'lib/welcome-content.ts')).href);
+  await db.query('select private.validate_welcome_content($1::jsonb,true)', [JSON.stringify(DEFAULT_WELCOME_CONTENT)]);
+  const invalidPwa = structuredClone(DEFAULT_WELCOME_CONTENT);
+  invalidPwa.ios.url = 'https://testflight.apple.com/join/fixture';
+  let rejectedPwa = false;
+  try { await db.query('select private.validate_welcome_content($1::jsonb,true)', [JSON.stringify(invalidPwa)]); }
+  catch (error) { if (error.code !== '22023') throw error; rejectedPwa = true; }
+  if (!rejectedPwa || validateWelcomeContent(invalidPwa, true).length === 0) throw new Error('PWA URL policy differs between SQL and TypeScript');
+  console.log('PWA publication accepted; distribution URL rejected by both SQL and TypeScript');
   const rejected = results.flatMap((result) => result.rows.filter((row) => Object.hasOwn(row, 'publishing')));
   for (const fixture of rejected) {
     if (validateWelcomeContent(fixture.content, fixture.publishing).length === 0) {

@@ -22,6 +22,19 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-02-iphone-home-screen-push",
+    date: "2026-10-02",
+    source: "request",
+    title: "iPhone 홈 화면 앱에서 알림을 받을 수 있습니다",
+    summary: "Safari에서 홈 화면에 추가한 뒤 기존 계정으로 로그인하고 마이페이지에서 알림을 켜세요. iOS 16.4 이상에서 이용할 수 있습니다.",
+    changes: [
+      { kind: "added", text: "웰컴 페이지에 iPhone 홈 화면 설치 안내를 추가했습니다." },
+      { kind: "added", text: "마이페이지에서 이 기기의 알림을 켜고 끄며, 종류별 알림과 본인 대상 테스트 알림을 선택할 수 있습니다." },
+      { kind: "improved", text: "홈 화면 앱이 닫혀 있어도 업무 알림을 받을 수 있고, 알림을 누르면 관련 화면으로 이동합니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-02-venue-presets",
     date: "2026-10-02",
     source: "request",

@@ -76,8 +76,9 @@ function Guide({ title, steps, id }: { title: string; steps: WelcomeStep[]; id?:
 export default function WelcomeDownloads({ content }: { content: WelcomeContent }) {
   const { enabled, state, retry } = useDownloads();
   const { ios } = content;
+  const pwaIos = ios.status === "pwa" || ios.status === "preparing";
   const activeIos = (ios.status === "testflight" || ios.status === "released") && isApprovedIosUrl(ios.url);
-  const iosTitle = activeIos ? (ios.status === "testflight" ? "iOS 테스트 참여" : "iOS 앱") : "iOS 앱 출시 준비 중";
+  const iosTitle = pwaIos ? "iPhone 홈 화면 앱" : activeIos ? (ios.status === "testflight" ? "iOS 테스트 참여" : "iOS 앱") : "iPhone 이용 안내";
   return <section className="welcome-section welcome-kickoff" id="download" aria-labelledby="welcome-download-title">
     <div className="welcome-kickoff-grid">
       <div className="welcome-kickoff-app">
@@ -97,12 +98,19 @@ export default function WelcomeDownloads({ content }: { content: WelcomeContent 
           <Link className="cta ghost welcome-on-dark" href="/">웹으로 이용하기</Link>
         </div>
         {enabled && state.status === "ready" && state.release.notes.length > 0 && <details className="welcome-release-notes"><summary>최근 변경사항</summary><ul>{state.release.notes.map((note, index) => <li key={index}>{note}</li>)}</ul></details>}
-        {ios.status !== "hidden" && <div className="welcome-ios-line"><Apple size={18} aria-hidden="true" /><span><b>{iosTitle}</b> {ios.message || (!activeIos ? "출시 전까지는 웹으로 이용해 주세요." : "")}</span>
+        {ios.status !== "hidden" && <div className="welcome-ios-line"><Apple size={18} aria-hidden="true" /><span><b>{iosTitle}</b> {pwaIos ? "별도 앱 스토어 가입 없이 홈 화면에 추가해 이용하세요." : ios.message}</span>
+          {pwaIos && <a className="text-link welcome-on-dark" href="#iphone-install">설치 방법 보기</a>}
           {activeIos && <a className="text-link welcome-on-dark" href={ios.url}>{ios.status === "testflight" ? "TestFlight에서 참여" : "App Store에서 받기"}<ExternalLink size={15} aria-hidden="true" /></a>}
         </div>}
       </div>
       <div className={"welcome-guides" + (!enabled ? " welcome-single" : "")}>
         {enabled && <Guide title="설치 방법" steps={content.android.installSteps} />}
+        {pwaIos && <Guide id="iphone-install" title="iPhone 설치 방법" steps={[
+          { title: "Safari에서 열기", body: "이 페이지를 Safari에서 여세요. 카카오톡 안에서 열었다면 외부 브라우저로 이동해 주세요." },
+          { title: "홈 화면에 추가", body: "공유 메뉴에서 ‘홈 화면에 추가’를 선택하세요. ‘앱으로 열기’가 보이면 켜고 추가를 눌러 주세요." },
+          { title: "아이콘에서 로그인", body: "홈 화면의 경충FC 아이콘을 열고 기존 계정으로 로그인하세요." },
+          { title: "알림 켜기", body: "마이페이지에서 ‘이 기기 알림 켜기’를 눌러 허용하세요. 알림은 iOS 16.4 이상에서 사용할 수 있습니다." },
+        ]} />}
         <Guide id="account-guide" title="계정 안내" steps={content.accountSteps} />
       </div>
     </div>

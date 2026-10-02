@@ -16,6 +16,7 @@ import { canReviewParticipationAnswers, formatParticipationAnswer, indexOwnSubmi
 import { parseParticipationResults } from "@/lib/participation-results";
 import { formatDeadline, isParticipationClosed } from "@/lib/participation-deadline";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
+import { clearWebPushSource, readWebPushSource } from "@/lib/web-push";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
@@ -77,6 +78,14 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
   const reviewDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setReviewId(null), active: Boolean(reviewForm && reviewSubmission) });
   const canManage = manageableKinds.length > 0;
   const membershipRestriction = getMembershipRestriction(profile);
+  useEffect(() => {
+    if (loading || loadError || !user || profile?.status !== "active" || profile.must_change_password) return;
+    const source = readWebPushSource(user.id, window.location.search);
+    if (!source) return;
+    clearWebPushSource();
+    if (!forms.some((form) => form.id === source)) { toast("알림의 참여 항목을 찾을 수 없습니다. 목록에서 최신 내용을 확인해 주세요.", "warning"); return; }
+    requestAnimationFrame(() => { const target = document.getElementById(`participation-${source}`); target?.scrollIntoView({ block: "center" }); target?.focus({ preventScroll: true }); });
+  }, [loading, loadError, user, profile, forms, toast]);
 
   const showQuestionError = (questionId: string) => {
     setQuestionErrors({ [questionId]: "필수 문항입니다. 답변을 입력하거나 선택해 주세요." });
@@ -183,7 +192,7 @@ export default function ParticipationHub({ user, profile, forms, submissions, su
           const isDone = Boolean(submission);
           const canManageForm = manageableKinds.includes(form.kind);
           const isClosed = isParticipationClosed(form);
-          return <article className={`participation-card${isClosed ? " closed" : ""}`} key={form.id}>
+          return <article className={`participation-card${isClosed ? " closed" : ""}`} key={form.id} id={`participation-${form.id}`} tabIndex={-1}>
             <div className="participation-icon"><Icon /></div>
             <div className="participation-copy"><small>{kindMeta[form.kind].label} · {isClosed ? "마감" : "진행 중"}</small><h2>{form.title}</h2><p>{form.description}</p>{form.ends_at && <time className="participation-deadline" dateTime={form.ends_at}>{formatDeadline(form.ends_at)}</time>}{form.secret_ballot && <span className="secret"><LockKeyhole size={14} /> 비밀 투표</span>}</div>
             <div className="participation-actions">{canManageForm && <div className="resource-actions"><button aria-label={`${form.title} 수정`} onClick={() => onEdit(form)}><Pencil size={16} /></button><button aria-label={`${form.title} 삭제`} onClick={() => onDelete(form.id, `${kindMeta[form.kind].label} · ${form.title}`)}><Trash2 size={16} /></button></div>}{form.status === "closed" && form.show_results && <button type="button" className="text-link" onClick={() => void openResults(form)} disabled={resultsLoadingId === form.id}>{resultsLoadingId === form.id ? "결과 불러오는 중…" : "결과 보기"}</button>}{isDone ? <button type="button" className="done-button" onClick={() => setReviewId(form.id)}><Check size={16} /> 내 응답 보기</button> : !isClosed && <button className="cta small" disabled={Boolean(membershipRestriction)} aria-describedby={membershipRestriction ? `participation-restriction-${form.id}` : undefined} onClick={() => openForm(form)}>참여하기</button>}{membershipRestriction && !isClosed && <p className="restriction-reason" id={`participation-restriction-${form.id}`}>{getMembershipRestrictionCopy(membershipRestriction).action}</p>}</div>
