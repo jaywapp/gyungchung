@@ -22,6 +22,19 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-03-performance-improvements",
+    date: "2026-10-03",
+    source: "request",
+    title: "저장 후 갱신과 기록 계산을 가볍게 했습니다",
+    summary: "변경된 데이터 중심으로 화면을 갱신하고, 달력과 시즌 기록을 계산할 때 반복 작업을 줄였습니다.",
+    changes: [
+      { kind: "improved", text: "공지·출석·회비 등을 저장한 뒤 관련 데이터만 다시 불러옵니다. 계정과 권한 변경에는 전체 데이터를 확인합니다." },
+      { kind: "improved", text: "랭킹과 운영 화면의 날짜·회원·출석 계산을 재사용하고, 일정 카드의 팀 명단 보기 링크에서도 화면 상태를 이어갑니다." },
+      { kind: "improved", text: "Android 업데이트 정보를 처음 확인할 때 배포 파일 검증을 병렬로 처리합니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-02-iphone-install-button",
     date: "2026-10-02",
     source: "request",
