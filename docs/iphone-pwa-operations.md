@@ -2,7 +2,7 @@
 
 이 안내는 iPhone의 홈 화면 웹 앱(PWA) 설치와 별도 웹 푸시 서버의 활성화·확인·중지 절차를 설명한다. Apple Developer Program 가입이나 App Store·TestFlight 설치 없이 사용할 수 있다. iOS 16.4 이상에서 홈 화면에 추가한 웹 앱이 알림 권한을 요청할 수 있다. [WebKit 공식 안내](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
 
-DB와 웹 전송 함수의 운영 적용, 키 초기화와 웹 cron 활성화를 확인했다. 웹 UI의 PR·main 자동 배포는 진행 중이다. 실제 iPhone에서 설치·권한 요청·앱 종료 상태 수신·알림 클릭을 확인하는 실기기 검증은 대기 중이다.
+DB와 웹 전송 함수의 운영 적용, 키 초기화와 웹 cron 활성화, PR #182의 main 자동 배포와 운영 URL·로그를 확인했다. 실제 iPhone에서 설치·권한 요청·앱 종료 상태 수신·알림 클릭을 확인하는 실기기 검증은 대기 중이다.
 
 ## 회원의 설치와 알림 사용
 
@@ -138,4 +138,8 @@ commit;
 - 보안 advisor의 private RLS/no-policy는 브라우저 직접 접근을 금지하는 서버 저장소 설계다. 공개키 getter와 소유 증명 기반 익명 해제 RPC의 SECURITY DEFINER 경고는 의도한 공개 계약이며, 작업용 RPC와 개인키 getter는 서비스 역할만 실행할 수 있다. [Supabase advisor 설명](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
 - 기존 Next.js 보안 취약점 때문에 같은 15.5 계열의 15.5.27 및 전이 의존성 패치를 함께 적용했다. npm audit의 발견 취약점은 0개다. [공식 Next.js 보안 공지](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36)
 - 웹 cron의 12:32·12:33·12:34 UTC 실제 실행은 HTTP 200, processed 0, error_code null이었다. 같은 시각 기존 native dispatch도 HTTP 200이었다.
-- 작업 브랜치 `codex/iphone-pwa-push`, [PR #182](https://github.com/jaywapp/gyungchung/pull/182)로 main 반영을 진행한다.
+- 작업 브랜치 `codex/iphone-pwa-push`, [PR #182](https://github.com/jaywapp/gyungchung/pull/182)는 12:42:14 UTC에 병합됐다. main 커밋은 `cabdea2c60fc1c35b615fc1fb5a4a7141e0bcb41`이며, 배포 `dpl_ERZP73wWcRaujrL5t86hQ8wMqTqr`가 READY 및 `gyungchung.vercel.app`의 alias로 확인됐다.
+- 운영 `/welcome`의 iPhone 설치 안내와 ‘앱으로 열기’ 문구, `/manifest.webmanifest`의 id/scope `/`·display standalone, `/sw.js`의 push/클릭 handler, `/api/web-push/config`의 공개키 단독 응답 모두 HTTP 200이었다. config는 no-store이며 서비스 워커는 회원 데이터를 캐시하지 않는다.
+- 해당 운영 배포의 build log에서 Next.js 15.5.27 컴파일·타입/린트·정적 페이지 생성·출력 배포 성공을 확인했다. 12:45 UTC 조회 기준 최근 10분의 이 배포에는 error/fatal 및 HTTP 5xx runtime log가 없었다. 유휴 시간의 정상 로그가 실제 회원 푸시 수신 증거는 아니다.
+- 첫 preview의 config HTTP 503은 프로젝트의 preview 변수가 예전 브랜치에만 지정돼 있었기 때문이었다. 이번 구현 브랜치에 공개 `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 설정하고 같은 커밋을 재배포한 `dpl_AfPfmhTMU73ZZeyApYKmKqV547JL`에서 HTTP 200을 확인한 후 병합했다. Production 설정은 기존 값을 유지했다. [Vercel preview 환경 변수](https://vercel.com/docs/environment-variables#preview-environment-variables)
+- 별도 위키 동기화는 자동 승인 검토가 현재 요청 범위 밖으로 판정해 차단됐다. 재사용할 운영 교훈과 공식 근거는 이 저장소 문서에 보관했다.
