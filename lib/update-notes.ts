@@ -30,7 +30,7 @@ export const updateNotes: UpdateNote[] = [
     changes: [
       { kind: "added", text: "상단과 하단의 iPhone 설치 안내 버튼으로 홈 화면 설치 방법을 바로 확인할 수 있습니다." },
     ],
-    pullRequests: [],
+    pullRequests: [184],
   },
   {
     id: "2026-10-02-iphone-home-screen-push",
