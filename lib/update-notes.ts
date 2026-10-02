@@ -22,6 +22,20 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-02-push-feedback-copy",
+    date: "2026-10-02",
+    source: "request",
+    title: "알림 문구와 표시 내용을 개선했습니다",
+    summary: "참석 인원, 일정 주소, 의견 답변과 처리 상태를 변경 내용에 맞게 알려 드립니다.",
+    changes: [
+      { kind: "improved", text: "참석 변경 알림에 변경 직후 참석 인원을 표시하고, 본인의 참석 변경 알림은 받지 않습니다." },
+      { kind: "improved", text: "일정 주소 변경, 의견 답변과 처리 상태 변경, 운영진의 참석 여부 재알림을 구분해 표시합니다." },
+      { kind: "improved", text: "앱을 열어 둔 상태에서도 시스템 알림과 같은 제목과 본문을 보여 줍니다." },
+      { kind: "improved", text: "의견 작성 화면을 유지하면서 웹·앱 접수 경로를 자동 기록해 작업 시 참고할 수 있게 했습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-02-mobile-push-production",
     date: "2026-10-02",
     source: "request",

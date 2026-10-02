@@ -167,6 +167,7 @@ export default function FeedbackHub({ user, profile, feedback, feedbackFeed, sup
     const shouldPublish = isSystemFeedback && githubConsent;
     const { data: saved, error } = await supabase.from("feedback").insert({
       author_id: profile.id,
+      submission_source: "web",
       category,
       title,
       body,

@@ -12,7 +12,11 @@ const categories: Record<string, [string, string]> = {
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const object = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const copy = (value: unknown, fallback: string, limit = 120) => typeof value === "string" ? value.trim().slice(0, limit) || fallback : fallback;
+const copy = (value: unknown, fallback: string, limit = 120) => typeof value === "string" ? value.replace(/\s+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, limit).replace(/[\uD800-\uDBFF]$/, "") || fallback : fallback;
+function compact(value: unknown, fallback: string, limit: number) {
+  const text = copy(value, fallback, limit + 1);
+  return text.length > limit ? text.slice(0, limit - 1).replace(/[\uD800-\uDBFF]$/, "") + "…" : text;
+}
 function sameSecret(actual: string, expected: string) {
   let difference = actual.length ^ expected.length;
   for (let index = 0; index < expected.length; index++) difference |= (actual.charCodeAt(index) || 0) ^ expected.charCodeAt(index);
@@ -47,24 +51,49 @@ export function buildPushMessage(delivery: Prepared) {
   const eventTitle = copy(s.title, "경충FC 일정");
   let title = "경충FC";
   let body = eventTitle;
-  if (kind === "attendance_added") { title = "참석자가 추가되었습니다"; body = copy(s.member_name, "회원") + "님 · " + eventTitle; }
-  if (kind === "attendance_declined") { title = "불참으로 변경되었습니다"; body = copy(s.member_name, "회원") + "님 · " + eventTitle; }
+  if (kind === "attendance_added" || kind === "attendance_declined") {
+    const count = s.going_count;
+    if (Number.isSafeInteger(count) && Number(count) >= 0) {
+      title = eventTitle + " 참석 인원이 변경되었습니다 (" + count + ")";
+      body = copy(s.member_name, "회원") + (kind === "attendance_added" ? "님이 참석으로 변경하였습니다." : "님이 불참으로 변경하였습니다.");
+    } else {
+      title = kind === "attendance_added" ? "참석자가 추가되었습니다" : "불참으로 변경되었습니다";
+      body = copy(s.member_name, "회원") + "님 · " + eventTitle;
+    }
+  }
   if (kind === "schedule_changed") {
     title = "일정이 변경되었습니다";
     const before = object(s.before) ? s.before : {};
     const after = object(s.after) ? s.after : {};
     const changes = [];
     if (before.starts_at !== after.starts_at) changes.push(date(before.starts_at) + " → " + date(after.starts_at));
-    if (before.venue !== after.venue || before.address !== after.address) changes.push(copy(before.venue, "기존 장소") + " → " + copy(after.venue, "새 장소"));
-    body = eventTitle + (changes.length ? " · " + changes.join(" · ") : "");
+    if (before.venue !== after.venue) changes.push("장소: " + compact(before.venue, "기존 장소", 20) + " → " + compact(after.venue, "새 장소", 32));
+    if (before.address !== after.address) changes.push(typeof after.address === "string" && after.address.trim() ?
+      "주소: " + compact(before.address, "미등록", 20) + " → " + compact(after.address, "새 주소", 48) : "주소가 삭제되었습니다");
+    body = compact(s.title, "경충FC 일정", 48) + (changes.length ? " · " + changes.join(" · ") : "");
   }
   if (kind === "notice_created") { title = "새 공지가 등록되었습니다"; body = copy(s.title, "공지"); }
   if (kind === "event_cancelled") { title = "일정이 취소되었습니다"; body = eventTitle + " · " + date(s.starts_at); }
   if (kind === "event_reminder") { title = "내일 경기 안내"; body = eventTitle + " · " + date(s.starts_at) + " · " + copy(s.venue, "일정에서 장소 확인"); }
-  if (kind === "rsvp_reminder") { title = "참석 여부를 알려 주세요"; body = eventTitle + " · " + date(s.deadline) + "까지 응답할 수 있습니다."; }
+  if (kind === "rsvp_reminder") { title = s.manual === true ? "참석 여부를 다시 알려 주세요" : "참석 여부를 알려 주세요"; body = eventTitle + " · " + (s.manual === true ? "운영진 재알림 · " : "") + date(s.deadline) + "까지 응답할 수 있습니다."; }
   if (kind === "participation_reminder") { title = "참여 마감이 다가옵니다"; body = copy(s.title, "참여") + " · " + date(s.deadline) + " 마감"; }
-  if (kind === "feedback_updated") { title = s.has_response ? "의견에 답변이 등록되었습니다" : "의견 처리 상태가 변경되었습니다"; body = copy(s.title, "내 의견"); }
-  return { to: delivery.to, title, body: body.slice(0, 240), data: delivery.data, sound: "default", channelId: delivery.data.category };
+  if (kind === "feedback_updated") {
+    const responseChanged = s.response_changed === true;
+    const statusChanged = s.status_changed === true || s.before_status !== s.after_status;
+    const responseChange = s.response_change;
+    const responseTitle = responseChange === "removed" ? "의견의 답변이 삭제되었습니다" : responseChange === "edited" ? "의견의 답변이 수정되었습니다" : "의견에 답변이 등록되었습니다";
+    title = responseChanged && statusChanged ? "의견의 답변과 처리 상태가 변경되었습니다" : responseChanged ? responseTitle : statusChanged ? "의견 처리 상태가 변경되었습니다" : s.has_response ? "의견에 답변이 등록되었습니다" : "의견 처리 상태가 변경되었습니다";
+    const statuses: Record<string, string> = { received: "접수", reviewing: "검토 중", resolved: "처리 완료", closed: "종료" };
+    const beforeStatus = statuses[String(s.before_status)] ?? copy(s.before_status, "이전 상태", 40);
+    const afterStatus = statuses[String(s.after_status)] ?? copy(s.after_status, "현재 상태", 40);
+    const parts = [copy(s.title, "내 의견")];
+    if (statusChanged) parts.push("상태: " + beforeStatus + " → " + afterStatus);
+    if (responseChanged) parts.push(responseChange === "removed" ? "답변이 삭제되었습니다" : "답변: " + copy(s.response_summary, "의견에서 확인해 주세요", 100));
+    body = parts.join(" · ");
+  }
+  title = title.slice(0, 160);
+  body = body.slice(0, 240);
+  return { to: delivery.to, title, body, data: { ...delivery.data, display: { title, body } }, sound: "default", channelId: delivery.data.category };
 }
 export function createPushWorkerHandler(dependencies: Dependencies) {
   const fetcher = dependencies.fetcher ?? fetch;
