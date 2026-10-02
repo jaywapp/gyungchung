@@ -32,7 +32,7 @@ export const updateNotes: UpdateNote[] = [
       { kind: "added", text: "마이페이지에서 이 기기의 알림을 켜고 끄며, 종류별 알림과 본인 대상 테스트 알림을 선택할 수 있습니다." },
       { kind: "improved", text: "홈 화면 앱이 닫혀 있어도 업무 알림을 받을 수 있고, 알림을 누르면 관련 화면으로 이동합니다." },
     ],
-    pullRequests: [],
+    pullRequests: [182],
   },
   {
     id: "2026-10-02-venue-presets",

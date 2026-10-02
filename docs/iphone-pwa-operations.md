@@ -137,3 +137,5 @@ commit;
 - 관리형 postgres가 함수 선언의 `SET http.timeout_msec`를 거부해 해당 마이그레이션은 최초 시도에서 원자적으로 롤백됐다. 이 선언만 제거하고 실제 지원되는 curl timeout 60초·접속 5초 설정을 유지한 뒤 적용했다. 운영 세션과 DB/role의 양수 GUC override는 없었다. [pgsql-http 1.6 공식 구현](https://github.com/pramsey/pgsql-http/blob/v1.6.0/http.c)
 - 보안 advisor의 private RLS/no-policy는 브라우저 직접 접근을 금지하는 서버 저장소 설계다. 공개키 getter와 소유 증명 기반 익명 해제 RPC의 SECURITY DEFINER 경고는 의도한 공개 계약이며, 작업용 RPC와 개인키 getter는 서비스 역할만 실행할 수 있다. [Supabase advisor 설명](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
 - 기존 Next.js 보안 취약점 때문에 같은 15.5 계열의 15.5.27 및 전이 의존성 패치를 함께 적용했다. npm audit의 발견 취약점은 0개다. [공식 Next.js 보안 공지](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36)
+- 웹 cron의 12:32·12:33·12:34 UTC 실제 실행은 HTTP 200, processed 0, error_code null이었다. 같은 시각 기존 native dispatch도 HTTP 200이었다.
+- 작업 브랜치 `codex/iphone-pwa-push`, [PR #182](https://github.com/jaywapp/gyungchung/pull/182)로 main 반영을 진행한다.
