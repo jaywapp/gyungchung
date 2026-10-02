@@ -50,6 +50,7 @@ try {
   await db.exec(await read("supabase/migrations/20260821121500_save_attendance_batch.sql"));
   await db.exec(await read("supabase/migrations/20261001114159_push_notifications.sql"));
   await db.exec(await read("supabase/migrations/20261001231341_push_production_rollout.sql"));
+  await db.exec(await read("supabase/migrations/20261002003438_push_feedback_message_snapshots.sql"));
   equal((await owner("select delivery_mode value from private.notification_runtime")).rows[0].value,"test","migration preserves the restricted rollout mode");
   equal((await owner("select enabled value from private.notification_runtime")).rows[0].value,false,"migration does not enable delivery");
   for (let index = 0; index < auth.length; index++) {
@@ -104,6 +105,9 @@ try {
   equal(await countEvents("attendance_added"),1,"first going emits attendance addition");
   const captured = (await owner("select actor_auth_user_id,actor_profile_id,subject_profile_id from private.notification_events where kind='attendance_added'")).rows[0];
   equal(captured,{actor_auth_user_id:auth[0],actor_profile_id:profiles[0],subject_profile_id:profiles[0]},"actor is mapped independently from RSVP subject");
+  equal((await owner("select (snapshot->>'going_count')::integer value from private.notification_events where kind='attendance_added'")).rows[0].value,1,"attendance snapshot counts going members immediately after the change");
+  equal((await owner("select private.notification_recipient_eligible(n,p) value from private.notification_events n cross join public.profiles p where n.kind='attendance_added' and p.id=$1",[profiles[0]])).rows[0].value,false,"member does not receive their own attendance change");
+  equal((await owner("select private.notification_recipient_eligible(n,p) value from private.notification_events n cross join public.profiles p where n.kind='attendance_added' and p.id=$1",[profiles[1]])).rows[0].value,true,"another eligible officer still receives attendance changes");
   await actor(auth[1]);
   await db.query("update public.attendance set status='going',check_in_status='present' where event_id=$1 and member_id=$2",[event,profiles[0]]);
   equal(await countEvents("attendance_added"),1,"check-in-only and no-op RSVP do not emit");
@@ -111,6 +115,9 @@ try {
   equal(await countEvents("attendance_declined"),1,"going to not-going emits");
   const delegated = (await owner("select actor_profile_id,subject_profile_id from private.notification_events where kind='attendance_declined'")).rows[0];
   equal(delegated,{actor_profile_id:profiles[1],subject_profile_id:profiles[0]},"administrator actor is not the RSVP subject");
+  equal((await owner("select (snapshot->>'going_count')::integer value from private.notification_events where kind='attendance_declined'")).rows[0].value,0,"decline snapshot counts members after the change");
+  equal((await owner("select private.notification_recipient_eligible(n,p) value from private.notification_events n cross join public.profiles p where n.kind='attendance_declined' and p.id=$1",[profiles[0]])).rows[0].value,false,"delegated decline excludes its subject rather than its officer actor");
+  equal((await owner("select private.notification_recipient_eligible(n,p) value from private.notification_events n cross join public.profiles p where n.kind='attendance_declined' and p.id=$1",[profiles[1]])).rows[0].value,true,"delegated decline can reach its officer actor");
   await actor(auth[1]);
   await db.query("insert into public.attendance(event_id,member_id,status) values($1,$2,'not_going')",[event,profiles[2]]);
   equal(await countEvents("attendance_declined"),1,"first negative response is not cancellation");
@@ -126,6 +133,7 @@ try {
   await db.query("update public.events set address='Changed address' where id=$1",[event]);
   await db.query("update public.events set note='No push',venue=venue where id=$1",[event]);
   equal(await countEvents("schedule_changed"),3,"date, time and address changes emit; note/no-op do not");
+  equal((await owner("select snapshot->'after'->>'address' value from private.notification_events where kind='schedule_changed' and snapshot->'after'->>'address' is not null limit 1")).rows[0].value,"Changed address","address-only event keeps the new address in its snapshot");
   const notice = uuid(501);
   await db.query("insert into public.notices(id,title,body) values($1,'Notice fixture','Notice body')",[notice]);
   await db.query("update public.notices set is_pinned=true where id=$1",[notice]);
@@ -145,14 +153,17 @@ try {
   await actor(auth[0]);
   await db.query("update public.attendance set status='going' where event_id=$1 and member_id=$2",[event,profiles[0]]);
   const firstClaims = await claim();
-  equal(firstClaims.length,2,"default attendance audience is officers plus currently going members");
+  equal(firstClaims.length,1,"default attendance audience excludes the changed member and keeps the officer");
   const first = firstClaims[0];
   const prepared = await prepare(first);
   equal(prepared.data.recipient_user_id!==undefined,true,"payload binds its recipient account");
   await owner("update public.notification_preferences set attendance_enabled=false where auth_user_id=$1",[prepared.data.recipient_user_id]);
   await actor(null,"service_role");
   equal(await value("select public.validate_notification_delivery($1,$2) value",[first.id,first.lease_token]),false,"category disabled after claim is rechecked before dispatch");
-  const second = firstClaims[1];
+  await owner("update public.notification_preferences set attendance_enabled=true where auth_user_id=$1",[prepared.data.recipient_user_id]);
+  await actor(auth[1]);
+  await db.query("update public.events set venue='Receipt fixture venue' where id=$1",[event]);
+  const second = (await claim())[0];
   const secondPrepared = await prepare(second);
   await owner("update private.push_installations set expo_token='ExpoPushToken[test-refreshed]' where id=$1",[secondPrepared.data.installation_id]);
   await actor(null,"service_role");
@@ -217,11 +228,18 @@ try {
   await owner("insert into public.feedback(id,title,author_id) values($1,'My private feedback',$2)",[feedback,profiles[0]]);
   await owner("update public.feedback set officer_response='A response' where id=$1",[feedback]);
   equal(await countEvents("feedback_updated"),1,"officer response emits an author-targeted event");
+  equal((await owner("select snapshot->>'response_change' value from private.notification_events where kind='feedback_updated' order by created_at desc limit 1")).rows[0].value,"added","first feedback response is captured as an addition");
   equal((await owner("select private.notification_recipient_eligible(n,p) value from private.notification_events n cross join public.profiles p where n.kind='feedback_updated' and p.id=$1",[profiles[1]])).rows[0].value,false,"another officer never receives the author's feedback notification");
   await owner("update public.feedback set status='resolved' where id=$1",[feedback]);
   equal(await countEvents("feedback_updated"),2,"feedback processing status emits");
+  const statusSnapshot = (await owner("select snapshot from private.notification_events where kind='feedback_updated' and snapshot->>'after_status'='resolved'")).rows[0].snapshot;
+  equal([statusSnapshot.status_changed,statusSnapshot.response_changed,statusSnapshot.before_status,statusSnapshot.after_status],[true,false,"received","resolved"],"status-only change is never marked as a new response");
+  await owner("update public.feedback set officer_response='Updated response' where id=$1",[feedback]);
+  equal((await owner("select snapshot->>'response_change' value from private.notification_events where kind='feedback_updated' and snapshot->>'response_change'='edited'")).rows[0].value,"edited","edited feedback response is distinguished");
+  await owner("update public.feedback set officer_response=null where id=$1",[feedback]);
+  equal((await owner("select snapshot->>'response_change' value from private.notification_events where kind='feedback_updated' and snapshot->>'response_change'='removed'")).rows[0].value,"removed","deleted feedback response is distinguished");
   await owner("update public.feedback set status=status where id=$1",[feedback]);
-  equal(await countEvents("feedback_updated"),2,"feedback no-op does not emit");
+  equal(await countEvents("feedback_updated"),4,"feedback no-op does not emit");
   // Existing partial-success RPC rolls back its failing row and the row's outbox.
   const batchEvent = uuid(605);
   await owner("insert into public.events(id,title,starts_at,venue) values($1,'Batch fixture',now()+interval '5 days','Venue')",[batchEvent]);
