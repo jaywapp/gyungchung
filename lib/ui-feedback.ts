@@ -64,6 +64,7 @@ export function toErrorMessage(error: unknown): string {
   const message = value.message?.toLowerCase() ?? "";
 
   if (value.userFacing && value.message) return value.message;
+  if (code === "PGRST116") return "항목이 변경되었거나 접근 권한이 없습니다. 최신 내용을 확인하고 다시 시도해 주세요.";
   if (code === "42501" || message.includes("row-level security") || message.includes("permission denied")) return "이 작업을 수행할 권한이 없습니다.";
   if (code === "23514") return "입력한 값 중에 허용되지 않는 항목이 있습니다. 포지션·점수 같은 선택 항목을 확인한 뒤 다시 시도해 주세요.";
   if (code === "23505" || message.includes("duplicate")) return "이미 등록된 내용입니다.";

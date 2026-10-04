@@ -8,6 +8,7 @@ import WelcomePage from "@/components/welcome-page";
 import type { createClient } from "@/lib/supabase/client";
 import type { ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { isPermissionError, type AccessVerifier } from "@/lib/permission-access";
 import { DEFAULT_WELCOME_CONTENT, isApprovedIosUrl, validateWelcomeContent, type WelcomeContent, type WelcomeDraft, type WelcomePublication, type WelcomeStep } from "@/lib/welcome-content";
 import "./welcome-editor.css";
 
@@ -73,7 +74,7 @@ function Preview({ content, onClose }: { content: WelcomeContent; onClose: () =>
   return createPortal(<div className="welcome-editor-preview" role="dialog" aria-modal="true" aria-labelledby="welcome-preview-title" tabIndex={-1} ref={ref}><header className="welcome-editor-preview-header"><button type="button" className="cta small ghost" onClick={onClose}>편집으로 돌아가기</button><h2 id="welcome-preview-title">초안 미리보기<small>현재 입력한 내용입니다. 방문자에게는 아직 보이지 않습니다.</small></h2></header><div className="welcome-editor-preview-stage"><WelcomePage content={content} preview state="published" /></div></div>, document.body);
 }
 
-export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManage = true }: { supabase: NonNullable<ReturnType<typeof createClient>>; toast: ToastHandler; onDirtyChange?: (dirty: boolean) => void; canManage?: boolean }) {
+export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManage = true, verifyAccess }: { supabase: NonNullable<ReturnType<typeof createClient>>; toast: ToastHandler; onDirtyChange?: (dirty: boolean) => void; canManage?: boolean; verifyAccess: AccessVerifier }) {
   const [content, setContent] = useState<WelcomeContent>(() => copy(DEFAULT_WELCOME_CONTENT));
   const [draft, setDraft] = useState<WelcomeDraft | null>(null);
   const [publication, setPublication] = useState<WelcomePublication | null>(null);
@@ -138,7 +139,7 @@ export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManag
       setDraft(nextDraft); setPublication(nextPublication); setContent(copy(nextDraft?.content ?? DEFAULT_WELCOME_CONTENT)); setFailure(null); setIssues([]);
     } catch (error) {
       if (!mounted.current || sequence !== loadSequence.current) return;
-      if ((error as { code?: string }).code === "42501") setFailure({ kind: "permission", message: "웰컴 페이지를 편집할 권한이 없습니다. 회장 또는 시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요." });
+      if ((error as { code?: string }).code === "42501") setFailure({ kind: "permission", message: "웰컴 페이지를 편집할 권한이 없습니다. 시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요." });
       setLoadError("게시본과 초안을 불러오지 못했습니다. 네트워크 연결과 관리 권한을 확인한 뒤 다시 시도해 주세요.");
     } finally { if (mounted.current && sequence === loadSequence.current) setLoading(false); }
   }, [supabase]);
@@ -178,7 +179,7 @@ export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManag
   };
   const handleFailure = (error: unknown, kind: "save" | "publish") => {
     const code = (error as { code?: string })?.code;
-    const message = code === "40001" ? "다른 운영진이 먼저 초안을 저장했습니다. 내 변경은 이 화면에 그대로 있습니다. 최신 초안을 불러와 비교한 뒤 다시 저장해 주세요." : code === "42501" ? "관리 권한이 변경되어 작업을 완료할 수 없습니다. 작성 내용은 유지됩니다. 회장 또는 시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요." : kind === "save" ? "초안을 저장하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 저장해 주세요. 작성한 내용은 지워지지 않았습니다." : "게시하지 못했습니다. 저장한 초안은 그대로 있습니다. 연결을 확인한 뒤 다시 게시해 주세요.";
+    const message = code === "40001" ? "다른 운영진이 먼저 초안을 저장했습니다. 내 변경은 이 화면에 그대로 있습니다. 최신 초안을 불러와 비교한 뒤 다시 저장해 주세요." : code === "42501" ? "관리 권한이 변경되어 작업을 완료할 수 없습니다. 작성 내용은 유지됩니다. 시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요." : kind === "save" ? "초안을 저장하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 저장해 주세요. 작성한 내용은 지워지지 않았습니다." : "게시하지 못했습니다. 저장한 초안은 그대로 있습니다. 연결을 확인한 뒤 다시 게시해 주세요.";
     setFailure({ kind: code === "40001" ? "conflict" : code === "42501" ? "permission" : kind, message }); toast(message, "error");
   };
   const save = async () => {
@@ -187,13 +188,17 @@ export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManag
     if (validation.length) { showIssues(validation); return; }
     mutationLock.current = true; setBusy("save"); setFailure(null);
     try {
+      const fresh = await verifyAccess();
+      if (!fresh || !mounted.current) return;
+      if (!fresh.has("welcome.manage")) throw { code: "42501" };
       const result = await supabase.rpc("save_welcome_page_draft", { page_content: content, expected_revision: draft?.revision ?? 0 });
+      if (!fresh.isCurrent()) return;
       if (!mounted.current) return;
       if (result.error) throw result.error;
       const value = (Array.isArray(result.data) ? result.data[0] : result.data) as WelcomeDraft | null;
       if (!value || !checkedContent(value.content)) throw new Error("save-result-unavailable");
       setDraft(value); setContent(copy(value.content)); toast("초안을 저장했습니다. 공개 페이지는 아직 바뀌지 않았습니다.", "success");
-    } catch (error) { if (mounted.current) handleFailure(error, "save"); }
+    } catch (error) { if (isPermissionError(error)) await verifyAccess(); if (mounted.current) handleFailure(error, "save"); }
     finally { mutationLock.current = false; if (mounted.current) setBusy(null); }
   };
   const publish = async () => {
@@ -202,13 +207,17 @@ export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManag
     if (validation.length) { showIssues(validation); return; }
     mutationLock.current = true; setBusy("publish"); setFailure(null);
     try {
+      const fresh = await verifyAccess();
+      if (!fresh || !mounted.current) return;
+      if (!fresh.has("welcome.manage")) throw { code: "42501" };
       const result = await supabase.rpc("publish_welcome_page", { expected_revision: draft.revision });
+      if (!fresh.isCurrent()) return;
       if (!mounted.current) return;
       if (result.error) throw result.error;
       const value = (Array.isArray(result.data) ? result.data[0] : result.data) as WelcomePublication | null;
       if (!value || !checkedContent(value.content)) throw new Error("publish-result-unavailable");
       setPublication(value); setDraft((current) => current ? { ...current, published_revision: value.revision } : current); toast("게시했습니다. 방문자에게 새 내용이 보입니다.", "success");
-    } catch (error) { if (mounted.current) handleFailure(error, "publish"); }
+    } catch (error) { if (isPermissionError(error)) await verifyAccess(); if (mounted.current) handleFailure(error, "publish"); }
     finally { mutationLock.current = false; if (mounted.current) setBusy(null); }
   };
   const fieldError = (id: string) => issues.find((issue) => issue.field === id)?.message;
@@ -220,7 +229,7 @@ export default function WelcomeEditor({ supabase, toast, onDirtyChange, canManag
       <dl className="welcome-editor-status" aria-label="게시 상태"><div><dt>방문자가 보는 게시본 <span className={`status ${publication ? "ok" : "neutral"}`}>{publication ? "공개 중" : "게시 전"}</span></dt><dd>{publication ? `${dateLabel(publication.published_at)} 게시` : "아직 게시한 적이 없습니다"}<small>{publication ? `리비전 ${publication.revision} · ${summary(publication.content)}` : "방문자에게는 준비 중 안내가 보입니다."}</small></dd><a href="/welcome" target="_blank" rel="noopener noreferrer">공개 페이지 열기</a></div><div><dt>편집 중인 초안 <span className={`status ${dirty || unpublished ? "warn" : "neutral"}`}>{dirty ? "저장 안 한 변경" : unpublished ? "미게시 변경 있음" : draft ? "게시본과 같음" : "첫 초안"}</span></dt><dd>{draft ? `${dateLabel(draft.updated_at)} 마지막 저장` : "아직 저장한 적이 없습니다"}<small>{draft ? `리비전 ${draft.revision} · ` : ""}{summary(content)}</small></dd></div></dl>
       {loadError && <div className="welcome-editor-alert" role="alert"><h3><TriangleAlert size={20} />불러오지 못했습니다</h3><p>{loadError}</p><div><button type="button" className="cta small ghost" onClick={() => void load()}>다시 시도</button></div></div>}
       {failure && <div className={`welcome-editor-alert ${failure.kind === "conflict" ? "warn" : ""}`} role="alert"><h3><TriangleAlert size={20} />{failure.kind === "conflict" ? "다른 운영진이 먼저 초안을 저장했습니다" : failure.kind === "permission" ? "웰컴 페이지를 편집할 권한이 없습니다" : failure.kind === "save" ? "초안을 저장하지 못했습니다" : "게시하지 못했습니다"}</h3><p>{failure.message}</p>{failure.kind === "conflict" && <div className="welcome-editor-inline-actions"><button type="button" className="cta small ghost" disabled={comparing} onClick={() => void readLatest()}>{comparing ? "불러오는 중" : "최신 초안과 비교"}</button><button type="button" className="cta small ghost" onClick={() => { setCompareOpen(true); setCopyOpen(true); }}>내 작성 내용 복사</button></div>}</div>}
-      {!canManage && !failure && <div className="welcome-editor-alert" role="alert"><h3>웰컴 페이지를 편집할 권한이 없습니다</h3><p>회장 또는 시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요. 공개 페이지는 누구나 볼 수 있습니다.</p></div>}
+      {!canManage && !failure && <div className="welcome-editor-alert" role="alert"><h3>웰컴 페이지를 편집할 권한이 없습니다</h3><p>시스템 관리자에게 웰컴 페이지 관리 권한을 요청해 주세요. 공개 페이지는 누구나 볼 수 있습니다.</p></div>}
       {failure?.kind === "permission" && <button type="button" className="cta small ghost" onClick={() => { setCompareOpen(true); setCopyOpen(true); }}>작성 내용 복사하여 보관</button>}
       {issues.length > 0 && <div className="welcome-editor-alert" role="alert" tabIndex={-1} ref={summaryRef}><h3>아래 항목을 확인해 주세요</h3><ul>{issues.map((issue, index) => <li key={`${issue.field}-${index}`}><button type="button" onClick={() => jump(issue)}>{issue.message}</button></li>)}</ul></div>}
       {compareOpen && <div className="welcome-editor-compare" ref={compareRef} tabIndex={-1}><h2>최신 초안과 비교</h2><p>내 입력을 자동으로 덮어쓰지 않습니다. 필요한 내용을 복사한 뒤 최신 초안을 불러와 다시 반영해 주세요.</p>{comparing && <p role="status">최신 초안을 불러오는 중입니다.</p>}{compareError && <p role="alert">{compareError}</p>}{latest && <><p>최신 초안: 리비전 {latest.revision} · {dateLabel(latest.updated_at)} 저장 · {summary(latest.content)}</p>{sections.map((item) => <details key={item.id}><summary>{item.label} · {same(sectionValue(content, item.id), sectionValue(latest.content, item.id)) ? "같은 내용" : "다른 내용"}</summary><div className="welcome-editor-row"><div><h3>내 입력</h3><pre>{sectionDisplayText(content, item.id)}</pre></div><div><h3>최신 저장본</h3><pre>{sectionDisplayText(latest.content, item.id)}</pre></div></div></details>)}</>}<div className="welcome-editor-inline-actions"><button type="button" className="cta small ghost" disabled={comparing} onClick={() => void readLatest()}>최신 초안 다시 확인</button><button type="button" className="cta small ghost" onClick={() => { setCopyOpen(true); void navigator.clipboard?.writeText(contentDisplayText(content)).then(() => toast("내 작성 내용을 복사했습니다.", "success")).catch(() => toast("아래 작성 내용을 선택해 복사해 주세요.", "warning")); }}>내 작성 내용 복사</button><button type="button" className="cta small ghost" disabled={!latest || comparing || Boolean(busy)} onClick={() => setDiscardOpen(true)}>내 변경을 버리고 최신 초안 불러오기</button><button type="button" className="cta small ghost" onClick={() => setCompareOpen(false)}>비교 닫기</button></div>{copyOpen && <label>내 작성 내용 (전체 선택 후 복사)<textarea className="welcome-editor-copy" readOnly value={contentDisplayText(content)} onFocus={(event) => event.currentTarget.select()} /></label>}</div>}

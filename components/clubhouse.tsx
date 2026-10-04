@@ -31,6 +31,7 @@ import { ResourceRequests, type LoadedResource, type ResourceQueryResult } from 
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { CapacityStatus, RsvpControls } from "@/components/rsvp-controls";
 import { AccountConnectionNotice, Empty, FormError, LoadError, LoginGate, SectionSkeleton } from "@/components/section-states";
+import { canEditManagedRecord, canManageSection, getEffectivePermissions, getRevokedManagementResources, isPermissionError, type VerifiedAccess } from "@/lib/permission-access";
 
 const FeedbackHub = dynamic(() => import("@/components/feedback-hub"), { loading: () => <SectionSkeleton /> });
 const ParticipationHub = dynamic(() => import("@/components/participation-hub"), { loading: () => <SectionSkeleton /> });
@@ -40,7 +41,7 @@ const ConfirmDialog = dynamic(() => import("@/components/confirm-dialog"));
 const EventDetail = dynamic(() => import("@/components/event-detail"), { loading: () => <SectionSkeleton /> });
 
 type RawGuestPlayer = Omit<GuestPlayer, "appearance_count">;
-const systemAdminPermissions = ["roles.manage", "officers.manage", "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage", "elections.manage", "polls.manage", "surveys.manage", "welcome.manage"];
+const accessResources = ["profiles", "rolePermissions", "officerPermissions"] as const;
 const pathTabs = new Map(Object.entries(tabPaths).map(([tab, path]) => [path, tab as Tab]));
 
 /** Results the auth callback and the OAuth redirect hand back on the URL. */
@@ -94,6 +95,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const [pendingDelete, setPendingDelete] = useState<{ table: string; id: string; label: string } | null>(null);
   const [pendingKick, setPendingKick] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [rsvpPendingEventIds, setRsvpPendingEventIds] = useState<Set<string>>(() => new Set());
   const [authLoading, setAuthLoading] = useState(true);
@@ -102,6 +104,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const userRef = useRef<User | null>(null);
   const requestsRef = useRef(new ResourceRequests<ClubhouseResource>());
   const profileSourcesRef = useRef<{ directory: Profile[]; private: Profile[] }>({ directory: [], private: [] });
+  const accessRef = useRef<{ owner: string | null; profile: Profile | null; roleRows: RolePermission[]; officerRows: OfficerPermission[]; permissions: Set<string>; ready: boolean }>({ owner: null, profile: null, roleRows: [], officerRows: [], permissions: new Set(), ready: false });
+  const accessRequestRef = useRef<{ owner: string; epoch: number; pending: Promise<VerifiedAccess | null> } | null>(null);
+  const reloadRef = useRef<(scope: ReloadScope) => Promise<void>>(async () => undefined);
   const rsvpPendingEventIdsRef = useRef(new Set<string>());
   const rsvpPendingChangesRef = useRef(new Map<string, PendingRsvpChange>());
   const toastTimerRef = useRef<number | undefined>(undefined);
@@ -187,11 +192,14 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     };
     const results = await Promise.all(resources.map(async (resource) => [resource, await requestsRef.current.load(resource, owner, queries[resource], refresh)] as const));
     if (epoch !== requestsRef.current.epoch || owner !== userRef.current?.id) return;
+    const requestedAccess = results.filter(([resource]) => accessResources.some((item) => item === resource));
+    const accessUpdated = requestedAccess.length > 0 && requestedAccess.every(([, result]) => result.isCurrent() && !result.error);
     const accepted: Partial<Record<LoadResource, LoadedResource>> = {};
     let profilesChanged = false;
     for (const [resource, result] of results) {
       if (!result.isCurrent()) continue;
       accepted[resource] = result;
+      if (accessResources.some((item) => item === resource) && !accessUpdated) continue;
       const rows = result.error ? [] : result.data ?? [];
       if (resource === "memberDirectory" || resource === "profiles") {
         profileSourcesRef.current[resource === "profiles" ? "private" : "directory"] = rows as Profile[];
@@ -203,8 +211,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       if (resource === "feedback") setFeedback(rows as Feedback[]);
       if (resource === "feedbackFeed") setFeedbackFeed(rows as FeedbackFeedItem[]);
       if (resource === "submissions") setSubmissions(rows as ParticipationSubmission[]);
-      if (resource === "rolePermissions") setRolePermissions(rows as RolePermission[]);
-      if (resource === "officerPermissions") setOfficerPermissions(rows as OfficerPermission[]);
+      if (resource === "rolePermissions") { setRolePermissions(rows as RolePermission[]); accessRef.current.roleRows = rows as RolePermission[]; }
+      if (resource === "officerPermissions") { setOfficerPermissions(rows as OfficerPermission[]); accessRef.current.officerRows = rows as OfficerPermission[]; }
       if (resource === "guestPlayers") setRawGuestPlayers(rows as RawGuestPlayer[]);
       if (resource === "winners") setWinners(rows as EventWinningMember[]);
       if (resource === "momVotes") setMomVotes(rows as EventMomVote[]);
@@ -216,10 +224,59 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
       setProfiles(Array.from(visibleProfiles.values()).filter((profile) => !profile.is_test_account).sort((a, b) => a.name.localeCompare(b.name, "ko")));
       setMe(privateProfiles.find((profile) => profile.auth_user_id === owner) ?? null);
+      accessRef.current.profile = privateProfiles.find((profile) => profile.auth_user_id === owner) ?? null;
+    }
+    if (accessUpdated) {
+      const snapshot = accessRef.current;
+      const nextPermissions = getEffectivePermissions(snapshot.profile, snapshot.officerRows, snapshot.roleRows);
+      const lostAccess = snapshot.owner === owner && [...snapshot.permissions].some((permission) => !nextPermissions.has(permission));
+      const affected = getRevokedManagementResources(snapshot.permissions, nextPermissions);
+      accessRef.current = { ...snapshot, owner, permissions: nextPermissions, ready: true };
+      if (lostAccess) {
+        setQuickEditor((editor) => editor && !canEditManagedRecord(nextPermissions, editor.type, editor.row) ? null : editor);
+        setWinnerEvent((event) => nextPermissions.has("events.manage") ? event : null);
+        setPendingDelete(null); setPendingKick(null);
+        for (const resource of affected) requestsRef.current.invalidate(resource);
+        if (affected.includes("profiles") || affected.includes("memberDirectory")) {
+          const privateProfiles = affected.includes("profiles") ? snapshot.profile ? [snapshot.profile] : [] : profileSourcesRef.current.private;
+          profileSourcesRef.current = { directory: [], private: privateProfiles };
+          setProfiles(privateProfiles.filter((profile) => !profile.is_test_account));
+        }
+        if (affected.includes("fees")) setFees([]);
+        if (affected.includes("guestFees")) setGuestFees([]);
+        if (affected.includes("guestPlayers")) setRawGuestPlayers([]);
+        if (affected.includes("feedback")) setFeedback([]);
+        if (affected.includes("forms")) setForms([]);
+        showToast("운영 권한이 변경되었습니다. 현재 허용된 관리 기능만 사용할 수 있습니다.", "warning");
+        if (affected.length) void reloadRef.current(affected);
+      }
     }
     setLoadErrors((current) => ({ ...current, ...getLoadErrors(accepted) }));
     if (showSkeleton) setMemberLoading(false);
-  }, [supabase]);
+    return requestedAccess.length === 0 || accessUpdated;
+  }, [supabase, showToast]);
+
+  const verifyAccess = useCallback(async (): Promise<VerifiedAccess | null> => {
+    const currentUser = userRef.current;
+    if (!currentUser) return null;
+    const owner = currentUser.id;
+    const epoch = requestsRef.current.epoch;
+    const existing = accessRequestRef.current;
+    if (existing?.owner === owner && existing.epoch === epoch) return existing.pending;
+    const pending = (async () => {
+      const loaded = await loadMemberData(currentUser, false, accessResources);
+      if (owner !== userRef.current?.id || epoch !== requestsRef.current.epoch) return null;
+      if (!loaded || !accessRef.current.ready || accessRef.current.owner !== owner) {
+        showToast("현재 권한을 확인하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.", "error");
+        return null;
+      }
+      const grants = new Set(accessRef.current.permissions);
+      return Object.assign(grants, { profiles: profileSourcesRef.current.private, isCurrent: () => owner === userRef.current?.id && epoch === requestsRef.current.epoch && [...grants].every((permission) => accessRef.current.permissions.has(permission)) });
+    })();
+    accessRequestRef.current = { owner, epoch, pending };
+    try { return await pending; }
+    finally { if (accessRequestRef.current?.pending === pending) accessRequestRef.current = null; }
+  }, [loadMemberData, showToast]);
 
   const reload = useCallback(async (scope: ReloadScope = "all") => {
     const resources = new Set(getReloadResources(scope));
@@ -230,19 +287,33 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       memberResources.length > 0 ? loadMemberData(userRef.current, false, memberResources, true) : null,
     ]);
   }, [loadMemberData, loadPublicData]);
+  useEffect(() => { reloadRef.current = reload; }, [reload]);
+
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible" && accessRef.current.ready) void verifyAccess(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [verifyAccess]);
+
+  useEffect(() => {
+    if (pathname === tabPaths.admin && accessRef.current.ready) void verifyAccess();
+  }, [pathname, verifyAccess]);
 
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); setAuthError(true); return; }
     const requests = requestsRef.current;
     let active = true;
     const pendingTimer = window.setTimeout(() => { if (active) setAuthError(true); }, 12000);
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       const nextUser = session?.user ?? null;
       if (userRef.current?.id !== nextUser?.id) {
         if (userRef.current) void webPush?.beforeLogout().catch(() => undefined);
         requests.reset();
         profileSourcesRef.current = { directory: [], private: [] };
+        accessRef.current = { owner: null, profile: null, roleRows: [], officerRows: [], permissions: new Set(), ready: false };
+        accessRequestRef.current = null;
         rsvpPendingEventIdsRef.current.clear();
         rsvpPendingChangesRef.current.clear();
         setRsvpPendingEventIds(new Set());
@@ -259,6 +330,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       setAuthLoading(false);
       setAuthError(false);
       window.clearTimeout(pendingTimer);
+      if (event === "TOKEN_REFRESHED" && accessRef.current.ready) queueMicrotask(() => { if (active) void verifyAccess(); });
     });
     void supabase.auth.getSession().then(({ error }) => {
       if (active && error) setAuthError(true);
@@ -269,7 +341,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       window.clearTimeout(pendingTimer);
       data.subscription.unsubscribe();
     };
-  }, [supabase, webPush]);
+  }, [supabase, webPush, verifyAccess]);
 
   const sessionUserId = user?.id;
   useEffect(() => {
@@ -314,11 +386,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (requiresPasswordChange) router.replace("/auth/update-password");
   }, [requiresPasswordChange, router]);
 
-  const permissions = useMemo(() => {
-    if (me?.is_system_admin) return new Set([...systemAdminPermissions, ...rolePermissions.filter((row) => row.role === "admin").map((row) => row.permission)]);
-    if (me?.role === "manager" && me.officer_title) return new Set(officerPermissions.filter((row) => row.officer_title === me.officer_title).map((row) => row.permission));
-    return new Set<string>();
-  }, [me?.is_system_admin, me?.officer_title, me?.role, officerPermissions, rolePermissions]);
+  const permissions = useMemo(() => getEffectivePermissions(me, officerPermissions, rolePermissions), [me, officerPermissions, rolePermissions]);
   /** Appearance counts fall out of the loaded events, so guests and events can load in parallel. */
   const guestPlayers = useMemo(() => {
     const appearances = new Map<string, number>();
@@ -351,26 +419,53 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [router]);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const accountSummary = { loading: authLoading, state: accountState, profile: me };
+  const openEditor = async (config: EditorConfig) => {
+    const fresh = await verifyAccess();
+    if (!fresh) return;
+    const row = config.type === "members" && config.row?.id ? fresh.profiles.find((profile) => profile.id === config.row?.id) as unknown as Record<string, unknown> | undefined : config.row;
+    if ((config.row?.id && !row) || !canEditManagedRecord(fresh, config.type, row)) return showToast("이 항목을 관리할 권한이 없습니다.", "warning");
+    setQuickEditor({ ...config, row });
+  };
+  const openWinnerEditor = async (event: Event) => {
+    const fresh = await verifyAccess();
+    if (!fresh) return;
+    if (!fresh.has("events.manage")) return showToast("일정 관리 권한이 없습니다.", "warning");
+    setWinnerEvent(event);
+  };
   const confirmDelete = async () => {
-    if (!supabase || !pendingDelete) return;
+    if (!supabase || !pendingDelete || deletingRef.current) return;
+    deletingRef.current = true;
     setDeleting(true);
+    const fresh = await verifyAccess();
+    if (!fresh) { deletingRef.current = false; setDeleting(false); return; }
+    const targetKind = forms.find((form) => form.id === pendingDelete.id)?.kind;
+    if (!canManageSection(fresh, pendingDelete.table === "participation_forms" ? "forms" : pendingDelete.table, targetKind)) {
+      deletingRef.current = false; setDeleting(false); setPendingDelete(null);
+      return showToast("이 항목을 삭제할 권한이 변경되었습니다.", "warning");
+    }
     const weeklyEvent = pendingDelete.table === "events" && events.some((event) => event.id === pendingDelete.id && isWeeklyScheduleEvent(event));
     const { error } = weeklyEvent
       ? await supabase.rpc("cancel_weekly_event", { target_event_id: pendingDelete.id })
-      : await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id);
+      : await supabase.from(pendingDelete.table).delete().eq("id", pendingDelete.id).select("id").single();
     const scope = tableScopes[pendingDelete.table] ?? "all";
-    setDeleting(false); setPendingDelete(null);
-    if (error) return showToast(toErrorMessage(error), "error");
+    deletingRef.current = false; setDeleting(false); setPendingDelete(null);
+    if (!fresh.isCurrent()) return;
+    if (error) { if (isPermissionError(error)) await verifyAccess(); return showToast(toErrorMessage(error), "error"); }
     showToast("삭제했습니다.");
     await reload(scope);
   };
   const confirmKick = async () => {
-    if (!supabase || !pendingKick || pendingKick.is_system_admin) return;
+    if (!supabase || !pendingKick || pendingKick.is_system_admin || deletingRef.current) return;
     const target = pendingKick;
+    deletingRef.current = true;
     setDeleting(true);
-    const { error } = await supabase.from("profiles").update({ status: "inactive" }).eq("id", target.id);
-    setDeleting(false); setPendingKick(null);
-    if (error) return showToast(toErrorMessage(error), "error");
+    const fresh = await verifyAccess();
+    if (!fresh) { deletingRef.current = false; setDeleting(false); return; }
+    if (!fresh.has("members.manage")) { deletingRef.current = false; setDeleting(false); setPendingKick(null); return showToast("회원 관리 권한이 변경되었습니다.", "warning"); }
+    const { error } = await supabase.from("profiles").update({ status: "inactive" }).eq("id", target.id).select("id").single();
+    deletingRef.current = false; setDeleting(false); setPendingKick(null);
+    if (!fresh.isCurrent()) return;
+    if (error) { if (isPermissionError(error)) await verifyAccess(); return showToast(toErrorMessage(error), "error"); }
     showToast(`${target.name} 회원을 강퇴했습니다.`);
     await reload("all");
   };
@@ -472,17 +567,17 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "home" && authLoading && <section className="content"><SectionSkeleton label="홈을 불러오는 중" /></section>}
       {view === "home" && !authLoading && user && <MemberHome profile={me} upcoming={upcoming} attendance={attendance} profiles={profiles} notices={notices} forms={forms} feeStanding={myStanding} rankings={seasonAwards} publicLoading={publicLoading} sessionPending={sessionPending} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
       {view === "home" && !authLoading && !user && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} profile={me} sessionPending={sessionPending} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} onRetryFees={() => void loadMemberData(userRef.current, true)} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
-      {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => setQuickEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
-      {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={hasLoadError("fees", "profiles")} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => setQuickEditor({ type: "fees" })} onEdit={(fee) => setQuickEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
-      {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => setQuickEditor({ type: "events" })} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
+      {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => void openEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
+      {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={hasLoadError("fees", "profiles")} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => void openEditor({ type: "fees" })} onEdit={(fee) => void openEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
+      {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => void openEditor({ type: "events" })} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
       {view === "rankings" && <Rankings currentYear={currentSeasonYear} currentAwards={seasonAwards} events={events} attendance={attendance} winners={winners} profiles={profiles} user={user} profile={me} loading={sessionPending || publicLoading} loadError={hasLoadError("events", "attendance", "winners", "profiles")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
-      {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} feedbackFeed={feedbackFeed} supabase={supabase} loading={sessionPending} loadError={hasLoadError("feedback", "feedbackFeed", "profiles")} canManage={permissions.has("feedback.manage")} onEdit={(item) => setQuickEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload(["feedback", "feedbackFeed"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
-      {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={hasLoadError("forms", "submissions")} manageableKinds={manageableParticipationKinds} onCreate={() => setQuickEditor({ type: "forms" })} onEdit={(form) => setQuickEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload(["submissions"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
-      {view === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => setQuickEditor({ type: "notices" })} onEdit={(notice) => setQuickEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
+      {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} feedbackFeed={feedbackFeed} supabase={supabase} loading={sessionPending} loadError={hasLoadError("feedback", "feedbackFeed", "profiles")} canManage={permissions.has("feedback.manage")} onEdit={(item) => void openEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload(["feedback", "feedbackFeed"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
+      {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={hasLoadError("forms", "submissions")} manageableKinds={manageableParticipationKinds} onCreate={() => void openEditor({ type: "forms" })} onEdit={(form) => void openEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload(["submissions"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
+      {view === "notices" && <Notices notices={notices} loading={publicLoading} loadError={noticeLoadError} canManage={permissions.has("notices.manage")} onCreate={() => void openEditor({ type: "notices" })} onEdit={(notice) => void openEditor({ type: "notices", row: notice as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "notices", id, label })} onRetry={() => void reload("public")} />}
       {view === "admin" && sessionPending && <SectionSkeleton />}
-      {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} sectionLoadErrors={{ members: hasLoadError("memberDirectory", "profiles"), guests: hasLoadError("guestPlayers"), fees: hasLoadError("fees", "guestFees", "profiles"), notices: noticeLoadError, venues: hasLoadError("venues"), events: eventLoadError, attendance: hasLoadError("events", "attendance"), teams: eventLoadError, feedback: hasLoadError("feedback"), forms: hasLoadError("forms"), permissions: hasLoadError("rolePermissions", "officerPermissions") }} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} reload={(scope) => void reload(scope)} toast={showToast} />}
+      {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} sectionLoadErrors={{ members: hasLoadError("memberDirectory", "profiles"), guests: hasLoadError("guestPlayers"), fees: hasLoadError("fees", "guestFees", "profiles"), notices: noticeLoadError, venues: hasLoadError("venues"), events: eventLoadError, attendance: hasLoadError("events", "attendance"), teams: eventLoadError, feedback: hasLoadError("feedback"), forms: hasLoadError("forms"), permissions: hasLoadError("rolePermissions", "officerPermissions") }} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} verifyAccess={verifyAccess} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}
-      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => setQuickEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => setQuickEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => setQuickEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => setWinnerEvent(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload(["momVotes", "momResults"])} toast={showToast} />}
+      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload(["momVotes", "momResults"])} toast={showToast} />}
       {children}
     </main>
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
@@ -493,8 +588,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <MoreSheet open={sheetOpen} tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onClose={closeSheet} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
     {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} webPush={webPush} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
-    {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload(["winners"]); }} onError={(message) => showToast(message, "error")} />}
-    {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
+    {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} verifyAccess={verifyAccess} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload(["winners"]); }} onError={(message) => showToast(message, "error")} />}
+    {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} verifyAccess={verifyAccess} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
     <div className="toast" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "success" && <><Check size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>

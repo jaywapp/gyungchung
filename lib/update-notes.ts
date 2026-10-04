@@ -22,6 +22,19 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-05-officer-service-permissions",
+    date: "2026-10-05",
+    source: "request",
+    title: "모든 운영진이 팀 운영 서비스를 이용할 수 있습니다",
+    summary: "회장·부회장·총무에게 팀 운영 서비스 전체를 기본 허용하고, 시스템 관리자가 직책별 접근을 설정하도록 정비했습니다.",
+    changes: [
+      { kind: "improved", text: "시스템 관리자는 권한 관리에서 회비·회원·일정 등 서비스별로 직책의 접근을 허용하거나 제외할 수 있습니다." },
+      { kind: "improved", text: "회원 관리 권한 없이도 출석과 팀 편성을 저장할 수 있으며, 운영진 일반정보 수정과 참여 종류별 관리 권한을 바로잡았습니다." },
+      { kind: "improved", text: "운영진과 시스템 관리자 계정의 발급·초기화 및 관리자 지위 변경을 시스템 관리자에게 제한했습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-05-fee-save-permissions",
     date: "2026-10-05",
     source: "request",

@@ -85,10 +85,14 @@ Deno.serve(async (request: Request) => {
 
   const { data: member, error: memberError } = await adminClient
     .from("profiles")
-    .select("id, name, phone, auth_user_id, status")
+    .select("id, name, phone, auth_user_id, role, officer_title, is_system_admin, status")
     .eq("id", memberId)
     .maybeSingle();
   if (memberError || !member) return json(request, { error: "회원을 찾을 수 없습니다." }, 404);
+  // Account recovery must not let a restricted officer assume another officer's access.
+  if ((member.is_system_admin || member.role === "manager") && !operator.is_system_admin) {
+    return json(request, { error: "운영진·시스템 관리자 계정은 시스템 관리자만 관리할 수 있습니다." }, 403);
+  }
   if (!member.phone) return json(request, { error: "전화번호를 먼저 등록해 주세요." }, 400);
 
   if (member.auth_user_id) {
@@ -109,6 +113,7 @@ Deno.serve(async (request: Request) => {
     phone_confirm: true,
     password: INITIAL_PASSWORD,
     user_metadata: { member_id: member.id, full_name: member.name },
+    app_metadata: { member_provisioning_id: member.id },
   });
   if (error || !data.user) {
     const duplicate = error?.message.toLowerCase().includes("already") || error?.status === 422;
