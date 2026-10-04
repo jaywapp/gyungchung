@@ -22,6 +22,17 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-05-fee-save-permissions",
+    date: "2026-10-05",
+    source: "request",
+    title: "회비 관리 권한으로 회비를 저장할 수 있습니다",
+    summary: "회원 관리 권한이 없는 운영진도 회비를 등록하고 수정할 수 있도록 저장 오류를 해결했습니다.",
+    changes: [
+      { kind: "improved", text: "회비 관리에서 회원별 납부 유형과 표준 금액을 올바르게 적용하고, 참여비 회원을 월회비 일괄 등록 대상에서 제외합니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-03-performance-improvements",
     date: "2026-10-03",
     source: "request",
