@@ -6712,6 +6712,13 @@ td { font-weight: 800; }
 .member-avatar.md { width: 40px; height: 40px; font-size: 14px; }
 .member-avatar.lg { width: 44px; height: 44px; font-size: 14px; }
 .member-avatar.pos-ANY { border: 1.5px dashed var(--pos-any-edge); }
+.member-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.account-photo { display: flex; align-items: center; gap: 16px; margin-block: 20px 12px; }
+.account-photo .member-avatar { width: 72px; height: 72px; font-size: 22px; }
+.account-photo > div { min-width: 0; overflow-wrap: anywhere; }
+.account-photo p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.account-photo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.account-photo-actions button { min-height: 44px; }
 
 .pos-FW { --pb: var(--pos-fw-bg); --pi: var(--pos-fw-ink); }
 .pos-MF { --pb: var(--pos-mf-bg); --pi: var(--pos-mf-ink); }

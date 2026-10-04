@@ -19,6 +19,7 @@ export interface MembershipApplication {
 export interface Profile {
   id: string;
   auth_user_id: string | null;
+  avatar_path?: string | null;
   name: string;
   email: string | null;
   phone: string | null;
