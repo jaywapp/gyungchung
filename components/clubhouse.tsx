@@ -16,7 +16,9 @@ import { createWebPushController, prepareWebPushWorker, WEB_PUSH_STORAGE_KEY, re
 import MemberHome from "@/components/member-home";
 import HeroMotion from "@/components/hero-motion";
 import MemberDirectory from "@/components/member-directory";
-import { ClubMobileBar, ClubSidebar, ClubTabBar, MoreSheet, tabPaths, type Tab } from "@/components/club-nav";
+import { ClubMobileBar, ClubSidebar, ClubTabBar, MemberAvatar, MoreSheet, tabPaths, type Tab } from "@/components/club-nav";
+import { MemberAvatarProvider } from "@/components/member-avatar-provider";
+import { AvatarUrlCache, getAvatarAccessScope, saveProfileAvatar } from "@/lib/profile-avatar";
 import { FEE_AMOUNTS, feeRuleBadges, formatWon } from "@/lib/fee-rules";
 import { buildSeasonRankings, getSeasonYear, type EventWinningMember } from "@/lib/season-rankings";
 import { editorScopes, getReloadResources, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
@@ -55,6 +57,8 @@ const authResults: Record<string, { message: string; kind: ToastKind }> = {
 export default function Clubhouse({ children }: { children?: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), []);
   const webPush = useMemo(() => supabase ? createWebPushController(supabase) : null, [supabase]);
+  const avatarCache = useMemo(() => new AvatarUrlCache(), []);
+  const avatarBusyRef = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
   /** `/events/20260816` keeps the 일정 tab lit while the leaf renders a single day. */
@@ -232,6 +236,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       const lostAccess = snapshot.owner === owner && [...snapshot.permissions].some((permission) => !nextPermissions.has(permission));
       const affected = getRevokedManagementResources(snapshot.permissions, nextPermissions);
       accessRef.current = { ...snapshot, owner, permissions: nextPermissions, ready: true };
+      avatarCache.setScope(getAvatarAccessScope(owner, snapshot.profile, nextPermissions));
       if (lostAccess) {
         setQuickEditor((editor) => editor && !canEditManagedRecord(nextPermissions, editor.type, editor.row) ? null : editor);
         setWinnerEvent((event) => nextPermissions.has("events.manage") ? event : null);
@@ -254,7 +259,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     setLoadErrors((current) => ({ ...current, ...getLoadErrors(accepted) }));
     if (showSkeleton) setMemberLoading(false);
     return requestedAccess.length === 0 || accessUpdated;
-  }, [supabase, showToast]);
+  }, [supabase, showToast, avatarCache]);
 
   const verifyAccess = useCallback(async (): Promise<VerifiedAccess | null> => {
     const currentUser = userRef.current;
@@ -311,6 +316,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       if (userRef.current?.id !== nextUser?.id) {
         if (userRef.current) void webPush?.beforeLogout().catch(() => undefined);
         requests.reset();
+        avatarCache.clear();
+        avatarBusyRef.current = false;
         profileSourcesRef.current = { directory: [], private: [] };
         accessRef.current = { owner: null, profile: null, roleRows: [], officerRows: [], permissions: new Set(), ready: false };
         accessRequestRef.current = null;
@@ -341,7 +348,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       window.clearTimeout(pendingTimer);
       data.subscription.unsubscribe();
     };
-  }, [supabase, webPush, verifyAccess]);
+  }, [supabase, webPush, verifyAccess, avatarCache]);
 
   const sessionUserId = user?.id;
   useEffect(() => {
@@ -491,7 +498,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     }
   };
   const signOut = async () => {
-    if (!supabase || busy) return;
+    if (!supabase || busy || avatarBusyRef.current) return;
     setBusy(true);
     try {
       await webPush?.beforeLogout();
@@ -551,11 +558,19 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     }
   };
 
+  const avatarScope = getAvatarAccessScope(user?.id ?? null, me, permissions);
+  const isAvatarScopeCurrent = useCallback(() => {
+    const snapshot = accessRef.current;
+    return Boolean(avatarScope) && avatarScope === getAvatarAccessScope(userRef.current?.id ?? null, snapshot.profile, snapshot.permissions);
+  }, [avatarScope]);
+  const avatarPaths = useMemo(() => [...profiles, ...(me ? [me] : [])].flatMap((profile) => profile.avatar_path ? [profile.avatar_path] : []), [profiles, me]);
+  const avatarOwnerEpoch = requestsRef.current.epoch;
+
   if (requiresPasswordChange) {
     return <main className="password-page"><section className="password-card"><span className="eyebrow">SECURITY UPDATE</span><h1>비밀번호 변경이 필요합니다</h1><p>안전한 회원 계정 사용을 위해 새 비밀번호 설정 화면으로 이동하고 있습니다.</p></section></main>;
   }
 
-  return <div className="page shell">
+  return <MemberAvatarProvider client={supabase} cache={avatarCache} revision={avatarCache.revision} paths={avatarPaths} scope={avatarScope} isCurrent={isAvatarScopeCurrent}><div className="page shell">
     <a className="skip-link" href="#main">본문 바로가기</a>
     <ClubSidebar tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     <div className="shell-main">
@@ -587,14 +602,20 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <ClubTabBar tab={tab} pathname={pathname} sheetOpen={sheetOpen} onOpenSheet={() => setSheetOpen(true)} />
     <MoreSheet open={sheetOpen} tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onClose={closeSheet} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
-    {accountOpen && user && (accountState === "member" && me ? <AccountModal profile={me} webPush={webPush} busy={busy} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
+    {accountOpen && user && (accountState === "member" && me ? <AccountModal key={user.id} profile={me} supabase={supabase} webPush={webPush} busy={busy} isCurrent={() => userRef.current?.id === user.id && requestsRef.current.epoch === avatarOwnerEpoch && accessRef.current.profile?.id === me.id && accessRef.current.profile.status === "active" && !accessRef.current.profile.must_change_password} onBusyChange={(value) => { if (userRef.current?.id === user.id) avatarBusyRef.current = value; }} onRefresh={() => reload(["profiles", "memberDirectory"])} onSaved={(path) => {
+      const update = (profile: Profile) => profile.id === me.id ? { ...profile, avatar_path: path } : profile;
+      profileSourcesRef.current = { directory: profileSourcesRef.current.directory.map(update), private: profileSourcesRef.current.private.map(update) };
+      if (accessRef.current.profile) accessRef.current.profile = update(accessRef.current.profile);
+      setMe((current) => current ? update(current) : current); setProfiles((current) => current.map(update));
+      return reload(["profiles", "memberDirectory"]);
+    }} onClose={() => setAccountOpen(false)} onSignOut={signOut} /> : <UnlinkedAccountModal onClose={() => setAccountOpen(false)} onSignOut={signOut} />)}
     {winnerEvent && supabase && <WinnerEditor event={winnerEvent} profiles={profiles} winners={winners} supabase={supabase} verifyAccess={verifyAccess} onClose={() => setWinnerEvent(null)} onSaved={() => { setWinnerEvent(null); showToast("우승 명단을 저장했습니다."); void reload(["winners"]); }} onError={(message) => showToast(message, "error")} />}
     {quickEditor && supabase && <AdminEditor config={quickEditor} profiles={profiles} guestPlayers={guestPlayers} venues={venues} events={events} attendance={attendance} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} verifyAccess={verifyAccess} onClose={() => setQuickEditor(null)} onSaved={(result) => { const scope = editorScopes[quickEditor.type] ?? "all"; if (result?.close !== false) setQuickEditor(null); showToast(result?.message ?? "저장했습니다."); void reload(scope); }} onError={(message) => showToast(message, "error")} />}
     {pendingDelete && <ConfirmDialog title="삭제할까요?" target={pendingDelete.label} description="이 작업은 되돌릴 수 없습니다. 삭제한 항목은 복구할 수 없습니다." busy={deleting} onConfirm={() => void confirmDelete()} onCancel={() => setPendingDelete(null)} />}
     {pendingKick && <ConfirmDialog title="회원을 강퇴할까요?" target={pendingKick.name} description="회원 기능 이용이 즉시 중단됩니다. 다시 가입하려면 운영진이 상태를 변경해야 합니다." confirmLabel="강퇴하기" busy={deleting} onConfirm={() => void confirmKick()} onCancel={() => setPendingKick(null)} />}
     <div className="toast" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "success" && <><Check size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
     <div className="toast error" role="alert" aria-live="assertive" aria-atomic="true">{toast?.kind === "error" && <><AlertCircle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
-  </div>;
+  </div></MemberAvatarProvider>;
 }
 
 function LoginModal({ busy, onClose, onPasswordAuth }: { busy: boolean; onClose: () => void; onPasswordAuth: (phone: string, password: string) => Promise<string | null> }) {
@@ -628,9 +649,53 @@ function LoginModal({ busy, onClose, onPasswordAuth }: { busy: boolean; onClose:
   </div>;
 }
 
-function AccountModal({ profile, webPush, busy, onClose, onSignOut }: { profile: Profile; webPush: WebPushController | null; busy: boolean; onClose: () => void; onSignOut: () => Promise<void> }) {
-  const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: onClose });
-  return <div className="modal-backdrop" onClick={onClose}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" onClick={onClose} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2><div className="read-box"><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div><p className="form-description">등록된 전화번호와 비밀번호로 로그인합니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요.</p><ThemeSwitch />{webPush && <WebPushSettings controller={webPush} eligible={profile.status === "active" && !profile.must_change_password} />}<button type="button" className="cta ghost" disabled={busy} onClick={() => void onSignOut()}><LogOut size={17} /> {busy ? "로그아웃 중…" : "로그아웃"}</button></div></div>;
+function AccountModal({ profile, supabase, webPush, busy, isCurrent, onBusyChange, onSaved, onRefresh, onClose, onSignOut }: {
+  profile: Profile; supabase: ReturnType<typeof createClient>; webPush: WebPushController | null; busy: boolean;
+  isCurrent: () => boolean; onBusyChange: (busy: boolean) => void; onSaved: (path: string | null) => Promise<void>;
+  onRefresh: () => Promise<void>; onClose: () => void; onSignOut: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const savingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  const close = () => { if (!savingRef.current && !busy) onClose(); };
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: close });
+  const eligible = Boolean(supabase && profile.auth_user_id && profile.status === "active" && !profile.must_change_password);
+  const changeAvatar = async (file: File | null) => {
+    if (!supabase || !profile.auth_user_id || !eligible || busy || savingRef.current || !isCurrent()) return;
+    const current = () => mountedRef.current && isCurrent();
+    savingRef.current = true; setSaving(true); onBusyChange(true); setError(null); setStatus(null);
+    try {
+      const result = await saveProfileAvatar(supabase, { owner: profile.auth_user_id, expectedPath: profile.avatar_path ?? null, file, isCurrent: current });
+      if (!current()) return;
+      await onSaved(result.path);
+      if (!current()) return;
+      setStatus(file ? "프로필 사진을 저장했습니다." : "프로필 사진을 삭제했습니다.");
+    } catch (cause) {
+      if (!current()) return;
+      await onRefresh();
+      if (!current()) return;
+      setError(cause instanceof Error ? cause.message : "사진을 처리하지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) { setSaving(false); onBusyChange(false); }
+    }
+  };
+  return <div className="modal-backdrop" onClick={close}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" disabled={saving || busy} onClick={close} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2>
+    <div className="account-photo"><MemberAvatar profile={profile} size="lg" /><div><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div></div>
+    <div className="account-photo-actions" aria-busy={saving}>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" aria-label="프로필 사진 선택" hidden disabled={saving || busy || !eligible} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void changeAvatar(file); }} />
+      <button type="button" className="cta ghost" disabled={saving || busy || !eligible} onClick={() => inputRef.current?.click()}>{saving ? "사진 저장 중…" : profile.avatar_path ? "사진 변경" : "사진 등록"}</button>
+      {profile.avatar_path && <button type="button" className="text-link" disabled={saving || busy || !eligible} onClick={() => void changeAvatar(null)}>사진 삭제</button>}
+    </div>
+    <p className="form-description">JPEG·PNG·WebP, 10MB 이하. 중앙을 정사각형으로 잘라 저장하며 로그인한 활동 회원에게 표시됩니다.</p>
+    {!eligible && <p className="form-description">활동 중인 회원은 초기 비밀번호를 변경한 뒤 사진을 설정할 수 있습니다.</p>}
+    {error && <p className="form-error" role="alert" data-testid="avatar-error">{error}</p>}
+    <p className="form-description" role="status" data-testid="avatar-status" aria-live="polite">{saving ? "사진을 준비하고 저장하고 있습니다. 잠시 기다려 주세요." : status}</p>
+    <p className="form-description">등록된 전화번호와 비밀번호로 로그인합니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요.</p><ThemeSwitch />{webPush && <WebPushSettings controller={webPush} eligible={profile.status === "active" && !profile.must_change_password} />}<button type="button" className="cta ghost" disabled={busy || saving} onClick={() => { if (!savingRef.current) void onSignOut(); }}><LogOut size={17} /> {busy ? "로그아웃 중…" : "로그아웃"}</button></div></div>;
 }
 
 function UnlinkedAccountModal({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => Promise<void> }) {

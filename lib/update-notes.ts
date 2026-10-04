@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-05-profile-avatar",
+    date: "2026-10-05",
+    source: "request",
+    title: "마이페이지에서 내 프로필 사진을 설정할 수 있습니다",
+    summary: "사진을 등록·변경·삭제하면 회원 목록과 기존 회원 아바타에 반영됩니다.",
+    changes: [
+      { kind: "added", text: "내 사진은 본인만 변경할 수 있으며 로그인한 활동 회원에게 표시됩니다. 사진이 없으면 기존 이니셜을 보여 줍니다." },
+      { kind: "added", text: "JPEG·PNG·WebP 사진을 선택하면 중앙 정사각형 사진으로 준비해 저장합니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-05-officer-service-permissions",
     date: "2026-10-05",
     source: "request",

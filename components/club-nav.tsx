@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, ChevronRight, CircleDollarSign, House, LogIn, Megaphone, Menu, MessageSquareText, Shield, Sparkles, Trophy, UserRound, Users, Vote, X, Youtube } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { nameInitials, positionChipLabel, positionOf } from "@/lib/member-directory";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import ThemeSwitch from "@/components/theme-switch";
+import { useAvatarUrl } from "@/components/member-avatar-provider";
 
 export type Tab = "home" | "members" | "fees" | "notices" | "events" | "rankings" | "feedback" | "participation" | "updates" | "admin";
 
@@ -53,8 +54,14 @@ function NavLinks({ items, tab, pathname, onNavigate }: { items: NavItem[]; tab:
   return <ul>{items.map(({ tab: key, label, icon: Icon }) => <li key={key}><Link href={tabPaths[key]} aria-current={pathname === tabPaths[key] ? "page" : tab === key ? "true" : undefined} onClick={onNavigate}><Icon size={18} aria-hidden="true" />{label}</Link></li>)}</ul>;
 }
 
-export function MemberAvatar({ profile, size = "md" }: { profile: Pick<Profile, "name" | "position">; size?: "sm" | "md" | "lg" }) {
-  return <span className={`member-avatar ${size} pos-${positionOf(profile)}`} aria-hidden="true">{nameInitials(profile.name)}</span>;
+export function MemberAvatar({ profile, size = "md" }: { profile: Pick<Profile, "name" | "position" | "avatar_path">; size?: "sm" | "md" | "lg" }) {
+  const url = useAvatarUrl(profile.avatar_path);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  return <span className={`member-avatar ${size} pos-${positionOf(profile)}`} aria-hidden="true">{url && url !== failedUrl
+    // Private short-lived URLs must not enter an image optimizer cache.
+    // eslint-disable-next-line @next/next/no-img-element
+    ? <img src={url} alt="" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} />
+    : nameInitials(profile.name)}</span>;
 }
 
 function AccountButton({ account, onLogin, onAccount, variant }: { account: AccountSummary; onLogin: () => void; onAccount: () => void; variant: "side" | "bar" }) {
