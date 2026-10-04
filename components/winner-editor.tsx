@@ -1,33 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Event, Profile } from "@/lib/types";
 import type { EventWinningMember } from "@/lib/season-rankings";
 import { toErrorMessage } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { isPermissionError, type AccessVerifier } from "@/lib/permission-access";
 
-export default function WinnerEditor({ event, profiles, winners, supabase, onClose, onSaved, onError }: {
+export default function WinnerEditor({ event, profiles, winners, supabase, verifyAccess, onClose, onSaved, onError }: {
   event: Event;
   profiles: Profile[];
   winners: EventWinningMember[];
   supabase: SupabaseClient;
+  verifyAccess: AccessVerifier;
   onClose: () => void;
   onSaved: () => void;
   onError: (message: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>(() => winners.filter((winner) => winner.event_id === event.id).map((winner) => winner.member_id));
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const dialogRef = useDialogFocus<HTMLElement>({ onRequestClose: onClose, active: true });
   const available = profiles.filter((profile) => profile.status === "active" && !profile.is_test_account);
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : current.length < 5 ? [...current, id] : current);
   const save = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
-    const { error } = await supabase.rpc("save_event_winners", { target_event_id: event.id, target_member_ids: selected });
-    setSaving(false);
-    if (error) return onError(toErrorMessage(error));
-    onSaved();
+    try {
+      const fresh = await verifyAccess();
+      if (!fresh) return;
+      if (!fresh.has("events.manage")) { onClose(); return onError("우승 명단을 관리할 권한이 변경되었습니다."); }
+      const { error } = await supabase.rpc("save_event_winners", { target_event_id: event.id, target_member_ids: selected });
+      if (!fresh.isCurrent()) return;
+      if (error) { if (isPermissionError(error)) await verifyAccess(); return onError(toErrorMessage(error)); }
+      onSaved();
+    } finally { savingRef.current = false; setSaving(false); }
   };
   return <div className="modal-backdrop" onClick={() => { if (!saving) onClose(); }}>
     <section ref={dialogRef} tabIndex={-1} className="editor" role="dialog" aria-modal="true" aria-labelledby="winner-editor-title" onClick={(event) => event.stopPropagation()}>
