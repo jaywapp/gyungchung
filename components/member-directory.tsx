@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Pencil, Phone, UserMinus } from "lucide-react";
+import { MoreHorizontal, Pencil, Phone, UserMinus, X } from "lucide-react";
 import type { OfficerTitle, Profile } from "@/lib/types";
 import { countByPosition, positionChipLabel, positionKeys, positionLabels, positionOf, sortDirectory, type PositionKey } from "@/lib/member-directory";
 import { MemberPhoneError, openMemberPhone } from "@/lib/member-phone";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { MemberAvatar } from "@/components/club-nav";
 
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
@@ -25,6 +26,7 @@ export default function MemberDirectory({ profiles, currentUserId, canManage, ph
   const [phonePending, setPhonePending] = useState<string | null>(null);
   const [preparedPhone, setPreparedPhone] = useState<{ memberId: string; uri: string; isCurrent: () => boolean } | null>(null);
   const [phoneNotice, setPhoneNotice] = useState<{ memberId: string; text: string; error: boolean; isCurrent: () => boolean } | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const phonePendingRef = useRef<object | null>(null);
   const mountedRef = useRef(true);
   const scopeRef = useRef({ value: phoneScope, generation: 0 });
@@ -65,6 +67,8 @@ export default function MemberDirectory({ profiles, currentUserId, canManage, ph
   const sorted = useMemo(() => sortDirectory(profiles), [profiles]);
   const counts = useMemo(() => countByPosition(profiles), [profiles]);
   const visible = filter === "ALL" ? sorted : sorted.filter((profile) => positionOf(profile) === filter);
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId && profile.status === "active") ?? null;
+  const detailRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setSelectedProfileId(null), active: Boolean(selectedProfile) });
   const options: [PositionKey | "ALL", string][] = [["ALL", "전체"], ...positionKeys.map((key) => [key, positionLabels[key]] as [PositionKey, string])];
   return <>
     <div className="position-filter" role="group" aria-label="포지션으로 거르기">
@@ -84,6 +88,7 @@ export default function MemberDirectory({ profiles, currentUserId, canManage, ph
           {profile.is_system_admin && <span className="role-badge system">시스템 관리자</span>}
         </div>
         <small>{profile.jersey_number != null ? `No. ${profile.jersey_number} · ` : ""}{new Date(profile.joined_at).getFullYear()}년 가입</small>
+        <button type="button" className="directory-detail-trigger" onClick={() => setSelectedProfileId(profile.id)} aria-label={`${profile.name} 상세 정보 보기`}>상세 정보 보기</button>
         {phoneScope && <div className="directory-phone-actions" aria-busy={phonePending === profile.id}>
           {preparedPhone?.memberId === profile.id && preparedPhone.isCurrent() ? <button type="button" className="text-link" aria-label={`${profile.name} 전화 앱 열기`} onClick={dialPhone}><Phone size={15} /> 전화 앱 열기</button> : <button type="button" className="text-link" aria-label={`${profile.name}에게 전화걸기`} disabled={phonePending !== null} onClick={() => void requestPhone(profile)}><Phone size={15} /> {phonePending === profile.id ? "전화번호 확인 중…" : "전화걸기"}</button>}
           {phoneNotice?.memberId === profile.id && phoneNotice.isCurrent() && <p className={phoneNotice.error ? "form-error" : "form-description"} role={phoneNotice.error ? "alert" : "status"}>{phoneNotice.text}</p>}
@@ -97,5 +102,22 @@ export default function MemberDirectory({ profiles, currentUserId, canManage, ph
         </details>}
       </article>;
     })}</div>}
+    {selectedProfile && <div className="modal-backdrop" onClick={() => setSelectedProfileId(null)}>
+      <div ref={detailRef} tabIndex={-1} className="editor directory-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="member-detail-title" onClick={(event) => event.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="닫기" onClick={() => setSelectedProfileId(null)}><X size={20} /></button>
+        <MemberAvatar profile={selectedProfile} size="lg" />
+        <h2 id="member-detail-title">{selectedProfile.name}</h2>
+        <dl>
+          <div><dt>포지션</dt><dd>{positionChipLabel(selectedProfile)}{selectedProfile.position_detail ? ` · ${selectedProfile.position_detail}` : ""}</dd></div>
+          <div><dt>등번호</dt><dd>{selectedProfile.jersey_number != null ? `No. ${selectedProfile.jersey_number}` : "미정"}</dd></div>
+          <div><dt>회원 유형</dt><dd>{selectedProfile.role === "manager" ? (selectedProfile.officer_title ? officerTitleLabels[selectedProfile.officer_title] : "관리자") : "일반 회원"}</dd></div>
+          <div><dt>가입일</dt><dd>{new Date(selectedProfile.joined_at).toLocaleDateString("ko-KR")}</dd></div>
+        </dl>
+        {phoneScope && <div className="directory-detail-phone" aria-busy={phonePending === selectedProfile.id}>
+          {preparedPhone?.memberId === selectedProfile.id && preparedPhone.isCurrent() ? <button type="button" className="cta secondary" onClick={dialPhone}><Phone size={17} /> 전화 앱 열기</button> : <button type="button" className="cta secondary" disabled={phonePending !== null} onClick={() => void requestPhone(selectedProfile)}><Phone size={17} /> {phonePending === selectedProfile.id ? "전화번호 확인 중…" : "전화걸기"}</button>}
+          {phoneNotice?.memberId === selectedProfile.id && phoneNotice.isCurrent() && <p className={phoneNotice.error ? "form-error" : "form-description"} role={phoneNotice.error ? "alert" : "status"}>{phoneNotice.text}</p>}
+        </div>}
+      </div>
+    </div>}
   </>;
 }
