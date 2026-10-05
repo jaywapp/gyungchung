@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LogOut, MapPin, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserRound, X, Youtube } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, Cake, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, LogOut, MapPin, Megaphone, MoreHorizontal, Pencil, Plus, Shield, Trash2, Trophy, UserRound, X, Youtube } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Fee, Feedback, FeedbackFeedItem, GuestFee, GuestPlayer, Notice, OfficerPermission, ParticipationForm, ParticipationKind, ParticipationSubmission, Profile, RolePermission, Venue } from "@/lib/types";
@@ -19,6 +19,9 @@ import MemberDirectory from "@/components/member-directory";
 import { ClubMobileBar, ClubSidebar, ClubTabBar, MemberAvatar, MoreSheet, tabPaths, type Tab } from "@/components/club-nav";
 import { MemberAvatarProvider } from "@/components/member-avatar-provider";
 import { AvatarUrlCache, getAvatarAccessScope, saveProfileAvatar } from "@/lib/profile-avatar";
+import { birthdayDaysInMonth, buildBirthdayIndex, getBirthdayState, hasBirthdayFields, isBirthdayEligible, mergeOwnBirthday, saveMyBirthday, type Birthday, type BirthdayState } from "@/lib/member-birthday";
+import { getMemberPhoneScope, lookupMemberPhone, MemberPhoneError } from "@/lib/member-phone";
+import { getMomVoteScope } from "@/lib/mom-vote";
 import { FEE_AMOUNTS, feeRuleBadges, formatWon } from "@/lib/fee-rules";
 import { buildSeasonRankings, getSeasonYear, type EventWinningMember } from "@/lib/season-rankings";
 import { editorScopes, getReloadResources, showError, tableScopes, toErrorMessage, type ReloadScope, type ToastKind } from "@/lib/ui-feedback";
@@ -142,11 +145,13 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (showSkeleton) setPublicLoading(true);
     const queries: Record<PublicLoadResource, (signal: AbortSignal) => PromiseLike<ResourceQueryResult>> = {
       events: async (signal) => {
-        const result = await supabase.from("events").select("id, title, starts_at, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at").abortSignal(signal);
+        const result = await supabase.from("events").select("id, title, starts_at, ends_at, mom_voting_days, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at").abortSignal(signal);
         // Keep the migration fallback, but never retry an obsolete identity's request.
-        return result.error && !signal.aborted
-          ? await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal)
+        const fallback = result.error && !signal.aborted
+          ? await supabase.from("events").select("id, title, starts_at, ends_at, mom_voting_days, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal)
           : result;
+        if (fallback.error && !signal.aborted) return await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal);
+        return fallback;
       },
       notices: (signal) => supabase.from("notices").select("id, title, body, is_pinned, created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }).abortSignal(signal),
       forms: (signal) => supabase.from("participation_forms").select("*, participation_questions(*, participation_options(*))").order("created_at", { ascending: false }).abortSignal(signal),
@@ -227,7 +232,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       const visibleProfiles = new Map(directory.map((profile) => [profile.id, profile]));
       privateProfiles.forEach((profile) => visibleProfiles.set(profile.id, { ...visibleProfiles.get(profile.id), ...profile }));
       setProfiles(Array.from(visibleProfiles.values()).filter((profile) => !profile.is_test_account).sort((a, b) => a.name.localeCompare(b.name, "ko")));
-      setMe(privateProfiles.find((profile) => profile.auth_user_id === owner) ?? null);
+      setMe(mergeOwnBirthday(privateProfiles.find((profile) => profile.auth_user_id === owner) ?? null, directory, owner));
       accessRef.current.profile = privateProfiles.find((profile) => profile.auth_user_id === owner) ?? null;
     }
     if (accessUpdated) {
@@ -565,6 +570,39 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   }, [avatarScope]);
   const avatarPaths = useMemo(() => [...profiles, ...(me ? [me] : [])].flatMap((profile) => profile.avatar_path ? [profile.avatar_path] : []), [profiles, me]);
   const avatarOwnerEpoch = requestsRef.current.epoch;
+  const birthdayState = getBirthdayState(user?.id ?? null, me, sessionPending, hasLoadError("memberDirectory", "profiles"));
+  const birthdayProfiles = birthdayState === "missing" || birthdayState === "registered" ? profiles : [];
+  const birthdaySaved = async (birthday: Birthday): Promise<boolean> => {
+    if (!user || !me) return false;
+    const owner = user.id;
+    const epoch = avatarOwnerEpoch;
+    const current = () => userRef.current?.id === owner && requestsRef.current.epoch === epoch;
+    // Reject reads that started before the committed write.
+    requestsRef.current.invalidate("memberDirectory");
+    const verified = await loadMemberData(userRef.current, false, ["profiles"], true);
+    if (!current() || !verified || accessRef.current.profile?.id !== me.id || !isBirthdayEligible(accessRef.current.profile, owner)) return false;
+    const update = (row: Profile) => row.id === me.id ? { ...row, ...birthday } : row;
+    profileSourcesRef.current.directory = [...profileSourcesRef.current.directory.filter((row) => row.id !== me.id), { ...accessRef.current.profile!, ...birthday }];
+    setMe(mergeOwnBirthday(accessRef.current.profile, profileSourcesRef.current.directory, owner));
+    setProfiles((rows) => rows.map(update));
+    return true;
+  };
+
+  const phoneScope = !sessionPending && !hasLoadError("profiles") ? getMemberPhoneScope(user?.id ?? null, me, permissions, requestsRef.current.epoch) : "";
+  const isPhoneCurrent = () => Boolean(phoneScope) && phoneScope === getMemberPhoneScope(userRef.current?.id ?? null, accessRef.current.profile, accessRef.current.permissions, requestsRef.current.epoch);
+  const readMemberPhone = async (memberId: string, callerCurrent: () => boolean): Promise<string | null> => {
+    const current = () => callerCurrent() && isPhoneCurrent();
+    if (!supabase || !current()) throw new MemberPhoneError("stale", "계정 상태가 변경되었습니다. 다시 시도해 주세요.");
+    const uri = await lookupMemberPhone(supabase, memberId, current);
+    if (!current()) throw new MemberPhoneError("stale", "계정 상태가 변경되었습니다. 다시 시도해 주세요.");
+    const verified = await verifyAccess();
+    if (!current() || !verified || !verified.isCurrent()) throw new MemberPhoneError("stale", "계정 상태를 확인하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.");
+    return uri;
+  };
+
+  const momScope = !sessionPending && !hasLoadError("profiles") ? getMomVoteScope(user?.id ?? null, me, permissions, requestsRef.current.epoch) : "";
+  const isMomCurrent = () => Boolean(momScope) && momScope === getMomVoteScope(userRef.current?.id ?? null, accessRef.current.profile, accessRef.current.permissions, requestsRef.current.epoch);
+  const verifyMomAccess = async () => { const verified = await verifyAccess(); return Boolean(verified && verified.isCurrent() && isMomCurrent()); };
 
   if (requiresPasswordChange) {
     return <main className="password-page"><section className="password-card"><span className="eyebrow">SECURITY UPDATE</span><h1>비밀번호 변경이 필요합니다</h1><p>안전한 회원 계정 사용을 위해 새 비밀번호 설정 화면으로 이동하고 있습니다.</p></section></main>;
@@ -582,9 +620,9 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "home" && authLoading && <section className="content"><SectionSkeleton label="홈을 불러오는 중" /></section>}
       {view === "home" && !authLoading && user && <MemberHome profile={me} upcoming={upcoming} attendance={attendance} profiles={profiles} notices={notices} forms={forms} feeStanding={myStanding} rankings={seasonAwards} publicLoading={publicLoading} sessionPending={sessionPending} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
       {view === "home" && !authLoading && !user && <Home upcoming={upcoming} notice={notices[0]} feeStanding={myStanding} goingCount={goingCount} memberCount={activeProfiles.length} user={user} profile={me} sessionPending={sessionPending} rsvpPending={Boolean(upcoming && rsvpPendingEventIds.has(upcoming.id))} publicLoading={publicLoading} eventLoadError={eventLoadError} noticeLoadError={noticeLoadError} feeLoadError={hasLoadError("fees", "profiles")} onRetryFees={() => void loadMemberData(userRef.current, true)} onRetry={() => void reload("public")} onNavigate={navigate} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} myAttendance={attendance.find((row) => row.event_id === upcoming?.id && row.member_id === me?.id)?.status} />}
-      {view === "members" && <Members profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => void openEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
+      {view === "members" && <Members phoneScope={phoneScope} isPhoneCurrent={isPhoneCurrent} onPhoneLookup={readMemberPhone} profiles={activeProfiles} profile={me} user={user} loading={sessionPending} loadError={hasLoadError("memberDirectory", "profiles")} canManage={permissions.has("members.manage")} onEdit={(profile) => void openEditor({ type: "members", row: profile as unknown as Record<string, unknown> })} onKick={(profile) => setPendingKick(profile)} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
       {view === "fees" && <Fees fees={fees} profiles={profiles} profile={me} events={events} user={user} loading={sessionPending} loadError={hasLoadError("fees", "profiles")} onAsk={() => navigate("feedback")} canManage={permissions.has("fees.manage")} onCreate={() => void openEditor({ type: "fees" })} onEdit={(fee) => void openEditor({ type: "fees", row: fee as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "fees", id, label })} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} />}
-      {view === "events" && <Events events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => void openEditor({ type: "events" })} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
+      {view === "events" && <Events birthdayProfiles={birthdayProfiles} birthdayState={birthdayState} onBirthday={() => setAccountOpen(true)} onBirthdayRetry={() => void reload(["profiles", "memberDirectory"])} events={events} attendance={attendance} user={user} profile={me} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} loading={publicLoading} loadError={eventLoadError} canManage={permissions.has("events.manage")} onCreate={() => void openEditor({ type: "events" })} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("public")} />}
       {view === "rankings" && <Rankings currentYear={currentSeasonYear} currentAwards={seasonAwards} events={events} attendance={attendance} winners={winners} profiles={profiles} user={user} profile={me} loading={sessionPending || publicLoading} loadError={hasLoadError("events", "attendance", "winners", "profiles")} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} />}
       {view === "feedback" && <FeedbackHub user={user} profile={me} feedback={feedback} feedbackFeed={feedbackFeed} supabase={supabase} loading={sessionPending} loadError={hasLoadError("feedback", "feedbackFeed", "profiles")} canManage={permissions.has("feedback.manage")} onEdit={(item) => void openEditor({ type: "feedback", row: item as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "feedback", id, label })} reload={() => void reload(["feedback", "feedbackFeed"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload("member")} toast={showToast} />}
       {view === "participation" && <ParticipationHub user={user} profile={me} forms={forms.filter((form) => form.status === "open" || form.status === "closed")} submissions={submissions} supabase={supabase} loading={sessionPending || publicLoading} loadError={hasLoadError("forms", "submissions")} manageableKinds={manageableParticipationKinds} onCreate={() => void openEditor({ type: "forms" })} onEdit={(form) => void openEditor({ type: "forms", row: form as unknown as Record<string, unknown> })} onDelete={(id, label) => setPendingDelete({ table: "participation_forms", id, label })} reload={() => void reload(["submissions"])} onLogin={() => setLoginOpen(true)} onRetry={() => void reload()} toast={showToast} />}
@@ -592,7 +630,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "admin" && sessionPending && <SectionSkeleton />}
       {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} sectionLoadErrors={{ members: hasLoadError("memberDirectory", "profiles"), guests: hasLoadError("guestPlayers"), fees: hasLoadError("fees", "guestFees", "profiles"), notices: noticeLoadError, venues: hasLoadError("venues"), events: eventLoadError, attendance: hasLoadError("events", "attendance"), teams: eventLoadError, feedback: hasLoadError("feedback"), forms: hasLoadError("forms"), permissions: hasLoadError("rolePermissions", "officerPermissions") }} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} verifyAccess={verifyAccess} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}
-      {eventDateKey && <EventDetail dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload()} reload={() => void reload(["momVotes", "momResults"])} toast={showToast} />}
+      {eventDateKey && <EventDetail refreshMomWindow={() => reload(["events", "momVotes", "momResults"])} momScope={momScope} isMomCurrent={isMomCurrent} verifyMomAccess={verifyMomAccess} dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("memberDirectory", "profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload(["events", "memberDirectory", "profiles", "attendance", "momVotes", "momResults"])} reload={() => reload(["momVotes", "momResults"])} toast={showToast} />}
       {children}
     </main>
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>
@@ -602,7 +640,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     <ClubTabBar tab={tab} pathname={pathname} sheetOpen={sheetOpen} onOpenSheet={() => setSheetOpen(true)} />
     <MoreSheet open={sheetOpen} tab={tab} pathname={pathname} isOfficer={isOfficer} account={accountSummary} onClose={closeSheet} onLogin={() => setLoginOpen(true)} onAccount={() => setAccountOpen(true)} />
     {loginOpen && <LoginModal busy={busy} onClose={() => setLoginOpen(false)} onPasswordAuth={passwordAuth} />}
-    {accountOpen && user && (accountState === "member" && me ? <AccountModal key={user.id} profile={me} supabase={supabase} webPush={webPush} busy={busy} isCurrent={() => userRef.current?.id === user.id && requestsRef.current.epoch === avatarOwnerEpoch && accessRef.current.profile?.id === me.id && accessRef.current.profile.status === "active" && !accessRef.current.profile.must_change_password} onBusyChange={(value) => { if (userRef.current?.id === user.id) avatarBusyRef.current = value; }} onRefresh={() => reload(["profiles", "memberDirectory"])} onSaved={(path) => {
+    {accountOpen && user && (accountState === "member" && me ? <AccountModal key={user.id} birthdayState={birthdayState} onBirthdaySaved={birthdaySaved} profile={me} supabase={supabase} webPush={webPush} busy={busy} isCurrent={() => userRef.current?.id === user.id && requestsRef.current.epoch === avatarOwnerEpoch && accessRef.current.profile?.id === me.id && accessRef.current.profile.status === "active" && !accessRef.current.profile.must_change_password} onBusyChange={(value) => { if (userRef.current?.id === user.id) avatarBusyRef.current = value; }} onRefresh={() => reload(["profiles", "memberDirectory"])} onSaved={(path) => {
       const update = (profile: Profile) => profile.id === me.id ? { ...profile, avatar_path: path } : profile;
       profileSourcesRef.current = { directory: profileSourcesRef.current.directory.map(update), private: profileSourcesRef.current.private.map(update) };
       if (accessRef.current.profile) accessRef.current.profile = update(accessRef.current.profile);
@@ -649,7 +687,8 @@ function LoginModal({ busy, onClose, onPasswordAuth }: { busy: boolean; onClose:
   </div>;
 }
 
-function AccountModal({ profile, supabase, webPush, busy, isCurrent, onBusyChange, onSaved, onRefresh, onClose, onSignOut }: {
+function AccountModal({ birthdayState, onBirthdaySaved, profile, supabase, webPush, busy, isCurrent, onBusyChange, onSaved, onRefresh, onClose, onSignOut }: {
+  birthdayState: BirthdayState; onBirthdaySaved: (birthday: Birthday) => Promise<boolean>;
   profile: Profile; supabase: ReturnType<typeof createClient>; webPush: WebPushController | null; busy: boolean;
   isCurrent: () => boolean; onBusyChange: (busy: boolean) => void; onSaved: (path: string | null) => Promise<void>;
   onRefresh: () => Promise<void>; onClose: () => void; onSignOut: () => Promise<void>;
@@ -660,6 +699,12 @@ function AccountModal({ profile, supabase, webPush, busy, isCurrent, onBusyChang
   const savingRef = useRef(false);
   const mountedRef = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [birthdayMonth, setBirthdayMonth] = useState(() => String(profile.birthday_month ?? ""));
+  const [birthdayDay, setBirthdayDay] = useState(() => String(profile.birthday_day ?? ""));
+  const [birthdaySaving, setBirthdaySaving] = useState(false);
+  const [birthdayError, setBirthdayError] = useState<string | null>(null);
+  const [birthdayStatus, setBirthdayStatus] = useState<string | null>(null);
+  useEffect(() => { setBirthdayMonth(String(profile.birthday_month ?? "")); setBirthdayDay(String(profile.birthday_day ?? "")); }, [profile.birthday_month, profile.birthday_day, profile.birthday_revision]);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const close = () => { if (!savingRef.current && !busy) onClose(); };
   const dialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: close });
@@ -684,17 +729,53 @@ function AccountModal({ profile, supabase, webPush, busy, isCurrent, onBusyChang
       if (mountedRef.current) { setSaving(false); onBusyChange(false); }
     }
   };
+  const changeBirthday = async (remove: boolean) => {
+    if (!supabase || !hasBirthdayFields(profile) || !isBirthdayEligible(profile) || busy || savingRef.current || !isCurrent() || (birthdayState !== "missing" && birthdayState !== "registered")) return;
+    const current = () => mountedRef.current && isCurrent();
+    savingRef.current = true; setSaving(true); setBirthdaySaving(true); onBusyChange(true); setBirthdayError(null); setBirthdayStatus(null);
+    let committed = false;
+    try {
+      const result = await saveMyBirthday(supabase, { month: remove ? null : Number(birthdayMonth), day: remove ? null : Number(birthdayDay), revision: profile.birthday_revision!, isCurrent: current });
+      committed = true;
+      if (!current()) return;
+      const displayed = await onBirthdaySaved(result);
+      if (!current()) return;
+      setBirthdayStatus(displayed ? remove ? "생일을 삭제했습니다." : "생일을 저장했습니다." : "생일을 저장했습니다. 현재 계정 상태를 확인하지 못했으니 다시 불러와 주세요.");
+    } catch (cause) {
+      if (!current()) return;
+      if (committed) setBirthdayStatus("생일을 저장했습니다. 표시를 갱신하지 못했으니 다시 불러와 주세요.");
+      else setBirthdayError(cause instanceof Error ? cause.message : "생일 저장 상태를 확인하지 못했습니다. 다시 불러와 주세요.");
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) { setSaving(false); setBirthdaySaving(false); onBusyChange(false); }
+    }
+  };
   return <div className="modal-backdrop" onClick={close}><div ref={dialogRef} tabIndex={-1} className="login-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="마이페이지"><button type="button" className="modal-close" disabled={saving || busy} onClick={close} aria-label="닫기"><X /></button><span className="eyebrow">MY ACCOUNT</span><h2>마이페이지</h2>
     <div className="account-photo"><MemberAvatar profile={profile} size="lg" /><div><b>{profile.name}</b><p>{profile.phone?.replace(/^\+82/, "0") ?? "전화번호 미등록"} · {profile.position ?? "포지션 미정"}</p></div></div>
     <div className="account-photo-actions" aria-busy={saving}>
       <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" aria-label="프로필 사진 선택" hidden disabled={saving || busy || !eligible} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void changeAvatar(file); }} />
-      <button type="button" className="cta ghost" disabled={saving || busy || !eligible} onClick={() => inputRef.current?.click()}>{saving ? "사진 저장 중…" : profile.avatar_path ? "사진 변경" : "사진 등록"}</button>
+      <button type="button" className="cta ghost" disabled={saving || busy || !eligible} onClick={() => inputRef.current?.click()}>{saving && !birthdaySaving ? "사진 저장 중…" : profile.avatar_path ? "사진 변경" : "사진 등록"}</button>
       {profile.avatar_path && <button type="button" className="text-link" disabled={saving || busy || !eligible} onClick={() => void changeAvatar(null)}>사진 삭제</button>}
     </div>
     <p className="form-description">JPEG·PNG·WebP, 10MB 이하. 중앙을 정사각형으로 잘라 저장하며 로그인한 활동 회원에게 표시됩니다.</p>
     {!eligible && <p className="form-description">활동 중인 회원은 초기 비밀번호를 변경한 뒤 사진을 설정할 수 있습니다.</p>}
     {error && <p className="form-error" role="alert" data-testid="avatar-error">{error}</p>}
-    <p className="form-description" role="status" data-testid="avatar-status" aria-live="polite">{saving ? "사진을 준비하고 저장하고 있습니다. 잠시 기다려 주세요." : status}</p>
+    <p className="form-description" role="status" data-testid="avatar-status" aria-live="polite">{saving && !birthdaySaving ? "사진을 준비하고 저장하고 있습니다. 잠시 기다려 주세요." : status}</p>
+    <section className="account-birthday" aria-labelledby="account-birthday-title" aria-busy={birthdaySaving}>
+      <h3 id="account-birthday-title"><Cake size={18} /> 내 생일</h3>
+      <p className="form-description">양력 월·일만 등록하며 로그인한 활동 회원의 달력에 표시됩니다. 출생연도와 나이는 표시하지 않습니다.</p>
+      {birthdayState === "restricted" ? <p className="form-description">활동 중인 회원은 초기 비밀번호를 변경한 뒤 생일을 설정할 수 있습니다.</p> : birthdayState === "loading" ? <p className="form-description" role="status">생일을 불러오는 중입니다.</p> : birthdayState === "error" || birthdayState === "unknown" ? <p className="form-description">생일 정보를 확인하지 못했습니다. 다시 불러온 뒤 등록 여부를 확인해 주세요.</p> : <>
+        {birthdayState === "missing" && <p className="form-description">아직 생일을 등록하지 않았습니다. 등록하면 함께 축하할 수 있어요.</p>}
+        <form className="password-auth-form" onSubmit={(event) => { event.preventDefault(); void changeBirthday(false); }}>
+          <div className="birthday-fields"><label>월<select aria-label="생일 월" aria-describedby="birthday-leap-note" required value={birthdayMonth} disabled={saving || busy} onChange={(event) => { const month = event.target.value; setBirthdayMonth(month); if (Number(birthdayDay) > birthdayDaysInMonth(Number(month))) setBirthdayDay(""); }}><option value="">월 선택</option>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}</select></label><label>일<select aria-label="생일 일" aria-describedby="birthday-leap-note" required value={birthdayDay} disabled={saving || busy || !birthdayMonth} onChange={(event) => setBirthdayDay(event.target.value)}><option value="">일 선택</option>{Array.from({ length: birthdayDaysInMonth(Number(birthdayMonth)) }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}일</option>)}</select></label></div>
+          <p id="birthday-leap-note" className="form-description">2월 29일 생일은 윤년이 아닌 해에 2월 28일로 표시됩니다.</p>
+          <div className="account-photo-actions"><button type="submit" className="cta ghost" disabled={saving || busy || !birthdayMonth || !birthdayDay}>{birthdaySaving ? "생일 저장 중…" : birthdayState === "missing" ? "생일 등록" : "생일 변경"}</button>{birthdayState === "registered" && <button type="button" className="text-link" disabled={saving || busy} onClick={() => void changeBirthday(true)}>생일 삭제</button>}</div>
+        </form>
+      </>}
+      {(birthdayState === "error" || birthdayState === "unknown" || birthdayError || birthdayStatus) && birthdayState !== "restricted" && <button type="button" className="text-link" disabled={saving || busy} onClick={() => void onRefresh()}>생일 다시 불러오기</button>}
+      {birthdayError && <p className="form-error" role="alert">{birthdayError}</p>}
+      <p className="form-description" role="status" aria-live="polite">{birthdaySaving ? "생일을 저장하고 있습니다. 잠시 기다려 주세요." : birthdayStatus}</p>
+    </section>
     <p className="form-description">등록된 전화번호와 비밀번호로 로그인합니다. 비밀번호를 잊었다면 운영진에게 초기화를 요청해 주세요.</p><ThemeSwitch />{webPush && <WebPushSettings controller={webPush} eligible={profile.status === "active" && !profile.must_change_password} />}<button type="button" className="cta ghost" disabled={busy || saving} onClick={() => { if (!savingRef.current) void onSignOut(); }}><LogOut size={17} /> {busy ? "로그아웃 중…" : "로그아웃"}</button></div></div>;
 }
 
@@ -722,14 +803,14 @@ function MemberRestrictionNotice({ restriction, resource }: { restriction: Retur
   const copy = getMembershipRestrictionCopy(restriction);
   return <Empty icon={<Shield />} title={copy.title} description={`${resource} ${copy.description}`} />;
 }
-function Members({ profiles, profile, user, loading, loadError, canManage, onEdit, onKick, onLogin, onRetry }: { profiles: Profile[]; profile: Profile | null; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onEdit: (profile: Profile) => void; onKick: (profile: Profile) => void; onLogin: () => void; onRetry: () => void }) {
+function Members({ phoneScope, isPhoneCurrent, onPhoneLookup, profiles, profile, user, loading, loadError, canManage, onEdit, onKick, onLogin, onRetry }: { phoneScope: string; isPhoneCurrent: () => boolean; onPhoneLookup: (memberId: string, isCurrent: () => boolean) => Promise<string | null>; profiles: Profile[]; profile: Profile | null; user: User | null; loading: boolean; loadError: boolean; canManage: boolean; onEdit: (profile: Profile) => void; onKick: (profile: Profile) => void; onLogin: () => void; onRetry: () => void }) {
   const intro = <PageIntro kicker="SQUAD" title="함께 뛰는 사람들" description={user ? "포지션보다 이름을 먼저 기억하는 경충FC의 회원입니다." : "회원 명단은 승인된 회원에게만 공개합니다."} />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="회원 명단을 불러오는 중" /></section>;
   if (!user) return <section className="content">{intro}<LoginGate icon={<UserRound />} title="로그인 후 회원 명단을 확인하세요" description="회원 명단은 승인된 회원에게만 공개합니다." onLogin={onLogin} /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   if (getMembershipRestriction(profile)) return <section className="content">{intro}<MemberRestrictionNotice restriction={getMembershipRestriction(profile)} resource="회원 명단은 활동 회원에게만 공개합니다." /></section>;
   if (profiles.length === 0) return <section className="content">{intro}<Empty icon={<UserRound />} title="공개된 회원이 없습니다" description="가입 승인이 완료된 회원이 생기면 이곳에 표시됩니다." /></section>;
-  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 ⋯ 메뉴에서 정보를 수정하거나 회원을 강퇴할 수 있습니다.</div>}<MemberDirectory profiles={profiles} currentUserId={user.id} canManage={canManage} onEdit={onEdit} onKick={onKick} /></section>;
+  return <section className="content">{intro}{canManage && <div className="inline-management-note"><Shield size={17} /> 회원 카드의 ⋯ 메뉴에서 정보를 수정하거나 회원을 강퇴할 수 있습니다.</div>}<MemberDirectory phoneScope={phoneScope} isPhoneCurrent={isPhoneCurrent} onPhoneLookup={onPhoneLookup} profiles={profiles} currentUserId={user.id} canManage={canManage} onEdit={onEdit} onKick={onKick} /></section>;
 }
 /* `fees` row-level security hands a regular member only their own rows, so the
    old club-wide table degenerated into their own name repeated once per month.
@@ -841,7 +922,7 @@ function Notices({ notices, loading, loadError, canManage, onCreate, onEdit, onD
 
 /** The calendar owns day selection: each in-month day is one button, and the
     chips inside it are labels, so a day holding two events is still one pick. */
-function MonthCalendar({ events, selectedKey, onSelect }: { events: Event[]; selectedKey: string | null; onSelect: (key: string) => void }) {
+function MonthCalendar({ birthdayProfiles, events, selectedKey, onSelect }: { birthdayProfiles: Profile[]; events: Event[]; selectedKey: string | null; onSelect: (key: string) => void }) {
   const initialDate = (selectedKey ? parseEventDateKey(selectedKey) : null) ?? new Date();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
   const [manualMonth, setManualMonth] = useState(false);
@@ -850,6 +931,7 @@ function MonthCalendar({ events, selectedKey, onSelect }: { events: Event[]; sel
     const date = parseEventDateKey(selectedKey);
     if (date) setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
   }, [selectedKey, manualMonth]);
+  const birthdaysByDate = useMemo(() => new Map([...buildBirthdayIndex(birthdayProfiles, visibleMonth.getFullYear() - 1), ...buildBirthdayIndex(birthdayProfiles, visibleMonth.getFullYear()), ...buildBirthdayIndex(birthdayProfiles, visibleMonth.getFullYear() + 1)]), [birthdayProfiles, visibleMonth]);
   const days = useMemo(() => {
     const first = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
     const start = new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
@@ -862,26 +944,26 @@ function MonthCalendar({ events, selectedKey, onSelect }: { events: Event[]; sel
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       const key = toDateKey(date);
-      return { date, key, events: eventsByDate.get(key) ?? [] };
+      return { date, key, events: eventsByDate.get(key) ?? [], birthdays: birthdaysByDate.get(key) ?? [] };
     });
-  }, [events, visibleMonth]);
+  }, [events, visibleMonth, birthdaysByDate]);
   const moveMonth = (offset: number) => { setManualMonth(true); setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + offset, 1)); };
   const today = new Date();
   const thisWeekSundayKey = toDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + (7 - today.getDay()) % 7));
   return <section className="month-calendar" aria-labelledby="month-calendar-title">
     <header><div><small>MONTHLY SCHEDULE</small><h2 id="month-calendar-title">{visibleMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" })}</h2></div><div className="month-calendar-controls"><button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft /></button><button type="button" onClick={() => { setManualMonth(false); setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }}>이번 달</button><button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight /></button></div></header>
-    <div className="month-calendar-scroll scroll-region" tabIndex={0} role="region" aria-label={`${visibleMonth.getFullYear()}년 ${visibleMonth.getMonth() + 1}월 일정 달력`}><div className="month-calendar-grid"><div className="month-calendar-weekdays" aria-hidden="true">{["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-calendar-days">{days.map(({ date, key, events: dayEvents }) => {
+    <div className="month-calendar-scroll scroll-region" tabIndex={0} role="region" aria-label={`${visibleMonth.getFullYear()}년 ${visibleMonth.getMonth() + 1}월 일정 달력`}><div className="month-calendar-grid"><div className="month-calendar-weekdays" aria-hidden="true">{["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-calendar-days">{days.map(({ date, key, events: dayEvents, birthdays }) => {
       const isToday = date.toDateString() === today.toDateString();
-      const marks = <><time dateTime={`${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6, 8)}`}>{date.getDate()}</time>{dayEvents.map((event) => <span key={event.id} className="day-event"><b>{formatTime(event.starts_at)}</b><span>{event.title}</span></span>)}</>;
+      const marks = <><time dateTime={`${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6, 8)}`}>{date.getDate()}</time>{dayEvents.map((event) => <span key={event.id} className="day-event"><b>{formatTime(event.starts_at)}</b><span>{event.title}</span></span>)}{birthdays.length > 0 && <span className="day-birthday"><Cake size={13} aria-hidden="true" /><span>생일 {birthdays.length}명</span></span>}</>;
       if (date.getMonth() !== visibleMonth.getMonth()) return <div key={key} className="outside">{marks}</div>;
       const isSelected = selectedKey === key;
       const isThisWeekSunday = key === thisWeekSundayKey;
-      return <button key={key} type="button" className={`${isToday ? "today " : ""}${isSelected ? "selected " : ""}${isThisWeekSunday ? "this-week-sunday" : ""}`.trim() || undefined} aria-pressed={isSelected} aria-controls={events.length > 0 ? "event-focus" : undefined} aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${date.toLocaleDateString("ko-KR", { weekday: "long" })}${isToday ? " 오늘" : ""} · ${dayEvents.length > 0 ? `일정 ${dayEvents.length}개` : "일정 없음"}`} onClick={() => onSelect(key)}>{marks}</button>;
+      return <button key={key} type="button" className={`${isToday ? "today " : ""}${isSelected ? "selected " : ""}${isThisWeekSunday ? "this-week-sunday" : ""}`.trim() || undefined} aria-pressed={isSelected} aria-controls="event-focus" aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${date.toLocaleDateString("ko-KR", { weekday: "long" })}${isToday ? " 오늘" : ""} · ${dayEvents.length > 0 ? `일정 ${dayEvents.length}개` : "일정 없음"}${birthdays.length > 0 ? ` · 생일 ${birthdays.length}명` : ""}`} onClick={() => onSelect(key)}>{marks}</button>;
     })}</div></div></div>
   </section>;
 }
 
-function Events({ events, attendance, user, profile, sessionPending, rsvpPendingEventIds, loading, loadError, canManage, onCreate, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry }: { events: Event[]; attendance: Attendance[]; user: User | null; profile: Profile | null; sessionPending: boolean; rsvpPendingEventIds: Set<string>; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onManageMatch: (event: Event) => void; onManageAttendance: (event: Event) => void; onManageWinners: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
+function Events({ birthdayProfiles, birthdayState, onBirthday, onBirthdayRetry, events, attendance, user, profile, sessionPending, rsvpPendingEventIds, loading, loadError, canManage, onCreate, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry }: { birthdayProfiles: Profile[]; birthdayState: BirthdayState; onBirthday: () => void; onBirthdayRetry: () => void; events: Event[]; attendance: Attendance[]; user: User | null; profile: Profile | null; sessionPending: boolean; rsvpPendingEventIds: Set<string>; loading: boolean; loadError: boolean; canManage: boolean; onCreate: () => void; onEdit: (event: Event) => void; onManageMatch: (event: Event) => void; onManageAttendance: (event: Event) => void; onManageWinners: (event: Event) => void; onDelete: (id: string, label: string) => void; onAttendance: (status: Attendance["status"], eventId?: string) => void; onLogin: () => void; onRetry: () => void }) {
   const [pickedKey, setPickedKey] = useState<string | null>(null);
   const [todayKey, setTodayKey] = useState(() => toDateKey(new Date()));
   useEffect(() => { setPickedKey(null); }, [todayKey]);
@@ -901,22 +983,26 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
       ?? events.find((event) => new Date(event.starts_at).getTime() >= now) ?? events[events.length - 1];
     return fallback ? toEventDateKey(fallback.starts_at) : null;
   }, [events, todayKey]);
-  const selectedKey = pickedKey ?? defaultKey;
+  const selectedKey = pickedKey ?? defaultKey ?? todayKey;
   const selectedDate = selectedKey ? parseEventDateKey(selectedKey) : null;
+  const birthdayYear = selectedDate?.getFullYear() ?? new Date().getFullYear();
+  const birthdayIndex = useMemo(() => buildBirthdayIndex(birthdayProfiles, birthdayYear), [birthdayProfiles, birthdayYear]);
+  const selectedBirthdays = selectedKey ? birthdayIndex.get(selectedKey) ?? [] : [];
   /** Events load ordered by start time, so a day holding two of them keeps that order. */
   const selectedEvents = useMemo(() => (selectedKey ? events.filter((event) => toEventDateKey(event.starts_at) === selectedKey) : []), [events, selectedKey]);
   /** `block: "nearest"` only scrolls when the summary is off screen — the common
       case on a phone, where the grid fills the viewport — and it inherits the
       reduced-motion scroll behaviour declared on `html`. */
   const selectDay = (key: string) => { setPickedKey(key); focusRef.current?.scrollIntoView({ block: "nearest" }); };
-  const intro = <PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="월간 달력에서 날짜를 선택하면 그날의 일정을 바로 확인하고, 상세 화면에서 참석 명단과 경기 기록을 볼 수 있습니다." />;
+  const intro = <PageIntro kicker="WEEKEND SCHEDULE" title="우리의 일정" description="월간 달력에서 일정과 구성원 생일을 확인하세요. 날짜를 선택하면 그날의 일정과 생일인 구성원을 볼 수 있습니다." />;
   if (loading) return <section className="content">{intro}<SectionSkeleton label="일정을 불러오는 중" /></section>;
   if (loadError) return <section className="content">{intro}<LoadError onRetry={onRetry} /></section>;
   /* The calendar is the only index of dates; below it exactly one day is
      summarised. Roster, teams, match results and MOM stay on the day page at
      /events/YYYYMMDD so this panel keeps to what fits in a glance. */
-  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<MonthCalendar key={todayKey} events={events} selectedKey={selectedKey} onSelect={selectDay} />{events.length === 0 ? <Empty icon={<CalendarDays />} title="등록된 일정이 없습니다" description="운영진이 주말 일정을 등록하면 이곳에 표시됩니다." /> : <section ref={focusRef} id="event-focus" className="event-focus" aria-labelledby="event-focus-title">
+  return <section className="content">{intro}{canManage && <div className="page-management-actions"><button className="cta small" onClick={onCreate}><Plus size={17} /> 일정 등록</button></div>}<aside className="birthday-calendar-notice">{birthdayState === "missing" ? <><p>내 생일을 등록하면 달력에서 함께 축하할 수 있어요.</p><button type="button" className="text-link" onClick={onBirthday}><Cake size={17} /> 내 생일 등록</button></> : birthdayState === "error" || birthdayState === "unknown" ? <><p>생일 정보를 확인하지 못했습니다.</p><button type="button" className="text-link" onClick={onBirthdayRetry}>생일 다시 불러오기</button></> : birthdayState === "loading" ? <p role="status">구성원 생일을 불러오는 중입니다.</p> : null}</aside><MonthCalendar key={todayKey} birthdayProfiles={birthdayProfiles} events={events} selectedKey={selectedKey} onSelect={selectDay} /><section ref={focusRef} id="event-focus" className="event-focus" aria-labelledby="event-focus-title">
     <header className="event-focus-head" aria-live="polite"><h2 id="event-focus-title">{selectedDate ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 ${selectedDate.toLocaleDateString("ko-KR", { weekday: "long" })}` : "날짜를 선택해 주세요"}</h2><span>{selectedEvents.length > 0 ? `일정 ${selectedEvents.length}개` : "일정 없음"}</span></header>
+    {selectedBirthdays.length > 0 && <section className="birthday-roster" aria-labelledby="birthday-roster-title"><h3 id="birthday-roster-title"><Cake size={18} /> 이날 생일인 구성원 {selectedBirthdays.length}명</h3><ul>{selectedBirthdays.map((member) => <li key={member.id}><MemberAvatar profile={member} size="sm" /><span>{member.name}</span></li>)}</ul></section>}
     {selectedEvents.length === 0 ? <Empty icon={<CalendarDays />} title="이 날짜에는 일정이 없습니다" description="달력에서 초록색 일정 표시가 있는 날짜를 선택해 주세요." /> : selectedEvents.map((event) => {
       const eventAttendance = attendance.filter((item) => item.event_id === event.id);
       const goingCount = eventAttendance.filter((item) => item.status === "going").length;
@@ -989,7 +1075,7 @@ function Events({ events, attendance, user, profile, sessionPending, rsvpPending
         </div>
       </article>;
     })}
-  </section>}</section>;
+  </section></section>;
 }
 
 function Rankings({ currentYear, currentAwards, events, attendance, winners, profiles, user, profile, loading, loadError, onLogin, onRetry }: { currentYear: number; currentAwards: ReturnType<typeof buildSeasonRankings>; events: Event[]; attendance: Attendance[]; winners: EventWinningMember[]; profiles: Profile[]; user: User | null; profile: Profile | null; loading: boolean; loadError: boolean; onLogin: () => void; onRetry: () => void }) {
