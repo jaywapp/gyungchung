@@ -2522,6 +2522,11 @@ td { font-weight: 800; }
 }
 
 /* Events */
+.birthday-calendar-notice:empty { display: none; }
+.birthday-calendar-notice { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
+.birthday-calendar-notice p { color: var(--muted); font-size: 14px; }
+.birthday-calendar-notice button { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); }
+
 .month-calendar {
   margin-bottom: 34px;
   background: var(--surface);
@@ -2647,6 +2652,9 @@ td { font-weight: 800; }
   color: var(--on-navy);
 }
 
+.day-birthday { display: flex; align-items: center; gap: 4px; margin-top: 6px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.month-calendar-days > button.selected .day-birthday { color: var(--on-navy); }
+
 .day-event {
   width: 100%;
   display: flex;
@@ -2675,6 +2683,11 @@ td { font-weight: 800; }
 
 /* One selected day, summarised. The calendar above is the only index, so this
    panel never grows into a second list. */
+.birthday-roster { margin-block: 20px; padding: 20px 24px; background: var(--surface-sunken); border-radius: var(--radius-control); }
+.birthday-roster h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.birthday-roster ul { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 14px; list-style: none; padding: 0; }
+.birthday-roster li { display: flex; align-items: center; gap: 8px; }
+
 .event-focus {
   display: grid;
   gap: 18px;
@@ -3579,6 +3592,10 @@ td { font-weight: 800; }
 }
 
 .mom-vote-section > .text-link { margin-top: 12px; }
+.mom-vote-section > .event-detail-gate + .event-detail-gate { margin-top: 10px; }
+.potm-window { display: flex; flex-direction: column; gap: 6px; margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.potm-window b { color: var(--ink); font-size: 14px; }
+.mom-vote-modal .event-detail-gate { margin-bottom: 16px; }
 
 /* Attendance reads as people, not as rows: initial, name, recorded state. */
 .attendee-meter {
@@ -5785,6 +5802,7 @@ td { font-weight: 800; }
 }
 
 .password-auth-form input,
+.password-auth-form select,
 .password-card input,
 .editor input,
 .editor select,
@@ -5797,12 +5815,14 @@ td { font-weight: 800; }
 }
 
 .password-auth-form input,
+.password-auth-form select,
 .password-card input,
 .editor input:not([type="checkbox"]),
 .editor select,
 .editor textarea { font-size: 16px; }
 
 .password-auth-form input,
+.password-auth-form select,
 .password-card input,
 .editor input:not([type="checkbox"]),
 .editor select { min-height: var(--tap); }
@@ -5835,6 +5855,9 @@ td { font-weight: 800; }
   align-items: center;
   min-height: var(--tap);
 }
+
+.event-editor .field-row > label { min-width: 0; }
+.event-editor .field-row input { min-width: 0; max-width: 100%; }
 
 .field-row {
   display: grid;
@@ -6719,6 +6742,10 @@ td { font-weight: 800; }
 .account-photo p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .account-photo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .account-photo-actions button { min-height: 44px; }
+.account-birthday { margin-block: 22px; padding-block: 20px; border-block: 1px solid var(--line); }
+.account-birthday h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.birthday-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.birthday-fields select { width: 100%; }
 
 .pos-FW { --pb: var(--pos-fw-bg); --pi: var(--pos-fw-ink); }
 .pos-MF { --pb: var(--pos-mf-bg); --pi: var(--pos-mf-ink); }
@@ -6830,6 +6857,9 @@ td { font-weight: 800; }
 .directory-card h2 em { color: var(--brand); font-size: 12px; font-style: normal; font-weight: 700; }
 .directory-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .directory-card > small { color: var(--muted); font-size: 12px; }
+.directory-phone-actions { grid-column: 1 / -1; min-width: 0; }
+.directory-phone-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); }
+.directory-phone-actions p { margin-block: 4px 0; overflow-wrap: anywhere; }
 .directory-more { position: absolute; top: 8px; right: 8px; z-index: 2; }
 .directory-more > summary { list-style: none; }
 .directory-more > summary::-webkit-details-marker { display: none; }
@@ -6967,6 +6997,10 @@ td { font-weight: 800; }
   }
 
   .month-calendar-grid { min-width: 0; }
+
+  .day-birthday { justify-content: center; font-size: 10px; gap: 2px; }
+  .day-birthday svg { display: none; }
+  .birthday-roster { padding: 18px 16px; }
 
   .month-calendar-weekdays span { padding-inline: 2px; }
 

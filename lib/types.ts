@@ -20,6 +20,9 @@ export interface Profile {
   id: string;
   auth_user_id: string | null;
   avatar_path?: string | null;
+  birthday_month?: number | null;
+  birthday_day?: number | null;
+  birthday_revision?: number | null;
   name: string;
   email: string | null;
   phone: string | null;
@@ -49,6 +52,8 @@ export interface Event {
   id: string;
   title: string;
   starts_at: string;
+  ends_at?: string | null;
+  mom_voting_days?: number;
   venue_id: string | null;
   venue: string;
   address: string | null;

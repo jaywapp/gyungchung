@@ -22,6 +22,31 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-05-event-potm",
+    date: "2026-10-05",
+    source: "request",
+    title: "일정 종료 후 Player of the Match를 투표로 뽑습니다",
+    summary: "POTM 투표를 일정 종료 후 기본 3일 동안 진행하며 운영진이 종료 시간과 투표 기간을 설정할 수 있습니다.",
+    changes: [
+      { kind: "improved", text: "출석·지각한 활동 회원이 본인을 제외한 한 명에게 투표하며 마감 전까지 선택을 변경할 수 있습니다." },
+      { kind: "added", text: "투표 대기·진행·마감과 현재·최종 결과를 구분하고 동률은 공동 순위로 표시합니다." },
+    ],
+    pullRequests: [],
+  },
+  {
+    id: "2026-10-05-member-birthdays",
+    date: "2026-10-05",
+    source: "request",
+    title: "구성원 생일과 회원 연락을 더 쉽게 확인할 수 있습니다",
+    summary: "내 생일을 일정 달력에 표시하고 회원 카드에서 필요한 연락처를 확인해 전화 앱을 열 수 있습니다.",
+    changes: [
+      { kind: "added", text: "회원 카드의 전화걸기를 누르면 선택한 회원의 연락처를 확인하고 전화 앱에서 발신을 선택할 수 있습니다." },
+      { kind: "added", text: "생일이 없는 회원에게 등록 경로를 안내하며 본인이 월·일을 수정하거나 삭제할 수 있습니다." },
+      { kind: "added", text: "날짜를 선택하면 생일인 구성원을 확인할 수 있습니다. 출생연도와 나이는 공개하지 않으며 2월 29일 생일은 비윤년에 2월 28일로 표시됩니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-05-profile-avatar",
     date: "2026-10-05",
     source: "request",

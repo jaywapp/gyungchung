@@ -8,14 +8,18 @@ import type { createClient } from "@/lib/supabase/client";
 import type { Attendance, Event, EventMomResult, EventMomVote, Profile } from "@/lib/types";
 import { getCheckInStatus } from "@/lib/attendance";
 import { getEventCapacity } from "@/lib/event-capacity";
-import { toErrorMessage, type ToastHandler } from "@/lib/ui-feedback";
+import { type ToastHandler } from "@/lib/ui-feedback";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { parseEventDateKey, toEventDateKey } from "@/lib/event-date";
-import { getMomVoteEligibility, isMomVoteCandidate } from "@/lib/mom-vote";
+import { getMomClockDelay, getMomVoteEligibility, getMomVotingWindow, isMomVoteCandidate, momVoteErrorMessage } from "@/lib/mom-vote";
 import { RsvpControls } from "@/components/rsvp-controls";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 
 type EventDetailProps = {
+  momScope: string;
+  isMomCurrent: () => boolean;
+  verifyMomAccess: () => Promise<boolean>;
+  refreshMomWindow: () => Promise<void>;
   dateKey: string;
   events: Event[];
   profiles: Profile[];
@@ -38,7 +42,7 @@ type EventDetailProps = {
   onAttendance: (status: Attendance["status"], eventId?: string) => void;
   onLogin: () => void;
   onRetry: () => void;
-  reload: () => void;
+  reload: () => Promise<void> | void;
   toast: ToastHandler;
 };
 
@@ -49,19 +53,94 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
  * dates, so everything that describes a single outing — roster, teams, match
  * results, MOM — is read here instead of being stacked into every list row.
  */
-export default function EventDetail({ dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
-  const [votingEvent, setVotingEvent] = useState<Event | null>(null);
+export default function EventDetail({ momScope, isMomCurrent, verifyMomAccess, refreshMomWindow, dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
+  const [votingEventId, setVotingEventId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const mountedRef = useRef(true);
+  const scopeRef = useRef({ value: momScope, generation: 0 });
+  if (scopeRef.current.value !== momScope) scopeRef.current = { value: momScope, generation: scopeRef.current.generation + 1 };
+  const modalScopeRef = useRef({ value: "", generation: -1 });
+  const latestRef = useRef({ events, profiles, attendance, user, profile, loading, loadError, sessionPending, isMomCurrent, refreshMomWindow });
+  latestRef.current = { events, profiles, attendance, user, profile, loading, loadError, sessionPending, isMomCurrent, refreshMomWindow };
+  const votingEvent = votingEventId && modalScopeRef.current.value === momScope && modalScopeRef.current.generation === scopeRef.current.generation
+    ? events.find((event) => event.id === votingEventId) ?? null : null;
   const [openManagementMenuId, setOpenManagementMenuId] = useState<string | null>(null);
   const managementMenuRef = useRef<HTMLDivElement>(null);
   const managementMenuInitialFocusRef = useRef<"first" | "last">("first");
   const [submittingMomCandidateId, setSubmittingMomCandidateId] = useState<string | null>(null);
-  const submittingMomVoteRef = useRef(false);
-  const momDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => setVotingEvent(null), active: Boolean(votingEvent) });
+  const submittingMomVoteRef = useRef<object | null>(null);
+  const momDialogRef = useDialogFocus<HTMLDivElement>({ onRequestClose: () => { if (!submittingMomVoteRef.current) setVotingEventId(null); }, active: Boolean(votingEvent) });
+  const [momRefreshState, setMomRefreshState] = useState<"idle" | "pending" | "error">("idle");
+  const momRefreshRef = useRef<object | null>(null);
+  const lastMomReadAtRef = useRef(Date.now());
+  const lastMomEventsRef = useRef(events);
   const date = parseEventDateKey(dateKey);
   const dayEvents = useMemo(
     () => events.filter((event) => toEventDateKey(event.starts_at) === dateKey).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
     [dateKey, events],
   );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    submittingMomVoteRef.current = null;
+    momRefreshRef.current = null;
+    setMomRefreshState("idle");
+    setSubmittingMomCandidateId(null);
+    setVotingEventId(null);
+  }, [momScope]);
+
+  const refreshMomWindowState = async () => {
+    if (!momScope || !latestRef.current.isMomCurrent() || momRefreshRef.current) return;
+    const scope = { ...scopeRef.current };
+    const token = {};
+    const current = () => mountedRef.current && scope.value === scopeRef.current.value && scope.generation === scopeRef.current.generation && latestRef.current.isMomCurrent();
+    momRefreshRef.current = token;
+    setMomRefreshState("pending");
+    try {
+      await latestRef.current.refreshMomWindow();
+      if (current()) { lastMomReadAtRef.current = Date.now(); setMomRefreshState(latestRef.current.loadError ? "error" : "idle"); }
+    } catch {
+      if (current()) setMomRefreshState("error");
+    } finally {
+      if (momRefreshRef.current === token) momRefreshRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    const update = (returning = false) => {
+      const currentTime = Date.now();
+      const crossed = events.some((event) => getMomVotingWindow(event, now).state !== getMomVotingWindow(event, currentTime).state);
+      if (crossed || (returning && currentTime - lastMomReadAtRef.current >= 60_000)) void refreshMomWindowState();
+      setNow(currentTime);
+    };
+    const timer = window.setTimeout(() => update(), Math.max(1, getMomClockDelay(events, now) - (Date.now() - now)));
+    const onFocus = () => update(true);
+    const onVisibility = () => { if (document.visibilityState === "visible") update(true); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.clearTimeout(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVisibility); };
+    // The latest callback lives in a ref so ordinary renders cannot restart the clock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, now, momScope]);
+
+  useEffect(() => {
+    const previous = lastMomEventsRef.current;
+    lastMomEventsRef.current = events;
+    if (events.some((event) => { const old = previous.find((item) => item.id === event.id); return old && (old.starts_at !== event.starts_at || old.ends_at !== event.ends_at || old.mom_voting_days !== event.mom_voting_days); })) void refreshMomWindowState();
+    setNow(Date.now());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  const openMomVote = (eventId: string) => {
+    if (!momScope || !isMomCurrent()) return;
+    modalScopeRef.current = { ...scopeRef.current };
+    setNow(Date.now());
+    setVotingEventId(eventId);
+  };
 
   useEffect(() => {
     if (!openManagementMenuId) return;
@@ -92,16 +171,50 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
   }, [dateKey, dayEvents.length, loading]);
 
   const submitMomVote = async (candidateProfileId: string) => {
-    if (!user || !profile || !votingEvent || !supabase || submittingMomVoteRef.current) return;
-    submittingMomVoteRef.current = true;
+    if (!votingEventId || !momScope || !supabase || submittingMomVoteRef.current) return;
+    const eventId = votingEventId;
+    const scope = { ...modalScopeRef.current };
+    const token = {};
+    const isCurrent = () => mountedRef.current && scope.value === scopeRef.current.value && scope.generation === scopeRef.current.generation && latestRef.current.isMomCurrent();
+    if (!isCurrent()) return;
+    submittingMomVoteRef.current = token;
     setSubmittingMomCandidateId(candidateProfileId);
+    let writeStarted = false;
+    let confirmedWrite = false;
     try {
-      const { error } = await supabase.from("event_mom_votes").upsert({ event_id: votingEvent.id, voter_id: profile.id, candidate_profile_id: candidateProfileId }, { onConflict: "event_id,voter_id" });
-      if (error) return toast(toErrorMessage(error), "error");
-      setVotingEvent(null); toast("MOM 투표를 저장했습니다."); reload();
+      if (!await verifyMomAccess() || !isCurrent()) return;
+      const latest = latestRef.current;
+      const event = latest.events.find((item) => item.id === eventId);
+      const actor = latest.profile;
+      const candidate = latest.profiles.find((item) => item.id === candidateProfileId);
+      if (!event || !actor || latest.loading || latest.loadError || latest.sessionPending) {
+        toast("일정과 계정 상태를 다시 불러온 뒤 투표해 주세요.", "error"); onRetry(); return;
+      }
+      const eligibility = getMomVoteEligibility({
+        isAuthenticated: Boolean(latest.user), isLinked: actor.auth_user_id === latest.user?.id,
+        memberStatus: actor.status, mustChangePassword: Boolean(actor.must_change_password), isTestAccount: Boolean(actor.is_test_account),
+        window: getMomVotingWindow(event, Date.now()), checkInStatus: getCheckInStatus(latest.attendance.find((row) => row.event_id === eventId && row.member_id === actor.id)),
+      });
+      if (!eligibility.canVote) { setNow(Date.now()); toast(eligibility.reason ?? "투표 자격을 다시 확인해 주세요.", "error"); onRetry(); return; }
+      if (!candidate || !isMomVoteCandidate({ candidateProfileId, candidateStatus: candidate.status, candidateIsTest: candidate.is_test_account, voterProfileId: actor.id, checkInStatus: getCheckInStatus(latest.attendance.find((row) => row.event_id === eventId && row.member_id === candidateProfileId)) })) {
+        toast("선택한 회원의 출석·활동 상태가 변경되었습니다. 다시 불러온 뒤 선택해 주세요.", "error"); onRetry(); return;
+      }
+      writeStarted = true;
+      const { error } = await supabase.from("event_mom_votes").upsert({ event_id: eventId, voter_id: actor.id, candidate_profile_id: candidateProfileId }, { onConflict: "event_id,voter_id" });
+      if (!isCurrent()) return;
+      if (error) { toast(momVoteErrorMessage(error), "error"); onRetry(); return; }
+      confirmedWrite = true;
+      setVotingEventId(null); toast("Player of the Match 투표를 저장했습니다."); await reload();
+    } catch (cause) {
+      if (isCurrent()) {
+        toast(confirmedWrite ? "투표는 저장됐지만 최신 정보를 불러오지 못했습니다. 투표 정보를 다시 불러와 주세요." : writeStarted ? "저장 결과를 확인하지 못했습니다. 투표 정보를 다시 불러와 현재 선택을 확인해 주세요." : momVoteErrorMessage(cause), "error");
+        onRetry();
+      }
     } finally {
-      submittingMomVoteRef.current = false;
-      setSubmittingMomCandidateId(null);
+      if (submittingMomVoteRef.current === token) {
+        submittingMomVoteRef.current = null;
+        if (mountedRef.current) setSubmittingMomCandidateId(null);
+      }
     }
   };
 
@@ -114,9 +227,17 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
   const votingCandidates = votingEvent ? profiles.filter((candidate) => isMomVoteCandidate({
     candidateProfileId: candidate.id,
     candidateStatus: candidate.status,
+    candidateIsTest: candidate.is_test_account,
     voterProfileId: profile?.id ?? null,
     checkInStatus: getCheckInStatus(attendance.find((row) => row.event_id === votingEvent.id && row.member_id === candidate.id)),
   })) : [];
+
+  const modalEligibility = getMomVoteEligibility({
+    isAuthenticated: Boolean(user), isLinked: Boolean(user && profile?.auth_user_id === user.id),
+    memberStatus: profile?.status ?? null, mustChangePassword: Boolean(profile?.must_change_password), isTestAccount: Boolean(profile?.is_test_account),
+    window: votingEvent ? getMomVotingWindow(votingEvent, now) : getMomVotingWindow({ starts_at: "" }, now),
+    checkInStatus: getCheckInStatus(attendance.find((row) => row.event_id === votingEvent?.id && row.member_id === profile?.id)),
+  });
 
   return <section className="content event-detail-page">
     {back}
@@ -134,11 +255,11 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
       const eventResults = momResults.filter((result) => result.event_id === event.id);
       const isPast = new Date(event.starts_at) < new Date();
       const myAttendance = attendance.find((row) => row.event_id === event.id && row.member_id === profile?.id);
+      const votingWindow = getMomVotingWindow(event, now);
       const momVoteEligibility = getMomVoteEligibility({
-        isAuthenticated: Boolean(user),
-        memberStatus: profile?.status ?? null,
-        isPast,
-        checkInStatus: getCheckInStatus(myAttendance),
+        isAuthenticated: Boolean(user), isLinked: Boolean(user && profile?.auth_user_id === user.id),
+        memberStatus: profile?.status ?? null, mustChangePassword: Boolean(profile?.must_change_password), isTestAccount: Boolean(profile?.is_test_account),
+        window: votingWindow, checkInStatus: getCheckInStatus(myAttendance),
       });
       const ownVote = momVotes.find((vote) => vote.event_id === event.id);
       const ownCandidate = ownVote ? profiles.find((candidate) => candidate.id === ownVote.candidate_profile_id) : null;
@@ -245,13 +366,15 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
           <div className="officer-menu" role="group" aria-label={`${event.title} 운영 메뉴`}><button type="button" className={`officer-menu-item${isStartingSoon ? " priority" : ""}`} aria-label={`출석 체크 · ${event.title}`} onClick={() => onManageAttendance(event)}><ClipboardCheck size={17} /> 출석 체크</button><button type="button" className={`officer-menu-item${isPast ? " priority" : ""}`} aria-label={`팀·경기 기록 · ${event.title}`} onClick={() => onManageMatch(event)}><Trophy size={17} /> 팀·경기 기록</button><button type="button" className="officer-menu-item" onClick={() => onManageWinners(event)}><Trophy size={17} /> 우승 명단</button></div>
         </section>}
 
-        {isPast && <section className="event-detail-block mom-vote-section">
-          <h3>MOM 투표</h3>
-          {sessionPending ? <SectionSkeleton label="MOM 투표 자격을 확인하는 중" /> : momVoteEligibility.canVote ? <>
-            <p className="event-detail-gate">{ownVote ? <>현재 선택: <b>{ownCandidate?.name ?? "선택한 회원"}</b>. 별도 마감 없이 언제든 다시 선택할 수 있습니다.</> : "실제 출석한 활동 회원 중 본인을 제외한 한 명을 선택합니다. 투표 후에도 별도 마감 없이 다시 선택할 수 있습니다."}</p>
-            <button type="button" className="text-link" onClick={() => setVotingEvent(event)}>{ownVote ? "MOM 다시 선택" : "MOM 투표하기"}</button>
-          </> : <p className="event-detail-gate"><Shield size={15} /> {momVoteEligibility.reason} {momVoteEligibility.action === "login" && <button type="button" className="text-link" onClick={onLogin}>로그인</button>}</p>}
-        </section>}
+        <section className="event-detail-block mom-vote-section" aria-labelledby={`potm-heading-${event.id}`}>
+          <div className="event-section-heading"><div><h3 id={`potm-heading-${event.id}`}>Player of the Match</h3><p>그날 경기의 최우수 선수를 선택합니다.</p></div><Trophy size={19} aria-hidden="true" /></div>
+          <p className="potm-window"><b>{votingWindow.state === "waiting" ? "투표 대기" : votingWindow.state === "open" ? "투표 진행 중" : votingWindow.state === "closed" ? "투표 마감" : "투표 기간 미확인"}</b>{votingWindow.opensAt !== null && <span>일정 종료 {formatPotmTime(votingWindow.opensAt)}{votingWindow.defaultEnd ? " · 시작 후 2시간 기준" : ""}</span>}{votingWindow.closesAt !== null && <span>마감 {formatPotmTime(votingWindow.closesAt)} · 종료 후 {votingWindow.days}일</span>}</p>
+          {Boolean(momScope) && ownVote && <p className="event-detail-gate">현재 선택: <b>{ownCandidate?.name ?? "선택한 회원"}</b></p>}
+          {sessionPending ? <SectionSkeleton label="POTM 투표 자격을 확인하는 중" /> : momVoteEligibility.canVote ? <>
+            <p className="event-detail-gate">실제 출석한 활동 회원 중 본인을 제외한 한 명을 선택합니다. 마감 전까지 선택을 변경할 수 있습니다.</p>
+            <button type="button" className="text-link" onClick={() => openMomVote(event.id)}>{ownVote ? "POTM 선택 변경" : "POTM 투표하기"}</button>
+          </> : <p className="event-detail-gate"><Shield size={15} /> {momVoteEligibility.reason} {momVoteEligibility.action === "login" && <button type="button" className="text-link" onClick={onLogin}>로그인</button>} {votingWindow.state === "unknown" && <button type="button" className="text-link" onClick={onRetry}>일정 다시 불러오기</button>}</p>}
+        </section>
 
         <section className="event-detail-block">
           <h3>참석 명단</h3>
@@ -317,23 +440,28 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
           })}</ol>
         </section>}
 
-        {eventResults.length > 0 && <section className="event-detail-block">
-          <h3>MOM 결과</h3>
-          <ol className="mom-podium">{eventResults.map((result) => <li key={result.candidate_profile_id}><b>{result.mom_rank}위</b><span>{result.candidate_name}</span><small>{result.vote_count}표</small></li>)}</ol>
+        {Boolean(momScope) && (votingWindow.state === "open" || votingWindow.state === "closed") && <section className="event-detail-block">
+          <h3>POTM {momRefreshState === "pending" ? "결과 확인 중" : momRefreshState === "error" ? "결과 미확인" : votingWindow.state === "closed" ? "최종 결과" : "현재 집계"}</h3>
+          {momRefreshState === "pending" ? <p className="event-detail-gate" role="status">마지막 투표와 투표 기간을 다시 확인하고 있습니다.</p> : momRefreshState === "error" ? <p className="event-detail-gate" role="status">최신 결과를 확인하지 못했습니다. <button type="button" className="text-link" onClick={() => void refreshMomWindowState()}>POTM 결과 다시 불러오기</button></p> : eventResults.length === 0 ? <p className="event-detail-gate">{votingWindow.state === "closed" ? "등록된 표가 없어 선정된 선수가 없습니다." : "아직 등록된 표가 없습니다."}</p> : <>
+            <p className="event-detail-gate">{eventResults.filter((result) => result.mom_rank === 1).length > 1 ? "공동 1위입니다. 동률 선수 모두 같은 순위로 표시합니다." : "최다 득표 선수가 1위입니다."}{votingWindow.state === "open" && " 마감 전까지 집계가 바뀔 수 있습니다."}</p>
+            <ol className="mom-podium">{eventResults.map((result) => <li key={result.candidate_profile_id}><b>{result.mom_rank}위</b><span>{result.candidate_name}</span><small>{result.vote_count}표</small></li>)}</ol>
+          </>}
         </section>}
+
       </article>;
     })}
 
-    {votingEvent && <div className="modal-backdrop" onClick={() => { if (!submittingMomCandidateId) setVotingEvent(null); }}>
-      <div ref={momDialogRef} tabIndex={-1} className="editor mom-vote-modal" role="dialog" aria-modal="true" aria-label="MOM 투표" aria-busy={Boolean(submittingMomCandidateId)} onClick={(event) => event.stopPropagation()}>
-        <button type="button" className="modal-close" aria-label="닫기" disabled={Boolean(submittingMomCandidateId)} onClick={() => setVotingEvent(null)}><X /></button>
-        <span className="eyebrow">MAN OF THE MATCH</span>
-        <h2>MOM 투표</h2>
-        <p className="form-description">MOM(Man of the Match)은 그날 경기의 최우수 선수입니다. 실제 출석한 회원 중 한 명을 선택해 주세요. 본인에게는 투표할 수 없고, 투표 후에도 별도 마감 없이 다시 선택할 수 있습니다.</p>
-        {submittingMomCandidateId && <p className="form-description" role="status" aria-live="polite">MOM 투표를 저장하는 중입니다.</p>}
+    {votingEvent && <div className="modal-backdrop" onClick={() => { if (!submittingMomCandidateId) setVotingEventId(null); }}>
+      <div ref={momDialogRef} tabIndex={-1} className="editor mom-vote-modal" role="dialog" aria-modal="true" aria-label="Player of the Match 투표" aria-busy={Boolean(submittingMomCandidateId)} onClick={(event) => event.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="닫기" disabled={Boolean(submittingMomCandidateId)} onClick={() => setVotingEventId(null)}><X /></button>
+        <h2>Player of the Match 투표</h2>
+        <p className="form-description">실제 출석한 활동 회원 중 한 명을 선택해 주세요. 본인에게는 투표할 수 없고 마감 전까지 선택을 변경할 수 있습니다.</p>
+        {submittingMomCandidateId && <p className="form-description" role="status" aria-live="polite">POTM 투표를 저장하는 중입니다.</p>}
+        <p className="form-description">마감 {getMomVotingWindow(votingEvent, now).closesAt !== null ? formatPotmTime(getMomVotingWindow(votingEvent, now).closesAt!) : "미확인"}</p>
+        {!modalEligibility.canVote && <p className="event-detail-gate" role="status">{modalEligibility.reason} <button type="button" className="text-link" onClick={onRetry}>일정 다시 불러오기</button></p>}
         {votingCandidates.length === 0 ? <p className="event-detail-gate">투표할 수 있는 다른 출석 회원이 없습니다.</p> : <div className="mom-candidates">{votingCandidates.map((candidate) => {
           const selected = momVotes.find((vote) => vote.event_id === votingEvent.id)?.candidate_profile_id === candidate.id;
-          return <button type="button" key={candidate.id} className={selected ? "selected" : ""} aria-pressed={selected} disabled={Boolean(submittingMomCandidateId)} onClick={() => void submitMomVote(candidate.id)}><span>{candidate.position ?? "PLAYER"}</span><b>{candidate.name}{submittingMomCandidateId === candidate.id ? " · 저장 중" : ""}</b></button>;
+          return <button type="button" key={candidate.id} className={selected ? "selected" : ""} aria-pressed={selected} aria-label={`${candidate.name}에게 POTM 투표`} disabled={Boolean(submittingMomCandidateId) || !modalEligibility.canVote} onClick={() => void submitMomVote(candidate.id)}><span>{candidate.position ?? "PLAYER"}</span><b>{candidate.name}{submittingMomCandidateId === candidate.id ? " · 저장 중" : ""}</b></button>;
         })}</div>}
       </div>
     </div>}
@@ -342,4 +470,8 @@ export default function EventDetail({ dateKey, events, profiles, attendance, mom
 
 function naverMapUrl(event: Pick<Event, "venue" | "address">) {
   return `https://map.naver.com/p/search/${encodeURIComponent([event.venue, event.address].filter(Boolean).join(" "))}`;
+}
+
+function formatPotmTime(time: number) {
+  return new Date(time).toLocaleString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 }

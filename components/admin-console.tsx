@@ -10,6 +10,7 @@ import { countAttendanceByEvent, getCheckInStatus, isCheckedIn } from "@/lib/att
 import { applyAttendanceSaveSuccesses, buildAttendanceSaveItems, reconcileAttendanceSaveResults, type AttendanceSaveFailure, type AttendanceSaveRpcResult } from "@/lib/attendance-save";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { eventDatePath, isWeeklyScheduleEvent } from "@/lib/event-date";
+import { getEventTimingPayload, shiftEventTiming } from "@/lib/mom-vote";
 import { requiresMemberApprovalConfirmation } from "@/lib/member-status";
 import { filterAdminRows } from "@/lib/admin-list-filters";
 import { applyPermissionBatch, updatePendingPermissionChanges, type PendingPermissionChange } from "@/lib/permission-batch.mjs";
@@ -589,9 +590,16 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
+    let eventAccessIsCurrent: (() => boolean) | null = null;
     try {
     const fresh = await verifyAccess();
     if (!fresh) { savingRef.current = false; setSaving(false); return; }
+    if (config.type === "events") {
+      eventAccessIsCurrent = fresh.isCurrent;
+      if (!fresh.isCurrent()) return;
+      const currentActor = fresh.profiles.find((profile) => profile.id === currentProfileId);
+      if (!currentActor?.auth_user_id || currentActor.status !== "active" || currentActor.must_change_password || currentActor.is_test_account) return onError("활동 계정에서 초기 비밀번호를 변경한 뒤 일정을 관리할 수 있습니다. 계정 상태를 다시 확인해 주세요.");
+    }
     const currentTarget = config.type === "members" && row.id ? fresh.profiles.find((profile) => profile.id === row.id) : null;
     const permissionRow = config.type === "forms" ? { ...row, kind: row.id ? row.kind : fd.get("kind") } : currentTarget ? { ...row, ...currentTarget } : row;
     if ((config.type === "members" && row.id && !currentTarget) || !canEditManagedRecord(fresh, config.type, permissionRow)) {
@@ -627,52 +635,57 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     if (config.type === "notices") ({ error } = await supabase.from("notices").upsert({ ...(row.id ? { id: row.id } : {}), title: fd.get("title"), body: fd.get("body"), is_pinned: fd.get("is_pinned") === "on" }).select("id").single());
     if (config.type === "venues") ({ error } = await supabase.from("venues").upsert({ ...(row.id ? { id: row.id } : {}), name: fd.get("name"), address: fd.get("address") || "", note: fd.get("note") || null }).select("id").single());
     if (config.type === "events") {
+      let timing: ReturnType<typeof getEventTimingPayload> | null = null;
+      try { timing = getEventTimingPayload(String(fd.get("starts_at") ?? ""), String(fd.get("ends_at") ?? ""), String(fd.get("mom_voting_days") ?? "3")); }
+      catch (cause) { error = userError(cause instanceof Error ? cause.message : "일정 종료 시간과 투표 기간을 확인해 주세요."); }
       const startsAt = new Date(String(fd.get("starts_at")));
       const recurring = fd.get("recurring") === "on";
       const currentYear = new Date().getFullYear();
       if (recurring && startsAt.getFullYear() !== currentYear) error = userError(`정기 일정 시작일은 ${currentYear}년 안에서 선택해 주세요.`);
-      let selectedVenueId = String(fd.get("venue_id") ?? "");
-      if (!error && !selectedVenueId && fd.get("save_venue") === "on") {
-        const venueResult = await supabase.from("venues").upsert({ name: fd.get("venue"), address: fd.get("address") || "" }, { onConflict: "name,address" }).select("id").single();
-        if (!fresh.isCurrent()) return;
-        error = venueResult.error;
-        selectedVenueId = venueResult.data?.id ?? "";
-      }
-      const eventPayload = { title: fd.get("title"), starts_at: startsAt.toISOString(), venue_id: selectedVenueId || null, venue: fd.get("venue"), address: fd.get("address") || null, note: fd.get("note") || null, capacity: Number(fd.get("capacity")) || null, is_competitive: fd.get("is_competitive") === "on" };
-      let eventIds: string[] = [];
-      if (!error && row.id) {
-        const eventResult = await supabase.from("events").update(eventPayload).eq("id", row.id).select("id").single();
-        error = eventResult.error;
-        if (eventResult.data) eventIds = [eventResult.data.id];
-      } else if (!error && recurring) {
-        const existingStarts = new Set(events.map((item) => new Date(item.starts_at).getTime()));
-        const recurringPayloads: Array<typeof eventPayload> = [];
-        for (const date = new Date(startsAt); !error && date.getFullYear() === currentYear; date.setDate(date.getDate() + 7)) {
-          if (!existingStarts.has(date.getTime())) recurringPayloads.push({ ...eventPayload, starts_at: date.toISOString() });
+      if (timing) {
+        let selectedVenueId = String(fd.get("venue_id") ?? "");
+        if (!error && !selectedVenueId && fd.get("save_venue") === "on") {
+          const venueResult = await supabase.from("venues").upsert({ name: fd.get("venue"), address: fd.get("address") || "" }, { onConflict: "name,address" }).select("id").single();
+          if (!fresh.isCurrent()) return;
+          error = venueResult.error;
+          selectedVenueId = venueResult.data?.id ?? "";
         }
-        if (!error && recurringPayloads.length === 0) error = userError("올해 생성할 새 정기 일정이 없습니다.");
-        if (!error) {
-          const eventResult = await supabase.from("events").insert(recurringPayloads).select("id");
+        const eventPayload = { title: fd.get("title"), ...timing, venue_id: selectedVenueId || null, venue: fd.get("venue"), address: fd.get("address") || null, note: fd.get("note") || null, capacity: Number(fd.get("capacity")) || null, is_competitive: fd.get("is_competitive") === "on" };
+        let eventIds: string[] = [];
+        if (!error && row.id) {
+          const eventResult = await supabase.from("events").update(eventPayload).eq("id", row.id).select("id").single();
           error = eventResult.error;
-          eventIds = eventResult.data?.map((item) => item.id) ?? [];
+          if (eventResult.data) eventIds = [eventResult.data.id];
+        } else if (!error && recurring) {
+          const existingStarts = new Set(events.map((item) => new Date(item.starts_at).getTime()));
+          const recurringPayloads: Array<typeof eventPayload> = [];
+          for (const date = new Date(startsAt); !error && date.getFullYear() === currentYear; date.setDate(date.getDate() + 7)) {
+            if (!existingStarts.has(date.getTime())) recurringPayloads.push(shiftEventTiming(eventPayload, date));
+          }
+          if (!error && recurringPayloads.length === 0) error = userError("올해 생성할 새 정기 일정이 없습니다.");
+          if (!error) {
+            const eventResult = await supabase.from("events").insert(recurringPayloads).select("id");
+            error = eventResult.error;
+            eventIds = eventResult.data?.map((item) => item.id) ?? [];
+          }
+        } else if (!error) {
+          const eventResult = await supabase.from("events").insert(eventPayload).select("id").single();
+          error = eventResult.error;
+          if (eventResult.data) eventIds = [eventResult.data.id];
         }
-      } else if (!error) {
-        const eventResult = await supabase.from("events").insert(eventPayload).select("id").single();
-        error = eventResult.error;
-        if (eventResult.data) eventIds = [eventResult.data.id];
-      }
-      if (!error && eventIds.length > 0) {
-        if (!fresh.isCurrent()) return;
-        const selectedGuestIds = fd.getAll("guest_ids").map(String);
-        const currentGuestIds = scheduledGuests.map((guest) => guest.guest_player_id);
-        const removedGuestIds = currentGuestIds.filter((id) => !selectedGuestIds.includes(id));
-        const addedGuestIds = selectedGuestIds.filter((id) => !currentGuestIds.includes(id));
-        if (row.id && removedGuestIds.length > 0) {
-          const removed = await supabase.from("event_guest_players").delete().eq("event_id", eventIds[0]).in("guest_player_id", removedGuestIds).select("guest_player_id");
-          error = removed.error ?? (removed.data?.length === removedGuestIds.length ? null : { code: "PGRST116", message: "Guest roster changed before deletion" });
+        if (!error && eventIds.length > 0) {
+          if (!fresh.isCurrent()) return;
+          const selectedGuestIds = fd.getAll("guest_ids").map(String);
+          const currentGuestIds = scheduledGuests.map((guest) => guest.guest_player_id);
+          const removedGuestIds = currentGuestIds.filter((id) => !selectedGuestIds.includes(id));
+          const addedGuestIds = selectedGuestIds.filter((id) => !currentGuestIds.includes(id));
+          if (row.id && removedGuestIds.length > 0) {
+            const removed = await supabase.from("event_guest_players").delete().eq("event_id", eventIds[0]).in("guest_player_id", removedGuestIds).select("guest_player_id");
+            error = removed.error ?? (removed.data?.length === removedGuestIds.length ? null : { code: "PGRST116", message: "Guest roster changed before deletion" });
+          }
+          if (!fresh.isCurrent()) return;
+          if (!error && addedGuestIds.length > 0) ({ error } = await supabase.from("event_guest_players").insert(eventIds.flatMap((eventId) => addedGuestIds.map((guestPlayerId) => ({ event_id: eventId, guest_player_id: guestPlayerId })))));
         }
-        if (!fresh.isCurrent()) return;
-        if (!error && addedGuestIds.length > 0) ({ error } = await supabase.from("event_guest_players").insert(eventIds.flatMap((eventId) => addedGuestIds.map((guestPlayerId) => ({ event_id: eventId, guest_player_id: guestPlayerId })))));
       }
     }
     if (config.type === "attendance") {
@@ -837,7 +850,7 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
     }
     setFormDirty(false);
     onSaved();
-    } catch (caught) { if (isPermissionError(caught)) await verifyAccess(); onError(toErrorMessage(caught)); }
+    } catch (caught) { if (eventAccessIsCurrent && !eventAccessIsCurrent()) return; if (isPermissionError(caught)) await verifyAccess(); onError(toErrorMessage(caught)); }
     finally { savingRef.current = false; setSaving(false); }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -887,14 +900,14 @@ export function AdminEditor({ config, profiles, guestPlayers, venues, events, at
   const replacedScorers = replacedMatches.flatMap((match) => match.event_match_scorers ?? []);
   const teamRegenerationTarget = `${new Date(teamEvent.starts_at).toLocaleString("ko-KR")} · ${teamEvent.title}`;
   const teamRegenerationDescription = pendingTeamRegeneration ? `현재 팀 편성 ${replacedTeams.length}개, 팀 스코어 ${replacedScores}건, 선수 골 ${replacedGoals}골, 평점 ${replacedRatings}건, 경기 ${replacedMatches.length}경기와 득점자 ${replacedScorers.length}건을 삭제하고 새 결과로 교체합니다. ${pendingTeamRegeneration.participantCount}명을 ${pendingTeamRegeneration.teamCount}개 팀으로 다시 편성합니다.` : "";
-  return <><div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} className="editor" onSubmit={submit} onChange={() => { if (config.type !== "teams") setFormDirty(true); }} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
+  return <><div className="modal-backdrop" onClick={handleBackdrop}><form ref={dialogRef} tabIndex={-1} className={`editor${config.type === "events" ? " event-editor" : ""}`} onSubmit={submit} onChange={() => { if (config.type !== "teams") setFormDirty(true); }} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={row.id ? "관리 항목 수정" : "관리 항목 등록"}><button type="button" className="modal-close" aria-label="닫기" onClick={requestClose}><X /></button><span className="eyebrow">ADMIN EDITOR</span><h2>{editorTitles[config.type]} {row.id ? "수정" : "등록"}</h2>
     {config.type === "members" && <><label>이름<input name="name" required minLength={1} maxLength={50} defaultValue={String(row.name ?? "")} /></label><label>전화번호<input name="phone" required inputMode="tel" autoComplete="tel" placeholder="010-1234-5678" pattern="01[016789]-?[0-9]{3,4}-?[0-9]{4}" defaultValue={String(row.phone ?? "").replace(/^\+82/, "0")} /></label><div className="read-box"><b>{row.auth_user_id ? "로그인 계정 연결 완료" : "로그인 계정 준비 필요"}</b><p>{row.auth_user_id ? "회원은 전화번호와 비밀번호로 로그인할 수 있습니다. 초기화하면 비밀번호가 1234로 변경됩니다." : "저장하면 초기 비밀번호 1234로 로그인 계정을 준비합니다."}</p></div>{row.id && canManageAccount && <button type="button" className="cta secondary" disabled={saving} onClick={() => setPasswordResetOpen(true)}>{saving ? "처리 중…" : row.auth_user_id ? "비밀번호를 1234로 초기화" : "초기 비밀번호로 계정 준비"}</button>}<div className="field-row"><label>등록 포지션<select name="position" defaultValue={String(row.position ?? "")}><option value="">미정</option><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label><label>등번호<input name="jersey_number" type="number" min="0" max="99" defaultValue={String(row.jersey_number ?? "")} /></label></div><div className="field-row"><label>회원 유형<select name="role" value={selectedRole} disabled={!permissions.has("roles.manage")} onChange={(event) => setSelectedRole(event.target.value as AccountRole)}><option value="member">일반 회원</option><option value="manager">관리자</option></select></label>{selectedRole === "manager" ? <label>관리자 직책<select name="officer_title" required defaultValue={String(row.officer_title ?? "president")} disabled={!permissions.has("roles.manage")}><option value="president">회장</option><option value="vice_president">부회장</option><option value="treasurer">총무</option></select></label> : <label>회비 방식<select name="fee_plan" required defaultValue={String(row.fee_plan ?? "monthly")} disabled={!permissions.has("roles.manage")}><option value="monthly">월회비 · {formatWon(FEE_AMOUNTS.memberMonthly)}</option><option value="per_event">참여 시 · {formatWon(FEE_AMOUNTS.perEvent)}</option></select></label>}</div>{selectedRole === "manager" && <p className="form-description">관리자 월회비는 직책과 관계없이 {formatWon(FEE_AMOUNTS.managerMonthly)}입니다.</p>}{permissions.has("roles.manage") && <><label className="check"><input name="is_system_admin" type="checkbox" defaultChecked={Boolean(row.is_system_admin)} disabled={isEditingSelfSystemAdmin} /> 시스템 관리 권한 부여</label>{isEditingSelfSystemAdmin && <p className="form-description">자기 자신의 시스템 관리 권한과 활동 상태는 변경할 수 없습니다. 다른 시스템 관리자가 변경해야 합니다.</p>}</>}<label>상태<select name="status" defaultValue={String(row.status ?? "active")} disabled={isEditingSelfSystemAdmin}><option value="pending" disabled={Boolean(row.is_system_admin)}>승인 대기</option><option value="active">활동</option><option value="inactive" disabled={Boolean(row.is_system_admin)}>비활동</option></select></label><p className="form-description">활동으로 변경하면 회원 기능 전체가 열리고, 승인 대기로 변경하면 회원 기능을 이용할 수 없습니다.</p></>}
     {config.type === "guests" && <><label>이름<input name="name" required maxLength={50} defaultValue={String(row.name ?? "")} /></label><div className="field-row"><label>연락처<input name="phone" maxLength={30} placeholder="운영진에게만 공개" defaultValue={String(row.phone ?? "")} /></label><label>선호 포지션<select name="preferred_position" defaultValue={String(row.preferred_position ?? "ANY")}><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option><option value="ANY">상관없음</option></select></label></div><div className="read-box"><b>용병 참여비 {formatWon(FEE_AMOUNTS.perEvent)}</b><p>일정에 배정할 때마다 참여비가 생성됩니다.</p></div><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_active" type="checkbox" defaultChecked={row.id ? Boolean(row.is_active) : true} /> 자주 부르는 용병 목록에 표시</label></>}
     {config.type === "fees" && row._fee_scope === "guest" && <><div className="read-box"><b>{String((row.guest_players as { name?: string } | undefined)?.name ?? "용병")} · 참여비 {formatWon(FEE_AMOUNTS.perEvent)}</b><p>{String((row.events as { title?: string } | undefined)?.title ?? "일정")}의 용병 회비 납부 상태를 관리합니다.</p></div><label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "fees" && row._fee_scope !== "guest" && <><label>회원<select name="member_id" required value={selectedFeeMemberId} disabled={Boolean(row.id)} onChange={(event) => setSelectedFeeMemberId(event.target.value)}>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role === "manager" ? "관리자" : p.role === "member" && p.fee_plan === "per_event" ? "참여비형" : p.role === "member" ? "월회비형" : "시스템 관리자"}</option>)}</select></label><input name="fee_type" type="hidden" value={selectedFeeType} /><div className="read-box"><b>{selectedFeeType === "participation" ? "참여비" : "월회비"} {standardFeeAmount.toLocaleString()}원</b><p>회원 유형에 따른 표준 금액이 자동 적용됩니다.</p></div>{selectedFeeType === "participation" ? <label>참여 일정<select name="event_id" required defaultValue={String(row.event_id ?? "")} disabled={Boolean(row.id)}><option value="" disabled>일정을 선택하세요</option>{events.map((item) => <option key={item.id} value={item.id}>{new Date(item.starts_at).toLocaleDateString("ko-KR")} · {item.title}</option>)}</select></label> : <label>기준 월<input name="month" type="month" required defaultValue={String(row.month ?? new Date().toISOString()).slice(0, 7)} /></label>}<label>상태<select name="status" defaultValue={String(row.status ?? "unpaid")}><option value="paid">납부 완료</option><option value="unpaid">미납</option><option value="exempt">면제</option></select></label></>}
     {config.type === "notices" && <><label>제목<input name="title" required defaultValue={String(row.title ?? "")} /></label><label>내용<textarea name="body" required rows={6} defaultValue={String(row.body ?? "")} /></label><label className="check"><input name="is_pinned" type="checkbox" defaultChecked={Boolean(row.is_pinned)} /> 상단 고정</label></>}
     {config.type === "venues" && <><label>구장명<input name="name" required maxLength={120} defaultValue={String(row.name ?? "")} /></label><label>주소<input name="address" maxLength={240} defaultValue={String(row.address ?? "")} /></label><label>메모<textarea name="note" rows={3} maxLength={500} defaultValue={String(row.note ?? "")} /></label></>}
-    {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>등록·최근 사용 구장</b><label>구장명·지역·주소 검색<input type="search" value={venueQuery} placeholder="구장명·지역·주소로 검색" disabled={saving} onChange={(event) => { event.stopPropagation(); setVenueQuery(event.target.value); setVenueVisibleCount(10); }} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /></label><div>{visibleVenueOptions.map((option) => <button type="button" key={JSON.stringify([option.id, option.venue, option.address])} disabled={saving} onClick={() => { setFormDirty(true); setVenueId(option.id); setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{(option.city || option.address) && <small>{[option.city, option.address].filter(Boolean).join(" · ")}</small>}</button>)}</div>{filteredVenueOptions.length === 0 && <p role="status">검색 결과가 없습니다. 아래에서 구장을 직접 입력할 수 있습니다.</p>}{remainingVenueCount > 0 && <button className="venue-history-more" type="button" disabled={saving} onClick={() => setVenueVisibleCount((count) => count + 10)}>더 보기 · {remainingVenueCount}개 남음</button>}</div>}<input name="venue_id" type="hidden" value={venueId} /><div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => { setVenueId(""); setVenue(event.target.value); }} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => { setVenueId(""); setAddress(event.target.value); }} /></label>{!venueId && <label className="check"><input name="save_venue" type="checkbox" defaultChecked /> 입력한 구장을 구장 목록에도 등록</label>}<label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
+    {config.type === "events" && <><label>일정명<input name="title" required defaultValue={String(row.title ?? "주말 정기 풋살")} /></label><label>시작 시간<input name="starts_at" type="datetime-local" required defaultValue={row.starts_at ? toLocalDateTimeInput(new Date(String(row.starts_at))) : toLocalDateTimeInput(nextSundayMorning())} /></label><label>종료 시간<input name="ends_at" type="datetime-local" aria-describedby="event-end-help" defaultValue={row.ends_at ? toLocalDateTimeInput(new Date(String(row.ends_at))) : ""} /></label><p id="event-end-help" className="form-description">종료 시간을 비워 두면 시작 후 2시간을 기준으로 투표를 시작합니다.</p><label>POTM 투표 기간<input name="mom_voting_days" type="number" required min="1" max="30" step="1" defaultValue={String(row.mom_voting_days ?? 3)} aria-describedby="event-vote-help" /></label><p id="event-vote-help" className="form-description">종료 후 기본 3일 동안 투표합니다. 1일은 24시간이며 1~30일로 설정할 수 있습니다. 종료 시간이나 기간을 바꾸면 마감이 다시 계산되어 이미 마감된 투표가 다시 열릴 수 있습니다.</p>{!row.id && <label className="check"><input name="recurring" type="checkbox" /> 선택한 요일과 시간으로 올해 말까지 매주 생성</label>}{venueOptions.length > 0 && <div className="venue-history"><b>등록·최근 사용 구장</b><label>구장명·지역·주소 검색<input type="search" value={venueQuery} placeholder="구장명·지역·주소로 검색" disabled={saving} onChange={(event) => { event.stopPropagation(); setVenueQuery(event.target.value); setVenueVisibleCount(10); }} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /></label><div>{visibleVenueOptions.map((option) => <button type="button" key={JSON.stringify([option.id, option.venue, option.address])} disabled={saving} onClick={() => { setFormDirty(true); setVenueId(option.id); setVenue(option.venue); setAddress(option.address); }}><span>{option.venue}</span>{(option.city || option.address) && <small>{[option.city, option.address].filter(Boolean).join(" · ")}</small>}</button>)}</div>{filteredVenueOptions.length === 0 && <p role="status">검색 결과가 없습니다. 아래에서 구장을 직접 입력할 수 있습니다.</p>}{remainingVenueCount > 0 && <button className="venue-history-more" type="button" disabled={saving} onClick={() => setVenueVisibleCount((count) => count + 10)}>더 보기 · {remainingVenueCount}개 남음</button>}</div>}<input name="venue_id" type="hidden" value={venueId} /><div className="field-row"><label>구장<input name="venue" required value={venue} onChange={(event) => { setVenueId(""); setVenue(event.target.value); }} /></label><label>정원<input name="capacity" type="number" min="1" defaultValue={String(row.capacity ?? 18)} /></label></div><label>주소<input name="address" value={address} onChange={(event) => { setVenueId(""); setAddress(event.target.value); }} /></label>{!venueId && <label className="check"><input name="save_venue" type="checkbox" defaultChecked /> 입력한 구장을 구장 목록에도 등록</label>}<label>안내<textarea name="note" rows={3} defaultValue={String(row.note ?? "")} /></label><label className="check"><input name="is_competitive" type="checkbox" defaultChecked={Boolean(row.is_competitive)} /> 커피 내기: 팀 스코어·골·평점·승패 기록</label><fieldset className="check-grid"><legend>참여 용병</legend>{guestPlayers.filter((guest) => guest.is_active || scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)).map((guest) => <label className="check" key={guest.id}><input name="guest_ids" value={guest.id} type="checkbox" defaultChecked={scheduledGuests.some((scheduled) => scheduled.guest_player_id === guest.id)} /> {guest.name} · {guest.preferred_position ?? "ANY"} · {guest.appearance_count}회</label>)}{guestPlayers.length === 0 && <p className="form-description">용병 관리에서 자주 부르는 용병을 먼저 등록해 주세요.</p>}</fieldset></>}
     {config.type === "attendance" && <div className="attendance-editor">
       <div className="read-box attendance-editor-intro"><b>{String(row.title)}</b><p>{new Date(String(row.starts_at)).toLocaleString("ko-KR")} · {String(row.venue)}</p><small>참석 예정 회원을 먼저 확인하고, 현장에 온 회원은 누구든 출석·지각·결석으로 기록할 수 있습니다.</small></div>
       <section className="attendance-summary" aria-label="출석 진행률">
