@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-06-member-detail-feedback",
+    date: "2026-10-06",
+    source: "request",
+    title: "회원 상세 정보를 열어볼 수 있습니다",
+    summary: "회원 목록에서 상세 정보를 열어 포지션·등번호·회원 유형·가입일을 확인하고 전화 앱으로 연결할 수 있습니다.",
+    changes: [
+      { kind: "added", text: "회원 카드의 상세 정보 보기에서 기본 정보를 한곳에 확인할 수 있습니다." },
+      { kind: "improved", text: "상세 정보에서도 기존 권한에 따라 전화걸기를 이용할 수 있습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-05-event-potm",
     date: "2026-10-05",
     source: "request",
