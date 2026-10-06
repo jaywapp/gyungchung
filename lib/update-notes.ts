@@ -22,6 +22,18 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-06-member-card-actions",
+    date: "2026-10-06",
+    source: "request",
+    title: "회원 카드를 선택해 연락 메뉴를 열 수 있습니다",
+    summary: "회원 카드 전체를 선택하면 상세 정보와 전화걸기·연락처 저장 메뉴를 한곳에서 이용할 수 있습니다.",
+    changes: [
+      { kind: "improved", text: "카드에 표시하던 전화 버튼을 회원 메뉴로 옮기고, 운영진의 정보 수정·회원 강퇴 메뉴도 함께 제공합니다." },
+      { kind: "added", text: "선택한 회원의 이름과 전화번호를 연락처 파일로 내려받은 뒤 연락처 앱에서 열어 저장할 수 있습니다." },
+    ],
+    pullRequests: [],
+  },
+  {
     id: "2026-10-06-member-detail-feedback",
     date: "2026-10-06",
     source: "request",

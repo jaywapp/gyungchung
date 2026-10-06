@@ -6853,30 +6853,26 @@ td { font-weight: 800; }
   pointer-events: none;
 }
 
-.directory-card h2 { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 16px; }
+.directory-card h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 16px; overflow-wrap: anywhere; }
 .directory-card h2 em { color: var(--brand); font-size: 12px; font-style: normal; font-weight: 700; }
 .directory-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .directory-card > small { color: var(--muted); font-size: 12px; }
-.directory-detail-trigger { justify-self: start; min-height: var(--tap); padding: 0; border: 0; background: none; color: var(--brand); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-.directory-detail-trigger:hover { text-decoration: underline; }
-.directory-detail-trigger:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
-.directory-phone-actions { grid-column: 1 / -1; min-width: 0; }
-.directory-phone-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); }
-.directory-phone-actions p { margin-block: 4px 0; overflow-wrap: anywhere; }
-.directory-more { position: absolute; top: 8px; right: 8px; z-index: 2; }
-.directory-more > summary { list-style: none; }
-.directory-more > summary::-webkit-details-marker { display: none; }
-.directory-more .event-management-trigger { width: 36px; height: 36px; border-color: transparent; background: transparent; }
-.directory-more[open] .event-management-trigger { border-color: var(--line); background: var(--surface-sunken); }
+.directory-card-trigger { position: absolute; inset: 0; border: 0; border-radius: inherit; background: transparent; color: var(--muted); cursor: pointer; }
+.directory-card:has(.directory-card-trigger:hover) { background: var(--note-bg); }
+.directory-card:has(.directory-card-trigger:active) { background: var(--surface-sunken); }
+.directory-card-trigger:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.directory-card > :not(.directory-card-trigger) { pointer-events: none; }
+.directory-more { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 36px; height: 36px; }
 .directory-empty { padding: 24px 0; text-align: center; }
-.directory-detail-dialog h2 { margin: 10px 0 20px; font-size: 28px; }
+.directory-detail-dialog h2 { margin: 10px 0 20px; font-size: 28px; overflow-wrap: anywhere; }
 .directory-detail-dialog dl { display: grid; gap: 12px; margin: 0; }
 .directory-detail-dialog dl > div { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .directory-detail-dialog dt { color: var(--muted); }
 .directory-detail-dialog dd { margin: 0; text-align: right; font-weight: 700; overflow-wrap: anywhere; }
-.directory-detail-phone { margin-top: 24px; }
-.directory-detail-phone .cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.directory-detail-phone p { margin-top: 10px; overflow-wrap: anywhere; }
+.directory-contact-actions { display: grid; gap: 8px; margin-top: 24px; }
+.directory-management-actions { display: grid; gap: 8px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+.directory-detail-dialog .cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: var(--tap); height: auto; margin: 0; white-space: normal; }
+.directory-contact-actions p { margin: 2px 0 0; overflow-wrap: anywhere; }
 
 @media (max-width: 900px) {
   .position-filter { top: calc(56px + env(safe-area-inset-top, 0px)); }
