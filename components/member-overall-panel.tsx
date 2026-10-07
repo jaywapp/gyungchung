@@ -7,8 +7,9 @@ import "./member-overall.css";
 
 export type MemberOverallPanelProps = { member: Profile; access: OverallAccess };
 type Inputs = Record<OverallAxis, string>;
-const blankInputs = (): Inputs => Object.fromEntries(overallAxes.map(({ key }) => [key, ""])) as Inputs;
-const scoreInputs = (row: MemberOverall): Inputs => Object.fromEntries(overallAxes.map(({ key }) => [key, String(row[key])])) as Inputs;
+const zeroScores: MemberOverallScores = { pace: 0, shooting: 0, passing: 0, dribbling: 0, defending: 0, physical: 0 };
+const scoreInputs = (scores: MemberOverallScores): Inputs => Object.fromEntries(overallAxes.map(({ key }) => [key, String(scores[key])])) as Inputs;
+const defaultInputs = (): Inputs => scoreInputs(zeroScores);
 type PanelState = { generation: number; status: "loading" | "ready" | "error" | "forbidden"; row: MemberOverall | null; inputs: Inputs; editing: boolean; busy: boolean; error: MemberOverallError | null; notice: string };
 
 export function OverallRadar({ scores, label }: { scores: MemberOverallScores; label: string }) {
@@ -43,7 +44,7 @@ export default function MemberOverallPanel({ member, access }: MemberOverallPane
   const generation = contextRef.current.generation;
   const panelRef = useRef<HTMLElement>(null);
   const focusBoundaryRef = useRef({ identity, generation });
-  const [state, setState] = useState<PanelState>({ generation: -1, status: "loading", row: null, inputs: blankInputs(), editing: false, busy: false, error: null, notice: "" });
+  const [state, setState] = useState<PanelState>({ generation: -1, status: "loading", row: null, inputs: defaultInputs(), editing: false, busy: false, error: null, notice: "" });
   const visible = state.generation === generation ? state : null;
   const currentContext = () => {
     const actorAccess = access; const signature = overallTargetSignature(member); const capturedGeneration = generation; const mountToken = mountTokenRef.current;
@@ -54,22 +55,22 @@ export default function MemberOverallPanel({ member, access }: MemberOverallPane
     const current = currentContext();
     if (!current() || pendingRef.current) return;
     const request = {}; pendingRef.current = request;
-    setState({ generation, status: "loading", row: null, inputs: blankInputs(), editing: false, busy: false, error: null, notice: "" });
+    setState({ generation, status: "loading", row: null, inputs: defaultInputs(), editing: false, busy: false, error: null, notice: "" });
     try {
       const rows = parseMemberOverallRows(await access.read([member.id], current), [member.id]);
       if (!current() || pendingRef.current !== request) return;
       const row = rows[0] ?? null;
-      setState({ generation, status: "ready", row, inputs: row ? scoreInputs(row) : blankInputs(), editing: !row, busy: false, error: null, notice: "" });
+      setState({ generation, status: "ready", row, inputs: scoreInputs(row ?? zeroScores), editing: false, busy: false, error: null, notice: "" });
     } catch (cause) {
       if (!current() || pendingRef.current !== request) return;
       const error = cause instanceof MemberOverallError ? cause : new MemberOverallError("unavailable");
-      setState({ generation, status: error.kind === "forbidden" ? "forbidden" : "error", row: null, inputs: blankInputs(), editing: false, busy: false, error, notice: "" });
+      setState({ generation, status: error.kind === "forbidden" ? "forbidden" : "error", row: null, inputs: defaultInputs(), editing: false, busy: false, error, notice: "" });
     } finally { if (pendingRef.current === request) pendingRef.current = null; }
   };
   const loadRef = useRef(load); loadRef.current = load;
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; mountTokenRef.current = {}; pendingRef.current = null; }; }, []);
   useEffect(() => {
-    if (!eligible) { setState({ generation, status: "loading", row: null, inputs: blankInputs(), editing: false, busy: false, error: null, notice: "" }); return; }
+    if (!eligible) { setState({ generation, status: "loading", row: null, inputs: defaultInputs(), editing: false, busy: false, error: null, notice: "" }); return; }
     void loadRef.current();
   }, [identity, eligible, generation]); // Scope and target changes invalidate data before this effect runs.
   useEffect(() => {
@@ -96,28 +97,29 @@ export default function MemberOverallPanel({ member, access }: MemberOverallPane
     } catch (cause) {
       if (!current() || pendingRef.current !== request) return;
       const error = cause instanceof MemberOverallError ? cause : new MemberOverallError("unknown");
-      setState((previous) => error.kind === "forbidden" ? { generation, status: "forbidden", row: null, inputs: blankInputs(), editing: false, busy: false, error, notice: "" } : { ...previous, busy: false, error });
+      setState((previous) => error.kind === "forbidden" ? { generation, status: "forbidden", row: null, inputs: defaultInputs(), editing: false, busy: false, error, notice: "" } : { ...previous, busy: false, error });
     } finally { if (pendingRef.current === request) pendingRef.current = null; }
   };
   const edit = () => {
-    if (!currentContext()() || pendingRef.current || !visible?.row) return;
+    if (!currentContext()() || pendingRef.current || !visible || visible.status !== "ready") return;
     setState((previous) => ({ ...previous, editing: true, error: null, notice: "" }));
   };
   const cancel = () => {
-    if (!currentContext()() || pendingRef.current || !visible?.row || ["conflict", "unknown"].includes(visible.error?.kind ?? "")) return;
-    setState((previous) => ({ ...previous, editing: false, inputs: scoreInputs(visible.row!), error: null, notice: "" }));
+    if (!currentContext()() || pendingRef.current || !visible || visible.status !== "ready" || ["conflict", "unknown"].includes(visible.error?.kind ?? "")) return;
+    setState((previous) => ({ ...previous, editing: false, inputs: scoreInputs(visible.row ?? zeroScores), error: null, notice: "" }));
   };
   if (!eligible) return null;
   if (visible?.status === "forbidden") return <p className="overall-error" role="alert">{visible.error?.message}</p>;
   return <section ref={panelRef} tabIndex={-1} className="member-overall-panel" aria-label={`${member.name} 능력치`}>
-    <header className="overall-heading"><h3>회원 능력치</h3>{visible?.row && <strong>오버롤 {memberOverall(visible.row)}<small> / 100</small></strong>}</header>
+    <header className="overall-heading"><h3>회원 능력치</h3>{visible?.status === "ready" && <strong>오버롤 {memberOverall(visible.row ?? zeroScores)}<small> / 100</small></strong>}</header>
     {!visible || visible.status === "loading" ? <p className="overall-loading" role="status">능력치를 불러오는 중입니다.</p> : visible.status === "error" ? <><p className="overall-error" role="alert">{visible.error?.message}</p><button type="button" onClick={() => void load()}>다시 불러오기</button></> : <>
-      {visible.row ? <OverallRadar scores={visible.row} label={`${member.name}의 저장된 6개 능력치`} /> : <p className="overall-note">미평가 회원입니다. 6개 능력치를 입력하면 오버롤이 계산됩니다.</p>}
+      <OverallRadar scores={visible.row ?? zeroScores} label={visible.row ? `${member.name}의 저장된 6개 능력치` : `${member.name}의 미평가 능력치: 각 항목 0점`} />
+      {!visible.row && <p className="overall-note">아직 저장된 능력치가 없어 0으로 표시합니다. 수정 버튼을 눌러 입력할 수 있습니다.</p>}
       {visible.editing ? <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
-        <p id={`${inputId}-help`} className="overall-note">각 항목은 1~100 정수입니다. 오버롤은 6개 항목의 평균을 반올림합니다.</p>
-        <div className="overall-inputs">{overallAxes.map(({ key, label }) => <label key={key} htmlFor={`${inputId}-${key}`}>{label}<input id={`${inputId}-${key}`} name={key} type="number" inputMode="numeric" min="1" max="100" step="1" required value={visible.inputs[key]} disabled={visible.busy} aria-describedby={`${inputId}-help`} aria-invalid={visible.error?.kind === "invalid" || undefined} onChange={(event) => changeInput(key, event.target.value)} /></label>)}</div>
+        <p id={`${inputId}-help`} className="overall-note">각 항목은 0~100 정수이며 비워 둔 항목은 0으로 저장됩니다. 오버롤은 6개 항목의 평균을 반올림합니다.</p>
+        <div className="overall-inputs">{overallAxes.map(({ key, label }) => <label key={key} htmlFor={`${inputId}-${key}`}>{label}<input id={`${inputId}-${key}`} name={key} type="number" inputMode="numeric" min="0" max="100" step="1" value={visible.inputs[key]} disabled={visible.busy} aria-describedby={`${inputId}-help`} aria-invalid={visible.error?.kind === "invalid" || undefined} onChange={(event) => changeInput(key, event.target.value)} /></label>)}</div>
         {visible.error && <p className="overall-error" role="alert">{visible.error.message}</p>}
-        <div className="overall-actions">{["conflict", "unknown"].includes(visible.error?.kind ?? "") ? <button type="button" onClick={() => void load()}>입력 대신 최신 값 불러오기</button> : <button type="submit" className="primary" disabled={visible.busy}>{visible.busy ? "저장 중…" : "능력치 저장"}</button>}{visible.row && !["conflict", "unknown"].includes(visible.error?.kind ?? "") && <button type="button" disabled={visible.busy} onClick={cancel}>수정 취소</button>}</div>
+        <div className="overall-actions">{["conflict", "unknown"].includes(visible.error?.kind ?? "") ? <button type="button" onClick={() => void load()}>입력 대신 최신 값 불러오기</button> : <button type="submit" className="primary" disabled={visible.busy}>{visible.busy ? "저장 중…" : "능력치 저장"}</button>}{!["conflict", "unknown"].includes(visible.error?.kind ?? "") && <button type="button" disabled={visible.busy} onClick={cancel}>수정 취소</button>}</div>
       </form> : <button type="button" onClick={edit}>능력치 수정</button>}
       {visible.notice && <p className="overall-note" role="status">{visible.notice}</p>}
     </>}

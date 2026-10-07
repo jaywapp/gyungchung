@@ -22,6 +22,15 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-07-member-overall-zero", date: "2026-10-07", source: "request",
+    title: "능력치는 그래프로 확인하고 수정 버튼으로 입력합니다",
+    summary: "저장된 수치가 없는 회원도 기본 0점 육각형 그래프를 표시하며 수정 버튼을 눌렀을 때만 입력할 수 있습니다.",
+    changes: [
+      { kind: "improved", text: "회원 상세와 관리 화면의 기본 상태를 그래프로 통일하고, 미평가 회원도 수정·취소 흐름을 이용할 수 있습니다." },
+      { kind: "improved", text: "능력치를 0~100점으로 저장할 수 있으며 입력에서 비워 둔 항목은 0으로 처리합니다." },
+    ], pullRequests: [],
+  },
+  {
     id: "2026-10-07-member-detail-overall", date: "2026-10-07", source: "request",
     title: "회원 상세에서 오버롤 그래프를 바로 확인할 수 있습니다",
     summary: "능력치 조회 권한이 있는 운영진과 시스템 관리자는 회원 카드를 열면 육각형 그래프와 오버롤을 바로 확인합니다.",

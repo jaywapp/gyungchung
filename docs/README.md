@@ -23,3 +23,5 @@
 - 2026-09-30 갱신 iOS·Android 모바일 앱 기획(매치 콘솔·테마·최신 회원 기능 반영): [분석](mobile-app-analysis.md), [설계](mobile-app-design.md), [단계별 실행 계획](mobile-app-tasks.md)
 - 2026-10-02 공개 웰컴 페이지: [기획과 요구사항](welcome-page-analysis.md), [설계안](welcome-page-design.md), [실행 계획](welcome-page-tasks.md), [페이지 시안 요청서](welcome-page-design-request.md), [로컬·운영 검증 기록](welcome-page-verification.md)
 - 2026-10-07 회원 상세 오버롤 직접 표시: [분석](member-detail-overall-analysis.md), [설계](member-detail-overall-design.md), [작업](member-detail-overall-tasks.md), [검증](member-detail-overall-validation.md), [독립 리뷰](member-detail-overall-review.md)
+
+- 2026-10-07 오버롤 기본 그래프·0점 입력: [분석](member-overall-zero-analysis.md), [설계](member-overall-zero-design.md), [작업](member-overall-zero-tasks.md), [검증](member-overall-zero-validation.md), [DB 검증](member-overall-zero-db-validation.md), [독립 리뷰](member-overall-zero-review.md)
