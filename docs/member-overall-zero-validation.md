@@ -32,4 +32,4 @@ DB 최초 pgTAP 실행에서 테스트 파일 생성의 dollar-quote 치환 오�
 
 공식 [Supabase changelog](https://supabase.com/changelog), [함수 가이드](https://supabase.com/docs/guides/database/functions), [PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/17/sql-altertable.html)를 확인했다. 마이그레이션은 원본 private 테이블의 점수 CHECK와 기존 helper의 하한만 확장하며 공개 접근·권한·기존 점수 변경을 포함하지 않는다.
 
-운영 DB 마이그레이션·이력·전후 catalog/데이터 digest·advisor와 PR/웹 배포는 다음 릴리스 단계에서 별도 확인한다. 앱 변경은 없다.
+사용자 승인 후 운영 DB 마이그레이션·이력·전후 catalog/데이터 digest·advisor 확인을 완료했다. SQL과 웹 소스는 그대로이고 migration 파일명만 실제 이력에 맞췄다. PR/웹 배포는 이어서 확인한다. 앱 변경은 없다.

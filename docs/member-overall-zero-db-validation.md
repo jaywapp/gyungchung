@@ -2,7 +2,7 @@
 
 2026-10-07 · `codex/member-overall-zero` · 기준 `f057c0654a763da85e7429f782207472775de440`
 
-신규 `supabase/migrations/20261007114237_allow_zero_member_overalls.sql`을 Supabase CLI 2.102.0의 `supabase migration new allow_zero_member_overalls`로 생성했다. 기존 `20261007080520_add_member_overalls.sql`은 수정하지 않았다. 운영 DB, 실제 회원 점수, 외부 설정, 시크릿을 사용하거나 수정하지 않았다. 커밋·푸시·PR은 수행하지 않았다.
+초기 `supabase/migrations/20261007114237_allow_zero_member_overalls.sql`을 Supabase CLI 2.102.0의 `supabase migration new allow_zero_member_overalls`로 생성했다. 기존 `20261007080520_add_member_overalls.sql`은 수정하지 않았다. 운영 DB, 실제 회원 점수, 외부 설정, 시크릿을 사용하거나 수정하지 않았다. 커밋·푸시·PR은 수행하지 않았다.
 
 ## 변경 계약
 
@@ -59,3 +59,9 @@ node scripts/verify-member-overall.mjs
 기존 합성 profile/Storage fixture와 실제 관련 함수·정책·migration을 재생한 검증이다. 전체 Supabase migration 이력, Auth/PostgREST HTTP 서버 또는 운영 카탈로그를 재현한 검증은 아니다. 공식 Supabase 함수·RLS 지침은 앞선 동일 기능 작업에서 확인한 내용을 재사용했다. 운영 DB 적용·advisor·migration history 검증은 루트의 후속 릴리스 단계에서 수행한다.
 
 검증 종료 후 전용 55439 서버를 정상 종료했고 리스너가 없음을 확인했다. 새 클러스터 데이터와 로그는 보존했으며 기존 55438/55437 환경은 변경하지 않았다.
+
+## 승인 후 운영 적용
+
+사용자가 운영 DB 적용·웹 병합·배포를 승인한 뒤 검증한 SQL을 적용했다. 운영 이력 20261007134645에 파일명을 맞췄으며 SQL 바이트와 SHA256699bf44626f80bca37a54ae3c4d47f7928863f7ba2572ac71d251861ba8e9f14는 같다. 최초 격리 실행 로그와 해시 증거는 원본 그대로 보존했다. 실행기는 마이그레이션 이름을 자동 탐색하므로 코드 변경이 없었다.
+
+운영 여섯 CHECK는 0~100, helper 본문 MD5는 b2d5b7302dc87cd8e15cb0ff040705b4다. 기존 점수 데이터 digest·행 수, 함수 OID·ACL·보안 설정·빈 search path·RLS·직접 읽기 차단은 적용 전후 동일했다. 보안·성능 advisor 신규 공지도 없다. 실제 운영 회원 점수를 입력·수정하지 않았다.
