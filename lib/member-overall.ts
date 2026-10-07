@@ -21,7 +21,7 @@ export type OverallAccess = {
 export type MemberOverallErrorKind = "forbidden" | "invalid" | "conflict" | "unknown" | "unavailable";
 const errorMessages: Record<MemberOverallErrorKind, string> = {
   forbidden: "능력치 접근 권한이 없습니다. 권한을 확인한 뒤 다시 열어 주세요.",
-  invalid: "6개 능력치를 모두 1~100 사이의 정수로 입력해 주세요.",
+  invalid: "능력치는 0~100 사이의 정수로 입력해 주세요. 비워 둔 항목은 0으로 저장됩니다.",
   conflict: "다른 운영진이 능력치를 수정했습니다. 최신 값을 확인한 뒤 다시 입력해 주세요.",
   unknown: "저장 결과를 확인하지 못했습니다. 최신 값을 다시 불러와 확인해 주세요.",
   unavailable: "능력치를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
@@ -32,10 +32,10 @@ export class MemberOverallError extends Error {
 export function isOverallScores(value: unknown): value is MemberOverallScores {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const scores = value as Record<string, unknown>;
-  return Object.keys(scores).length === overallAxes.length && overallAxes.every(({ key }) => typeof scores[key] === "number" && Number.isInteger(scores[key]) && Number(scores[key]) >= 1 && Number(scores[key]) <= 100);
+  return Object.keys(scores).length === overallAxes.length && overallAxes.every(({ key }) => typeof scores[key] === "number" && Number.isInteger(scores[key]) && Number(scores[key]) >= 0 && Number(scores[key]) <= 100);
 }
 export function parseOverallInputs(inputs: Record<OverallAxis, string>): MemberOverallScores {
-  const scores = Object.fromEntries(overallAxes.map(({ key }) => [key, /^\d{1,3}$/.test(inputs[key]) ? Number(inputs[key]) : NaN]));
+  const scores = Object.fromEntries(overallAxes.map(({ key }) => [key, inputs[key] === "" ? 0 : /^\d{1,3}$/.test(inputs[key]) ? Number(inputs[key]) : NaN]));
   if (!isOverallScores(scores)) throw new MemberOverallError("invalid");
   return scores;
 }

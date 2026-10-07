@@ -30,6 +30,10 @@ select ok((select relrowsecurity from pg_class where oid='private.member_overall
   'overall table enables RLS');
 select is((select count(*) from pg_policies where schemaname='private' and tablename='member_overalls'),0::bigint,
   'overall table default denies all direct access');
+select is((select pg_get_constraintdef(oid) from pg_constraint
+  where conrelid='private.member_overalls'::regclass and conname='member_overalls_' || axis || '_check'),
+  'CHECK (((' || axis || ' >= 0) AND (' || axis || ' <= 100)))',axis || ' table check accepts zero')
+from unnest(array['pace','shooting','passing','dribbling','defending','physical']) as axis;
 select ok(not has_table_privilege(role_name,'private.member_overalls','select,insert,update,delete'),
   role_name || ' has no direct table privilege')
 from unnest(array['anon','authenticated','service_role']) as role_name;
@@ -83,14 +87,34 @@ select throws_ok($$select * from public.set_member_overall('89010000-0000-0000-0
   '{"pace":90,"shooting":90,"passing":90,"dribbling":90,"defending":90,"physical":90}',1)$$,
   '40001',null,'missing row requires expected zero');
 select is((select revision from public.set_member_overall('89010000-0000-0000-0000-000000000012',
-  '{"pace":50,"shooting":50,"passing":50,"dribbling":50,"defending":50,"physical":50}',0)),1::bigint,
-  'unprovisioned active target can be rated');
+  '{"pace":0,"shooting":0,"passing":0,"dribbling":0,"defending":0,"physical":0}',0)),1::bigint,
+  'unprovisioned active target can be rated with all-zero scores');
+select results_eq($$select pace,shooting,passing,dribbling,defending,physical,revision from public.get_member_overalls(
+  array['89010000-0000-0000-0000-000000000012']::uuid[])$$,
+  'values (0::smallint,0::smallint,0::smallint,0::smallint,0::smallint,0::smallint,1::bigint)',
+  'all-zero score row is returned with its revision');
+select results_eq($$select pace,shooting,passing,dribbling,defending,physical,revision from public.set_member_overall(
+  '89010000-0000-0000-0000-000000000012','{"pace":0,"shooting":100,"passing":0,"dribbling":20,"defending":0,"physical":100}',1)$$,
+  'values (0::smallint,100::smallint,0::smallint,20::smallint,0::smallint,100::smallint,2::bigint)',
+  'mixed zero and positive scores update exactly');
+select results_eq($$select pace,shooting,passing,dribbling,defending,physical,revision from public.get_member_overalls(
+  array['89010000-0000-0000-0000-000000000012']::uuid[])$$,
+  'values (0::smallint,100::smallint,0::smallint,20::smallint,0::smallint,100::smallint,2::bigint)',
+  'mixed zero and positive scores round-trip');
+select results_eq($$select pace,shooting,passing,dribbling,defending,physical,revision from public.set_member_overall(
+  '89010000-0000-0000-0000-000000000012','{"pace":100,"shooting":100,"passing":100,"dribbling":100,"defending":100,"physical":100}',2)$$,
+  'values (100::smallint,100::smallint,100::smallint,100::smallint,100::smallint,100::smallint,3::bigint)',
+  'all-maximum scores update exactly');
+select results_eq($$select pace,shooting,passing,dribbling,defending,physical,revision from public.get_member_overalls(
+  array['89010000-0000-0000-0000-000000000012']::uuid[])$$,
+  'values (100::smallint,100::smallint,100::smallint,100::smallint,100::smallint,100::smallint,3::bigint)',
+  'all-maximum scores round-trip');
 select throws_ok(format('select * from public.set_member_overall(%L,%L::jsonb,2)',
   '89010000-0000-0000-0000-000000000005',
   jsonb_set('{"pace":50,"shooting":50,"passing":50,"dribbling":50,"defending":50,"physical":50}',array[key],value)::text),
   '22023',null,'invalid ' || key || '=' || value::text)
 from unnest(array['pace','shooting','passing','dribbling','defending','physical']) as key
-cross join unnest(array['0','101','1.5','"50"','null','true']::jsonb[]) as value;
+cross join unnest(array['-1','101','1.5','"50"','null','true']::jsonb[]) as value;
 select throws_ok(format('select * from public.set_member_overall(%L,%L::jsonb,2)',
   '89010000-0000-0000-0000-000000000005',
   ('{"pace":50,"shooting":50,"passing":50,"dribbling":50,"defending":50,"physical":50}'::jsonb-key)::text),

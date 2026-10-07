@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 assert.ok(process.env.OVERALL_PG_MODULE, "OVERALL_PG_MODULE must identify the isolated pg package");
 const { default: pg } = await import(pathToFileURL(process.env.OVERALL_PG_MODULE).href);
 pg.types.setTypeParser(20, Number);
-const config = { host: "127.0.0.1", port: 55438, user: "postgres", database: "member_overall_synthetic" };
+const config = { host: "127.0.0.1", port: 55439, user: "postgres", database: "member_overall_zero_synthetic" };
 const clients = [new pg.Client(config), new pg.Client(config), new pg.Client(config)];
 const [admin, first, second] = clients;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -142,6 +142,71 @@ try {
   for (const [n, previous] of directories) await scenario(n, async () => equal(await directory(), previous, "directory unchanged for actor " + n));
   const snapshotDigest = createHash("sha256").update(JSON.stringify({ functions:existingFunctions, policies:existingPolicies, profiles:existingProfiles, directories:[...directories] })).digest("hex");
 
+  // Model an installed positive-score row, then prove the additive migration
+  // only changes the six lower bounds and the existing private validator.
+  await actor(admin,1);
+  await admin.query(set(),values(5,0,scores(73)));
+  await owner();
+  const installedFunctionsSql = `select n.nspname,f.oid,f.oid::regprocedure::text signature,
+    pg_get_functiondef(f.oid) definition,f.proacl::text acl,f.proargnames,f.proargmodes,
+    f.prorettype::regtype::text result_type,f.prosecdef,f.provolatile,f.proconfig,pg_get_userbyid(f.proowner) owner
+    from pg_proc f join pg_namespace n on n.oid=f.pronamespace
+    where n.nspname in ('public','private') order by n.nspname,f.oid::regprocedure::text`;
+  const tableBoundarySql = `select n.nspname,c.relname,c.relacl::text acl,c.relrowsecurity,c.relforcerowsecurity
+    from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname in ('public','private','auth','storage') and c.relkind='r' order by 1,2`;
+  const installedFunctions = (await admin.query(installedFunctionsSql)).rows;
+  const installedBoundaries = (await admin.query(tableBoundarySql)).rows;
+  const installedPermissions = (await admin.query("select * from public.officer_permissions order by officer_title,permission")).rows;
+  const installedOveralls = (await admin.query("select * from private.member_overalls order by member_id")).rows;
+  const installedPolicies = (await admin.query(policiesSnapshot)).rows;
+  const priorConstraints = (await admin.query(`select conname,pg_get_constraintdef(oid) definition from pg_constraint
+    where conrelid='private.member_overalls'::regclass order by conname`)).rows;
+  for (const key of keys) equal(priorConstraints.find((row) => row.conname === "member_overalls_"+key+"_check")?.definition,
+    "CHECK ((("+key+" >= 1) AND ("+key+" <= 100)))","installed lower bound is one for "+key);
+  await scenario(1,async () => rejects(admin,set(),values(2,0,scores(0)),"22023","installed helper rejects all-zero scores before migration"));
+  const zeroMigrationPath = match("_allow_zero_member_overalls.sql");
+  const zeroMigration = await read(zeroMigrationPath);
+  await admin.query(zeroMigration);
+  const upgradedFunctions = (await admin.query(installedFunctionsSql)).rows;
+  equal(upgradedFunctions.map((fn) => ({ ...fn,definition:fn.nspname === "private" && fn.signature === "private.set_member_overall(uuid,jsonb,bigint)"
+    ? fn.definition.replace("score.value::numeric < 0","score.value::numeric < 1")
+      .replaceAll("Overall scores must be integers between 0 and 100","Overall scores must be integers between 1 and 100")
+    : fn.definition })),installedFunctions,"function identities, signatures, ACL, metadata and all logic except lower-bound validation preserved");
+  equal((await admin.query(tableBoundarySql)).rows,installedBoundaries,"all installed table privileges and RLS flags preserved");
+  equal((await admin.query(policiesSnapshot)).rows,installedPolicies,"all installed RLS policies preserved");
+  equal((await admin.query("select * from public.officer_permissions order by officer_title,permission")).rows,installedPermissions,
+    "zero migration neither reseeds nor updates permission data");
+  equal((await admin.query("select * from private.member_overalls order by member_id")).rows,installedOveralls,
+    "positive scores, revision, creator and timestamps survive migration unchanged");
+  const upgradedConstraints = (await admin.query(`select conname,pg_get_constraintdef(oid) definition from pg_constraint
+    where conrelid='private.member_overalls'::regclass order by conname`)).rows;
+  for (const key of keys) equal(upgradedConstraints.find((row) => row.conname === "member_overalls_"+key+"_check")?.definition,
+    "CHECK ((("+key+" >= 0) AND ("+key+" <= 100)))","upgraded lower bound is zero for "+key);
+  const axisConstraintNames = new Set(keys.map((key) => "member_overalls_"+key+"_check"));
+  equal(upgradedConstraints.filter((row) => !axisConstraintNames.has(row.conname)),
+    priorConstraints.filter((row) => !axisConstraintNames.has(row.conname)),"all non-score constraints preserved");
+  const installedSnapshotDigest = createHash("sha256").update(JSON.stringify({ functions:installedFunctions,boundaries:installedBoundaries,
+    permissions:installedPermissions,overalls:installedOveralls,policies:installedPolicies,constraints:priorConstraints })).digest("hex");
+
+  for (const initial of [scores(0),{ pace:0,shooting:100,passing:0,dribbling:20,defending:0,physical:100 },scores(100)]) {
+    await scenario(1,async () => {
+      const saved = (await admin.query(set(),values(2,0,initial))).rows[0];
+      equal(Object.fromEntries(keys.map((key) => [key,saved[key]])),initial,"zero, mixed and maximum scores save exactly");
+      equal(saved.revision,1,"zero-inclusive score set is an actual evaluation row");
+      equal((await admin.query(get(),[[member(2)]])).rows,[saved],"zero-inclusive scores round-trip through authorized reader");
+      const revised = (await admin.query(set(),values(2,1,scores(0)))).rows[0];
+      equal(Object.fromEntries(keys.map((key) => [key,revised[key]])),scores(0),"editing positive or mixed scores to zero is supported");
+      equal(revised.revision,2,"zero edit increments CAS revision");
+      await rejects(admin,set(),values(2,1,initial),"40001","stale zero-inclusive edit is rejected");
+    });
+  }
+  for (const key of keys) await scenario(1,async () => {
+    await owner();
+    await rejects(admin,`update private.member_overalls set ${key}=-1 where member_id=$1`,[member(5)],"23514","table rejects negative "+key);
+    await rejects(admin,`update private.member_overalls set ${key}=101 where member_id=$1`,[member(5)],"23514","table rejects excessive "+key);
+  });
+
   for (const schema of ["public", "private"]) for (const signature of ["get_member_overalls(uuid[])", "set_member_overall(uuid,jsonb,bigint)"]) {
     for (const role of ["authenticated","anon","service_role","fixture_untrusted"])
       equal(await scalar("select has_function_privilege($1,$2,'execute') value", [role,schema+"."+signature]), role === "authenticated", role+" RPC ACL "+schema+"."+signature);
@@ -186,7 +251,7 @@ try {
     equal(audit.updated_at >= audit.created_at,true,"server authored audit times");
   });
   await scenario(1, async () => {
-    equal((await admin.query(set(),values(7,0,scores(1)))).rows[0].pace,1,"unprovisioned active target and lower boundary are valid");
+    equal((await admin.query(set(),values(7,0,scores(0)))).rows[0].pace,0,"unprovisioned active target and zero boundary are valid");
     await rejects(admin,set(),values(21,1),"40001","missing row with positive revision conflicts");
     for (const n of [6,10,11,16,17,999]) await rejects(admin,set(),values(n),"22023","invalid target "+n);
     for (const value of [null,[],{}, { ...scores(), updated_by:member(3) }, { ...scores(), extra:1 }])
@@ -194,7 +259,7 @@ try {
     for (const key of keys) {
       const missing = scores(); delete missing[key];
       await rejects(admin,set(),values(2,0,missing),"22023","missing score "+key);
-      for (const value of [0,101,-1,1.5,"50",null,true,[],{}])
+      for (const value of [101,-1,1.5,"50",null,true,[],{}])
         await rejects(admin,set(),values(2,0,{ ...scores(),[key]:value }),"22023","invalid "+key+" "+JSON.stringify(value));
     }
     for (const revision of [null,-1]) await rejects(admin,set(),values(2,revision),"22023","invalid revision");
@@ -253,14 +318,14 @@ try {
   for (const initialRevision of [0,1]) {
     await owner(); await admin.query("delete from private.member_overalls where member_id=$1",[member(2)]);
     if (initialRevision) { await begin(first); await first.query(set(),values()); await first.query("commit"); await end(); }
-    await begin(first,1); await first.query(set(),values(2,initialRevision,scores(60)));
+    await begin(first,1); await first.query(set(),values(2,initialRevision,scores(0)));
     await begin(second,13);
     const competing = settled(second.query(set(),values(2,initialRevision,scores(90))));
     await waitForLock(second); await first.query("commit");
     equal((await competing).error?.code,"40001","simultaneous CAS has one winner for revision "+initialRevision);
     await end();
     equal((await admin.query("select pace,revision from private.member_overalls where member_id=$1",[member(2)])).rows,
-      [{ pace:60,revision:initialRevision+1 }],"losing concurrent save never overwrites winner");
+      [{ pace:0,revision:initialRevision+1 }],"losing concurrent save never overwrites zero-score winner");
   }
   for (const [n,assignment,restore,retryCode] of [[1,"must_change_password=true","must_change_password=false","42501"],
     [1,"status='inactive'","status='active'","42501"],[1,"auth_user_id=null","auth_user_id="+quote(auth(1)),"42501"],
@@ -317,7 +382,9 @@ try {
   equal((await admin.query("select * from public.profiles order by id")).rows,existingProfiles,"final synthetic profile state unchanged");
   equal((await admin.query("select * from private.member_birthdays order by profile_id")).rows,existingBirthday,"final birthday state unchanged");
   console.log(JSON.stringify({ passed:true,checks,tapChecks,engine:identity[0].version,migration:match("_add_member_overalls.sql"),
-    migrationSha256:createHash("sha256").update(migration).digest("hex"),regressionSnapshotSha256:snapshotDigest,
+    migrationSha256:createHash("sha256").update(migration).digest("hex"),zeroMigration:zeroMigrationPath,
+    zeroMigrationSha256:createHash("sha256").update(zeroMigration).digest("hex"),regressionSnapshotSha256:snapshotDigest,
+    installedSnapshotSha256:installedSnapshotDigest,
     scope:"three independent loopback PostgreSQL connections, synthetic fixtures only" }));
 } catch (error) {
   console.error(error.message); console.error(JSON.stringify({ code:error.code,detail:error.detail,where:error.where })); process.exitCode=1;
