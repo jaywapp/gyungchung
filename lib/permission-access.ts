@@ -5,7 +5,7 @@ export type VerifiedAccess = Set<string> & { isCurrent: () => boolean; profiles:
 export type AccessVerifier = () => Promise<VerifiedAccess | null>;
 
 export const operationalPermissions = [
-  "members.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage",
+  "members.manage", "ratings.manage", "fees.manage", "notices.manage", "events.manage", "feedback.manage",
   "elections.manage", "polls.manage", "surveys.manage", "welcome.manage",
 ] as const;
 
