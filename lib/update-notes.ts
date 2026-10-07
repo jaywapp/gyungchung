@@ -22,6 +22,15 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-07-member-detail-overall", date: "2026-10-07", source: "request",
+    title: "회원 상세에서 오버롤 그래프를 바로 확인할 수 있습니다",
+    summary: "능력치 조회 권한이 있는 운영진과 시스템 관리자는 회원 카드를 열면 육각형 그래프와 오버롤을 바로 확인합니다.",
+    changes: [
+      { kind: "improved", text: "회원 상세에 저장된 6개 능력치와 평균 오버롤을 바로 표시하며, 같은 화면에서 능력치를 수정할 수 있습니다." },
+      { kind: "improved", text: "미평가 회원은 입력 안내를 표시합니다. 일반 회원과 능력치 권한이 제외된 운영진에게는 표시하지 않습니다." },
+    ], pullRequests: [],
+  },
+  {
     id: "2026-10-07-member-overall", date: "2026-10-07", source: "request",
     title: "운영진이 회원 능력치와 팀 밸런스를 확인할 수 있습니다",
     summary: "회원별 6개 능력치를 입력하고 육각형 그래프와 오버롤을 팀 편성의 참고 자료로 이용할 수 있습니다.",
