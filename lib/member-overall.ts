@@ -10,7 +10,7 @@ export const overallAxes = [
 ] as const;
 export type OverallAxis = typeof overallAxes[number]["key"];
 export type MemberOverallScores = Record<OverallAxis, number>;
-export type MemberOverall = MemberOverallScores & { member_id: string; revision: number; updated_at: string };
+export type MemberOverall = MemberOverallScores & { member_id: string; revision: number; updated_at: string; response_count?: number; event_count?: number };
 export type OverallAccess = {
   scope: string;
   version: number;
@@ -44,12 +44,18 @@ export function parseMemberOverall(value: unknown): MemberOverall {
   const row = value as Record<string, unknown>;
   const scores = Object.fromEntries(overallAxes.map(({ key }) => [key, row[key]]));
   if (!isOverallScores(scores) || typeof row.member_id !== "string" || !row.member_id.trim() || !Number.isSafeInteger(row.revision) || Number(row.revision) < 1 || typeof row.updated_at !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(row.updated_at) || !Number.isFinite(Date.parse(row.updated_at))) throw new MemberOverallError("unknown");
-  return { ...scores, member_id: row.member_id, revision: Number(row.revision), updated_at: row.updated_at };
+  if ((row.response_count !== undefined || row.event_count !== undefined) && (!Number.isSafeInteger(row.response_count) || Number(row.response_count) < 1 || !Number.isSafeInteger(row.event_count) || Number(row.event_count) < 1 || Number(row.event_count) > 10 || Number(row.response_count) < Number(row.event_count))) throw new MemberOverallError("unknown");
+  return { ...scores, member_id: row.member_id, revision: Number(row.revision), updated_at: row.updated_at, ...(row.response_count !== undefined ? { response_count: Number(row.response_count), event_count: Number(row.event_count) } : {}) };
 }
 export function parseMemberOverallRows(value: unknown, ids?: readonly string[]): MemberOverall[] {
   if (!Array.isArray(value)) throw new MemberOverallError("unknown");
   const rows = value.map(parseMemberOverall);
   if (new Set(rows.map((row) => row.member_id)).size !== rows.length || (ids && rows.some((row) => !ids.includes(row.member_id)))) throw new MemberOverallError("unknown");
+  return rows;
+}
+export function parseMixedZoneOveralls(value: unknown, ids?: readonly string[]): MemberOverall[] {
+  const rows = parseMemberOverallRows(value, ids);
+  if (rows.some((row) => row.response_count === undefined || row.event_count === undefined)) throw new MemberOverallError("unknown");
   return rows;
 }
 export function memberOverall(scores: MemberOverallScores): number {

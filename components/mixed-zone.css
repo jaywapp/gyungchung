@@ -1,0 +1,21 @@
+.mixed-zone-description, .mixed-zone-period { color: var(--body); font-size: 13px; line-height: 1.65; margin: 8px 0 14px; }
+.mixed-zone-period { font-size: 12px; }
+.mixed-zone-target { display: grid; gap: 8px; max-width: 380px; color: var(--ink); font-size: 14px; font-weight: 650; margin: 20px 0; }
+.mixed-zone-target select { min-width: 0; min-height: 44px; width: 100%; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); padding: 10px 12px; font: inherit; }
+.mixed-zone-scores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 28px; }
+.mixed-zone-scores fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.mixed-zone-scores legend { padding: 0; margin-bottom: 8px; color: var(--ink); font-size: 14px; font-weight: 650; }
+.mixed-zone-scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.mixed-zone-scale label { position: relative; cursor: pointer; }
+.mixed-zone-scale input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.mixed-zone-scale span { display: grid; place-items: center; min-height: 44px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mixed-zone-scale input:checked + span { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.mixed-zone-scale input:hover + span { border-color: var(--brand); }
+.mixed-zone-scale input:focus-visible + span, .mixed-zone-target select:focus-visible, .mixed-zone-panel button:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.mixed-zone-scale input:disabled + span { opacity: .7; cursor: default; }
+.mixed-zone-panel button:not(.text-link) { min-height: 44px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); padding: 10px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.mixed-zone-panel button.primary { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.mixed-zone-panel button:disabled, .mixed-zone-target select:disabled { background: var(--disabled-bg); color: var(--disabled-ink); cursor: default; }
+.mixed-zone-actions { display: flex; gap: 8px; margin-top: 20px; }
+.mixed-zone-error { color: var(--danger-ink); font-size: 13px; line-height: 1.65; }
+@media (max-width: 600px) { .mixed-zone-scores { grid-template-columns: minmax(0, 1fr); gap: 18px; } }

@@ -54,6 +54,7 @@ export interface Event {
   starts_at: string;
   ends_at?: string | null;
   mom_voting_days?: number;
+  mixed_zone_days?: number;
   venue_id: string | null;
   venue: string;
   address: string | null;

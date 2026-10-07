@@ -18,6 +18,8 @@ import HeroMotion from "@/components/hero-motion";
 import MemberDirectory from "@/components/member-directory";
 import { createMemberOverallAccess, getMemberOverallScope } from "@/lib/member-overall-client";
 import type { OverallAccess } from "@/lib/member-overall";
+import { createMixedZoneAccess, getMixedZoneScope } from "@/lib/mixed-zone-client";
+import type { MixedZoneAccess } from "@/lib/mixed-zone";
 import { ClubMobileBar, ClubSidebar, ClubTabBar, MemberAvatar, MoreSheet, tabPaths, type Tab } from "@/components/club-nav";
 import { MemberAvatarProvider } from "@/components/member-avatar-provider";
 import { AvatarUrlCache, getAvatarAccessScope, saveProfileAvatar } from "@/lib/profile-avatar";
@@ -114,7 +116,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const userRef = useRef<User | null>(null);
   const requestsRef = useRef(new ResourceRequests<ClubhouseResource>());
   const profileSourcesRef = useRef<{ directory: Profile[]; private: Profile[] }>({ directory: [], private: [] });
-  const accessRef = useRef<{ owner: string | null; profile: Profile | null; roleRows: RolePermission[]; officerRows: OfficerPermission[]; permissions: Set<string>; ready: boolean; overallActorKey?: string; overallGeneration?: number; overallReady?: boolean }>({ owner: null, profile: null, roleRows: [], officerRows: [], permissions: new Set(), ready: false });
+  const accessRef = useRef<{ owner: string | null; profile: Profile | null; roleRows: RolePermission[]; officerRows: OfficerPermission[]; permissions: Set<string>; ready: boolean; overallActorKey?: string; overallGeneration?: number; overallReady?: boolean; mixedZoneActorKey?: string; mixedZoneGeneration?: number }>({ owner: null, profile: null, roleRows: [], officerRows: [], permissions: new Set(), ready: false });
   const accessRequestRef = useRef<{ owner: string; epoch: number; pending: Promise<VerifiedAccess | null> } | null>(null);
   const reloadRef = useRef<(scope: ReloadScope) => Promise<void>>(async () => undefined);
   const rsvpPendingEventIdsRef = useRef(new Set<string>());
@@ -148,10 +150,10 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
     if (showSkeleton) setPublicLoading(true);
     const queries: Record<PublicLoadResource, (signal: AbortSignal) => PromiseLike<ResourceQueryResult>> = {
       events: async (signal) => {
-        const result = await supabase.from("events").select("id, title, starts_at, ends_at, mom_voting_days, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at").abortSignal(signal);
+        const result = await supabase.from("events").select("id, title, starts_at, ends_at, mom_voting_days, mixed_zone_days, venue_id, venue, address, note, capacity, is_competitive, team_mode, weekly_date, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating)), event_matches(id, event_id, match_number, team_a_id, team_b_id, team_a_score, team_b_score, event_match_players(id, event_id, match_id, team_id, profile_id, guest_player_id, player_name), event_match_scorers(id, event_id, match_id, team_id, profile_id, guest_player_id, scorer_name, goals))").order("starts_at").abortSignal(signal);
         // Keep the migration fallback, but never retry an obsolete identity's request.
         const fallback = result.error && !signal.aborted
-          ? await supabase.from("events").select("id, title, starts_at, ends_at, mom_voting_days, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal)
+          ? await supabase.from("events").select("id, title, starts_at, ends_at, mom_voting_days, mixed_zone_days, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal)
           : result;
         if (fallback.error && !signal.aborted) return await supabase.from("events").select("id, title, starts_at, venue, address, note, capacity, is_competitive, team_mode, event_guest_players(event_id, guest_player_id, guest_name, guest_position, created_at), event_teams(id, event_id, team_number, team_name, score, generation_mode, event_team_members(id, event_id, event_team_id, profile_id, guest_player_id, participant_name, participant_position, goals, rating))").order("starts_at").abortSignal(signal);
         return fallback;
@@ -244,7 +246,8 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       const lostAccess = snapshot.owner === owner && [...snapshot.permissions].some((permission) => !nextPermissions.has(permission));
       const affected = getRevokedManagementResources(snapshot.permissions, nextPermissions);
       const overallActorKey = JSON.stringify([owner, snapshot.profile?.id, snapshot.profile?.auth_user_id, snapshot.profile?.status, snapshot.profile?.must_change_password, snapshot.profile?.role, snapshot.profile?.officer_title, snapshot.profile?.is_system_admin, nextPermissions.has("ratings.manage")]);
-      accessRef.current = { ...snapshot, owner, permissions: nextPermissions, ready: true, overallReady: true, overallActorKey, overallGeneration: (snapshot.overallGeneration ?? 0) + Number(snapshot.overallActorKey !== overallActorKey) };
+      const mixedZoneActorKey = JSON.stringify([owner, snapshot.profile?.id, snapshot.profile?.auth_user_id, snapshot.profile?.status, snapshot.profile?.must_change_password, snapshot.profile?.is_test_account]);
+      accessRef.current = { ...snapshot, owner, permissions: nextPermissions, ready: true, overallReady: true, overallActorKey, overallGeneration: (snapshot.overallGeneration ?? 0) + Number(snapshot.overallActorKey !== overallActorKey), mixedZoneActorKey, mixedZoneGeneration: (snapshot.mixedZoneGeneration ?? 0) + Number(snapshot.mixedZoneActorKey !== mixedZoneActorKey) };
       avatarCache.setScope(getAvatarAccessScope(owner, snapshot.profile, nextPermissions));
       if (lostAccess) {
         setQuickEditor((editor) => editor && !canEditManagedRecord(nextPermissions, editor.type, editor.row) ? null : editor);
@@ -616,6 +619,20 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
   const overallScope = currentOverallScope();
   const overallAccess: OverallAccess | null = overallScope && supabase ? createMemberOverallAccess({ scope: overallScope, version: overallVersion, getScope: currentOverallScope, verifyAccess, rpc: (name, args) => supabase.rpc(name, args), onChanged: () => setOverallVersion((current) => current + 1) }) : null;
 
+  const currentMixedZoneScope = () => {
+    const snapshot = accessRef.current;
+    const base = getMixedZoneScope(userRef.current?.id, snapshot.profile, requestsRef.current.epoch, snapshot.ready && snapshot.owner === userRef.current?.id);
+    return base ? `${base}:${snapshot.mixedZoneGeneration ?? 0}` : "";
+  };
+  const mixedZoneScope = !sessionPending && !hasLoadError("profiles", "memberDirectory", "attendance") ? currentMixedZoneScope() : "";
+  const mixedZoneAccess: MixedZoneAccess | null = mixedZoneScope && supabase ? createMixedZoneAccess({
+    scope: mixedZoneScope, version: 0, getScope: currentMixedZoneScope,
+    verifyAccess: async () => { const verified = await verifyAccess(); return Boolean(verified && verified.isCurrent() && mixedZoneScope === currentMixedZoneScope()); },
+    refreshWindow: async () => { await reload(["events", "memberDirectory", "profiles", "attendance"]); },
+    rpc: (name, args) => supabase.rpc(name, args),
+    onChanged: () => { setOverallVersion((version) => version + 1); },
+  }) : null;
+
   if (requiresPasswordChange) {
     return <main className="password-page"><section className="password-card"><span className="eyebrow">SECURITY UPDATE</span><h1>비밀번호 변경이 필요합니다</h1><p>안전한 회원 계정 사용을 위해 새 비밀번호 설정 화면으로 이동하고 있습니다.</p></section></main>;
   }
@@ -642,7 +659,7 @@ export default function Clubhouse({ children }: { children?: React.ReactNode }) 
       {view === "admin" && sessionPending && <SectionSkeleton />}
       {view === "admin" && !sessionPending && isOfficer && supabase && <AdminConsole overallAccess={overallAccess} ratingProfiles={activeProfiles} profiles={profiles} guestPlayers={guestPlayers} attendance={attendance} fees={fees} guestFees={guestFees} notices={notices} venues={venues} events={events} feedback={feedback} forms={forms} rolePermissions={rolePermissions} officerPermissions={officerPermissions} sectionLoadErrors={{ ratings: hasLoadError("memberDirectory", "profiles", "rolePermissions", "officerPermissions"), members: hasLoadError("memberDirectory", "profiles"), guests: hasLoadError("guestPlayers"), fees: hasLoadError("fees", "guestFees", "profiles"), notices: noticeLoadError, venues: hasLoadError("venues"), events: eventLoadError, attendance: hasLoadError("events", "attendance"), teams: eventLoadError, feedback: hasLoadError("feedback"), forms: hasLoadError("forms"), permissions: hasLoadError("rolePermissions", "officerPermissions") }} permissions={permissions} currentProfileId={me?.id ?? null} supabase={supabase} verifyAccess={verifyAccess} reload={(scope) => void reload(scope)} toast={showToast} />}
       {view === "admin" && !sessionPending && !isOfficer && <div className="content"><Empty icon={<Shield />} title="운영진 전용 공간입니다" description="시스템 관리자 또는 운영 권한이 있는 관리자 계정으로 로그인해 주세요." /></div>}
-      {eventDateKey && <EventDetail overallAccess={overallAccess} refreshMomWindow={() => reload(["events", "momVotes", "momResults"])} momScope={momScope} isMomCurrent={isMomCurrent} verifyMomAccess={verifyMomAccess} dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("memberDirectory", "profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload(["events", "memberDirectory", "profiles", "attendance", "momVotes", "momResults"])} reload={() => reload(["momVotes", "momResults"])} toast={showToast} />}
+      {eventDateKey && <EventDetail mixedZoneAccess={mixedZoneAccess} overallAccess={overallAccess} refreshMomWindow={() => reload(["events", "momVotes", "momResults"])} momScope={momScope} isMomCurrent={isMomCurrent} verifyMomAccess={verifyMomAccess} dateKey={eventDateKey} events={events} profiles={profiles} attendance={attendance} momVotes={momVotes} momResults={momResults} user={user} profile={me} supabase={supabase} loading={publicLoading} loadError={eventLoadError || hasLoadError("memberDirectory", "profiles", "attendance", "momVotes", "momResults")} sessionPending={sessionPending} rsvpPendingEventIds={rsvpPendingEventIds} canManage={permissions.has("events.manage")} onEdit={(event) => void openEditor({ type: "events", row: event as unknown as Record<string, unknown> })} onManageMatch={(event) => void openEditor({ type: "teams", row: event as unknown as Record<string, unknown> })} onManageAttendance={(event) => void openEditor({ type: "attendance", row: event as unknown as Record<string, unknown> })} onManageWinners={(event) => void openWinnerEditor(event)} onDelete={(id, label) => setPendingDelete({ table: "events", id, label })} onAttendance={setMyAttendance} onLogin={() => void setLoginOpen(true)} onRetry={() => void reload(["events", "memberDirectory", "profiles", "attendance", "momVotes", "momResults"])} reload={() => reload(["momVotes", "momResults"])} toast={showToast} />}
       {children}
     </main>
     <div className="toast warning" role="status" aria-live="polite" aria-atomic="true">{toast?.kind === "warning" && <><AlertTriangle size={17} /><span>{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={dismissToast}><X size={15} /></button></>}</div>

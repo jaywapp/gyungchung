@@ -1,0 +1,18 @@
+begin;
+select plan(13);
+select ok(private.mixed_zone_is_open('2026-10-01T09:00Z',null,3,'2026-10-01T11:00Z'),'Fallback opens exactly two hours after start');
+select ok(not private.mixed_zone_is_open('2026-10-01T09:00Z',null,3,'2026-10-01T10:59:59.999999Z'),'One microsecond before fallback end is closed');
+select ok(private.mixed_zone_is_open('2026-10-01T09:00Z',null,3,'2026-10-04T10:59:59.999999Z'),'One microsecond before deadline is open');
+select ok(not private.mixed_zone_is_open('2026-10-01T09:00Z',null,3,'2026-10-04T11:00Z'),'Exact deadline is excluded');
+select ok(private.mixed_zone_is_open('2026-10-01T09:00Z','2026-10-01T12:00Z',1,'2026-10-01T12:00Z'),'Explicit end overrides fallback');
+select ok(not private.mixed_zone_is_open('2026-10-01T09:00Z','2026-10-01T12:00Z',1,'2026-10-01T11:00Z'),'Explicit later end remains closed');
+select ok(not private.mixed_zone_is_open('2026-10-01T09:00Z',null,0,'2026-10-01T12:00Z'),'Zero duration fails closed');
+select ok(not private.mixed_zone_is_open('2026-10-01T09:00Z',null,31,'2026-10-01T12:00Z'),'Duration above thirty fails closed');
+select ok(not private.mixed_zone_is_open(null,null,3,'2026-10-01T12:00Z'),'Missing start fails closed');
+select ok(not private.mixed_zone_is_open('2026-10-01T09:00Z',null,3,null),'Missing clock fails closed');
+set local timezone='America/New_York';
+select ok(private.mixed_zone_is_open('2026-03-07T09:00-05:00','2026-03-07T11:00-05:00',1,'2026-03-08T11:59:59-04:00'),'DST spring keeps full twenty-four hours');
+select ok(not private.mixed_zone_is_open('2026-03-07T09:00-05:00','2026-03-07T11:00-05:00',1,'2026-03-08T12:00-04:00'),'DST spring closes at exactly twenty-four hours');
+select ok(not private.mixed_zone_is_open('2026-10-31T09:00-04:00','2026-10-31T11:00-04:00',1,'2026-11-01T10:00-05:00'),'DST autumn closes at exactly twenty-four hours');
+select * from finish();
+rollback;
