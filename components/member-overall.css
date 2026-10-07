@@ -1,0 +1,36 @@
+.member-overall-panel, .team-overall-summary { min-width: 0; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--ink); }
+.overall-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.member-overall-panel h3, .team-overall-summary h3 { margin: 0 0 12px; font-size: 16px; font-weight: 750; }
+.overall-heading strong { color: var(--brand); font-variant-numeric: tabular-nums; }
+.overall-heading small { color: var(--body); font-size: 12px; font-weight: 500; }
+.overall-note, .overall-loading { margin: 8px 0 14px; color: var(--body); font-size: 13px; line-height: 1.65; }
+.overall-error { margin: 10px 0; color: var(--danger-ink); font-size: 13px; line-height: 1.65; }
+.overall-radar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, .55fr); gap: 16px; align-items: center; }
+.overall-radar svg { width: 100%; max-width: 280px; height: auto; display: block; }
+.overall-radar text { fill: var(--body); font-family: var(--font-sans); font-size: 12px; font-weight: 600; }
+.overall-radar-grid { fill: none; stroke: var(--line); stroke-width: 1; }
+.overall-radar-axis { stroke: var(--line); stroke-width: 1; }
+.overall-radar-value { fill: var(--brand-soft); fill-opacity: .8; stroke: var(--brand); stroke-width: 2; stroke-linejoin: round; }
+.overall-values { margin: 0; display: grid; gap: 8px; }
+.overall-values div { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; }
+.overall-values dt { color: var(--body); }
+.overall-values dd { margin: 0; font-weight: 750; font-variant-numeric: tabular-nums; }
+.overall-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.overall-inputs label { display: grid; gap: 6px; color: var(--body); font-size: 13px; }
+.overall-inputs input { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; }
+.overall-inputs input[aria-invalid="true"] { border-color: var(--danger); }
+.overall-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.member-overall-panel button, .team-overall-summary button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.member-overall-panel button.primary { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.member-overall-panel button:hover, .team-overall-summary button:hover { border-color: var(--brand); }
+.member-overall-panel button:focus-visible, .team-overall-summary button:focus-visible, .overall-inputs input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.member-overall-panel button:disabled, .overall-inputs input:disabled { color: var(--disabled-ink); background: var(--disabled-bg); border-color: var(--disabled-bg); cursor: default; }
+.overall-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 24px; }
+.overall-team h4 { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; font-size: 14px; }
+.overall-team h4 strong { color: var(--brand); font-size: 14px; font-variant-numeric: tabular-nums; }
+.overall-player-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.overall-player-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; font-size: 13px; line-height: 1.6; }
+.overall-player-list span { min-width: 0; overflow-wrap: anywhere; }
+.overall-player-list strong { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.overall-player-list small { color: var(--body); }
+@media (max-width: 480px) { .overall-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .overall-radar { grid-template-columns: minmax(0, 1fr); gap: 8px; } .overall-radar svg { margin-inline: auto; } .overall-values { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; } }

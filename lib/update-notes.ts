@@ -22,6 +22,16 @@ export type UpdateNote = {
 
 export const updateNotes: UpdateNote[] = [
   {
+    id: "2026-10-07-member-overall", date: "2026-10-07", source: "request",
+    title: "운영진이 회원 능력치와 팀 밸런스를 확인할 수 있습니다",
+    summary: "회원별 6개 능력치를 입력하고 육각형 그래프와 오버롤을 팀 편성의 참고 자료로 이용할 수 있습니다.",
+    changes: [
+      { kind: "added", text: "회원 메뉴와 관리 화면에서 속도·슈팅·패스·드리블·수비·피지컬을 1~100점으로 입력하고 평균 오버롤을 확인합니다." },
+      { kind: "added", text: "팀 편성과 일정의 팀 명단에서 선수 오버롤, 평가된 회원 기준 팀 평균과 미평가 인원을 확인합니다." },
+      { kind: "added", text: "능력치는 운영진 전용이며 시스템 관리자가 직책별 서비스 접근을 조정할 수 있습니다." },
+    ], pullRequests: [],
+  },
+  {
     id: "2026-10-06-member-card-actions",
     date: "2026-10-06",
     source: "request",

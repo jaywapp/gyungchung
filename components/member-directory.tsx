@@ -8,10 +8,13 @@ import { MemberPhoneError, openMemberPhone } from "@/lib/member-phone";
 import { downloadMemberContact } from "@/lib/member-contact";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { MemberAvatar } from "@/components/club-nav";
+import type { OverallAccess } from "@/lib/member-overall";
+import MemberOverallPanel from "@/components/member-overall-panel";
 
 const officerTitleLabels: Record<OfficerTitle, string> = { president: "회장", vice_president: "부회장", treasurer: "총무" };
 
 type DirectoryProps = {
+  overallAccess?: OverallAccess | null;
   profiles: Profile[];
   currentUserId: string;
   canManage: boolean;
@@ -26,7 +29,7 @@ type ContactAction = "dial" | "save";
 type PreparedPhone = { memberId: string; uri: string; action: ContactAction; isCurrent: () => boolean };
 
 /** Small two-up cards with one full-card trigger for member details and actions. */
-export default function MemberDirectory({ profiles, currentUserId, canManage, phoneScope, isPhoneCurrent, onPhoneLookup, onEdit, onKick }: DirectoryProps) {
+export default function MemberDirectory({ overallAccess = null, profiles, currentUserId, canManage, phoneScope, isPhoneCurrent, onPhoneLookup, onEdit, onKick }: DirectoryProps) {
   const [phonePending, setPhonePending] = useState<string | null>(null);
   const [preparedPhone, setPreparedPhone] = useState<PreparedPhone | null>(null);
   const [phoneNotice, setPhoneNotice] = useState<{ memberId: string; text: string; error: boolean; isCurrent: () => boolean } | null>(null);
@@ -129,6 +132,8 @@ export default function MemberDirectory({ profiles, currentUserId, canManage, ph
     if (action === "edit") onEdit(latest); else onKick(latest);
   };
   const [filter, setFilter] = useState<PositionKey | "ALL">("ALL");
+  const [overallMenu, setOverallMenu] = useState<{ memberId: string; scope: string; generation: number } | null>(null);
+  const overallVisible = overallMenu?.memberId === selectedProfile?.id && overallMenu?.scope === overallAccess?.scope && overallMenu?.generation === menuRef.current.generation && overallAccess?.isCurrent();
   const sorted = useMemo(() => sortDirectory(profiles), [profiles]);
   const counts = useMemo(() => countByPosition(profiles), [profiles]);
   const visible = filter === "ALL" ? sorted : sorted.filter((profile) => positionOf(profile) === filter);
@@ -167,6 +172,7 @@ export default function MemberDirectory({ profiles, currentUserId, canManage, ph
           <div><dt>회원 유형</dt><dd>{selectedProfile.role === "manager" ? (selectedProfile.officer_title ? officerTitleLabels[selectedProfile.officer_title] : "관리자") : "일반 회원"}</dd></div>
           <div><dt>가입일</dt><dd>{new Date(selectedProfile.joined_at).toLocaleDateString("ko-KR")}</dd></div>
         </dl>
+        {overallAccess?.isCurrent() && <div className="directory-management-actions">{overallVisible ? <MemberOverallPanel key={`${overallAccess.scope}:${selectedProfile.id}:${menuGeneration}`} member={selectedProfile} access={overallAccess} /> : <button type="button" className="cta secondary" onClick={() => { if (overallAccess.isCurrent() && menuRef.current.generation === menuGeneration) setOverallMenu({ memberId: selectedProfile.id, scope: overallAccess.scope, generation: menuGeneration }); }}>능력치 보기·입력</button>}</div>}
         {phoneScope && <div className="directory-contact-actions" aria-busy={phonePending === selectedProfile.id}>
           {readyPhone?.action === "dial" ? <button type="button" className="cta secondary" onClick={dialPhone}><Phone size={17} /> 전화 앱 열기</button> : <button type="button" className="cta secondary" disabled={phonePending !== null} onClick={() => void requestPhone(selectedProfile, "dial")}><Phone size={17} /> {phonePending === selectedProfile.id ? "연락처 확인 중…" : "전화걸기"}</button>}
           {readyPhone?.action === "save" ? <button type="button" className="cta secondary" onClick={saveContact}><Download size={17} /> 연락처 파일 내려받기</button> : <button type="button" className="cta secondary" disabled={phonePending !== null} onClick={() => void requestPhone(selectedProfile, "save")}><ContactRound size={17} /> 연락처 저장</button>}

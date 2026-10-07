@@ -14,8 +14,11 @@ import { parseEventDateKey, toEventDateKey } from "@/lib/event-date";
 import { getMomClockDelay, getMomVoteEligibility, getMomVotingWindow, isMomVoteCandidate, momVoteErrorMessage } from "@/lib/mom-vote";
 import { RsvpControls } from "@/components/rsvp-controls";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
+import type { OverallAccess } from "@/lib/member-overall";
+import TeamOverallSummary from "@/components/team-overall-summary";
 
 type EventDetailProps = {
+  overallAccess?: OverallAccess | null;
   momScope: string;
   isMomCurrent: () => boolean;
   verifyMomAccess: () => Promise<boolean>;
@@ -53,7 +56,7 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
  * dates, so everything that describes a single outing — roster, teams, match
  * results, MOM — is read here instead of being stacked into every list row.
  */
-export default function EventDetail({ momScope, isMomCurrent, verifyMomAccess, refreshMomWindow, dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
+export default function EventDetail({ overallAccess = null, momScope, isMomCurrent, verifyMomAccess, refreshMomWindow, dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
   const [votingEventId, setVotingEventId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const mountedRef = useRef(true);
@@ -395,6 +398,7 @@ export default function EventDetail({ momScope, isMomCurrent, verifyMomAccess, r
             </>}
         </section>
 
+        {teams.length > 0 && rosterVisible && !sessionPending && overallAccess?.isCurrent() && <TeamOverallSummary teams={teams} targetProfiles={profiles} access={overallAccess} />}
         {teams.length > 0 && <section id="teams" className="event-detail-block event-team-roster-block">
           <h3>팀 구성{event.is_competitive ? " 및 결과" : ""}<span className="detail-block-count">{teams.length}개 팀{rosterVisible && teamMemberCount > 0 ? ` · ${teamMemberCount}명` : ""}</span></h3>
           {!rosterVisible ? <p className="event-detail-gate"><Shield size={15} /> 팀 명단은 활동 회원에게만 공개합니다. {!user && <button type="button" className="text-link" onClick={onLogin}>로그인</button>}</p>
