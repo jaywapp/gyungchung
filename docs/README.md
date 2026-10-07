@@ -25,3 +25,7 @@
 - 2026-10-07 회원 상세 오버롤 직접 표시: [분석](member-detail-overall-analysis.md), [설계](member-detail-overall-design.md), [작업](member-detail-overall-tasks.md), [검증](member-detail-overall-validation.md), [독립 리뷰](member-detail-overall-review.md)
 
 - 2026-10-07 오버롤 기본 그래프·0점 입력: [분석](member-overall-zero-analysis.md), [설계](member-overall-zero-design.md), [작업](member-overall-zero-tasks.md), [검증](member-overall-zero-validation.md), [DB 검증](member-overall-zero-db-validation.md), [독립 리뷰](member-overall-zero-review.md)
+
+- 2026-10-07 믹스트존 동료 평가: [분석](mixed-zone-analysis.md), [설계](mixed-zone-design.md), [작업 계획](mixed-zone-tasks.md)
+
+- 믹스트존 완료 근거: [DB 검증](mixed-zone-db-validation.md), [통합 검증](mixed-zone-validation.md), [독립 리뷰](mixed-zone-review.md)

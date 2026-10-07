@@ -1,6 +1,6 @@
 import type { Profile } from "./types";
 import type { AccessVerifier } from "./permission-access";
-import { isOverallScores, MemberOverallError, parseMemberOverallRows, type OverallAccess } from "./member-overall";
+import { MemberOverallError, parseMixedZoneOveralls, type OverallAccess } from "./member-overall";
 
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
@@ -28,7 +28,7 @@ function rpcError(error: unknown, saving: boolean): MemberOverallError {
 }
 
 /** Keep privileged data bound to the verified actor, including after an await. */
-export function createMemberOverallAccess({ scope, version, getScope, verifyAccess, rpc, onChanged }: OverallClient): OverallAccess {
+export function createMemberOverallAccess({ scope, version, getScope, verifyAccess, rpc }: OverallClient): OverallAccess {
   const isCurrent = () => Boolean(scope) && scope === getScope();
   const ensureCurrent = (current: () => boolean) => {
     if (!isCurrent() || !current()) throw new MemberOverallError("forbidden");
@@ -64,18 +64,10 @@ export function createMemberOverallAccess({ scope, version, getScope, verifyAcce
       if (memberIds.length > 300 || memberIds.some((id) => !uuid.test(id))) throw new MemberOverallError("invalid", "대상 회원 정보를 확인하지 못했습니다. 화면을 다시 열어 주세요.");
       ensureCurrent(current);
       if (!memberIds.length) return [];
-      const data = await dispatch("get_member_overalls", { p_member_ids: memberIds }, current, false);
+      const data = await dispatch("get_mixed_zone_overalls", { p_member_ids: memberIds }, current, false);
       ensureCurrent(current);
-      return parseMemberOverallRows(data, memberIds);
+      return parseMixedZoneOveralls(data, memberIds);
     },
-    save: async (id, scores, expectedRevision, current) => {
-      if (!uuid.test(id) || !isOverallScores(scores) || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new MemberOverallError("invalid");
-      const data = await dispatch("set_member_overall", { p_member_id: id, p_scores: scores, p_expected_revision: expectedRevision }, current, true);
-      ensureCurrent(current);
-      const rows = parseMemberOverallRows(Array.isArray(data) ? data : [data], [id]);
-      if (rows.length !== 1 || rows[0].revision !== expectedRevision + 1) throw new MemberOverallError("unknown");
-      onChanged();
-      return rows[0];
-    },
+    save: async () => { throw new MemberOverallError("forbidden", "능력치는 믹스트존 평가로 자동 집계됩니다. 수동으로 수정할 수 없습니다."); },
   };
 }

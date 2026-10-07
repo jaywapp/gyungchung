@@ -16,9 +16,12 @@ import { RsvpControls } from "@/components/rsvp-controls";
 import { Empty, LoadError, SectionSkeleton } from "@/components/section-states";
 import type { OverallAccess } from "@/lib/member-overall";
 import TeamOverallSummary from "@/components/team-overall-summary";
+import MixedZonePanel from "@/components/mixed-zone-panel";
+import type { MixedZoneAccess } from "@/lib/mixed-zone";
 
 type EventDetailProps = {
   overallAccess?: OverallAccess | null;
+  mixedZoneAccess?: MixedZoneAccess | null;
   momScope: string;
   isMomCurrent: () => boolean;
   verifyMomAccess: () => Promise<boolean>;
@@ -56,7 +59,7 @@ const checkInLabels: Record<NonNullable<Attendance["check_in_status"]>, string> 
  * dates, so everything that describes a single outing — roster, teams, match
  * results, MOM — is read here instead of being stacked into every list row.
  */
-export default function EventDetail({ overallAccess = null, momScope, isMomCurrent, verifyMomAccess, refreshMomWindow, dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
+export default function EventDetail({ overallAccess = null, mixedZoneAccess = null, momScope, isMomCurrent, verifyMomAccess, refreshMomWindow, dateKey, events, profiles, attendance, momVotes, momResults, user, profile, supabase, loading, loadError, sessionPending, rsvpPendingEventIds, canManage, onEdit, onManageMatch, onManageAttendance, onManageWinners, onDelete, onAttendance, onLogin, onRetry, reload, toast }: EventDetailProps) {
   const [votingEventId, setVotingEventId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const mountedRef = useRef(true);
@@ -397,6 +400,8 @@ export default function EventDetail({ overallAccess = null, momScope, isMomCurre
               {guests.length > 0 && <div className="guest-roster"><b>참여 용병</b>{guests.map((guest) => <span key={guest.guest_player_id}>{guest.guest_name}</span>)}</div>}
             </>}
         </section>
+
+        <MixedZonePanel event={event} profiles={profiles} attendance={attendance} actor={profile} owner={user?.id ?? null} access={mixedZoneAccess} pending={sessionPending} onRetry={onRetry} />
 
         {teams.length > 0 && rosterVisible && !sessionPending && overallAccess?.isCurrent() && <TeamOverallSummary teams={teams} targetProfiles={profiles} access={overallAccess} />}
         {teams.length > 0 && <section id="teams" className="event-detail-block event-team-roster-block">
